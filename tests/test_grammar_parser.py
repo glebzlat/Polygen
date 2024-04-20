@@ -1,7 +1,7 @@
-import unittest
-
 from typing import Callable, Any
 from itertools import repeat
+
+import unittest
 
 from polygen.reader import Reader
 from polygen.grammar_parser import GrammarParser

@@ -1,4 +1,4 @@
-from polygen.reader import Reader
+from .reader import Reader
 
 
 def main():

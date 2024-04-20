@@ -1,5 +1,6 @@
-import unittest
 from io import StringIO
+
+import unittest
 
 from polygen.reader import Reader
 

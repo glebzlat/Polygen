@@ -1,6 +1,7 @@
 from __future__ import annotations
 import string
-from polygen.attrholder import ArgsRepr
+
+from .attrholder import ArgsRepr
 
 
 class Rule(ArgsRepr):

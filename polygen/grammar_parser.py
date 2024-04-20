@@ -1,6 +1,8 @@
-from polygen.parser import Parser
-# from polygen.parser import Parser
-from polygen.node import (
+import typing
+import re
+
+from .parser import Parser
+from .node import (
     Rule,
     Range,
     Expression,
@@ -13,9 +15,6 @@ from polygen.node import (
     Repetition,
     Char
 )
-
-import typing
-import re
 
 
 class GrammarParser(Parser):
