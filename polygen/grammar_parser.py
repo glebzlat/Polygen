@@ -1,20 +1,25 @@
-import typing
+from typing import Optional, Literal
 import re
 
 from .parser import Parser
 from .node import (
-    Rule,
-    Range,
+    Grammar,
     Expression,
-    Sequence,
+    Rule,
     Identifier,
-    Literal,
+    Range,
+    Alt,
+    Part,
+    AnyChar,
+    Literal as LiteralNode,
     Class,
     Predicate,
     Quantifier,
     Repetition,
     Char
 )
+
+PrimaryType = Optional[Identifier | Expression | LiteralNode | Class | AnyChar]
 
 
 class GrammarParser(Parser):
@@ -32,62 +37,49 @@ class GrammarParser(Parser):
         self.__IDENTCONT_RE = re.compile(r'[a-zA-Z0-9_]')
         self.__HEXDIGIT_RE = re.compile(r'[0-9a-fA-F]')
 
-    def parse(self) -> list[Rule] | None:
+    def parse(self) -> Optional[Grammar]:
         return self._Grammar()
 
-    def _Grammar(self) -> list[Rule] | None:
+    def _Grammar(self) -> Optional[Grammar]:
         if self._Spacing():
             if d := self._Definition():
                 defs = [d]
                 while d := self._Definition():
                     defs.append(d)
                 if self._EndOfFile():
-                    return defs
+                    return Grammar(defs)
 
-    def _Definition(self) -> Rule | None:
+    def _Definition(self) -> Optional[Rule]:
         if i := self._Identifier():
             if self._LEFTARROW():
                 if e := self._Expression():
                     return Rule(i, e)
 
-    def _Expression(self) -> Expression | None:
+    def _Expression(self) -> Optional[Expression]:
         if s := self._Sequence():
             seqs = [s]
             while self._SLASH() and (s := self._Sequence()):
                 seqs.append(s)
-            return Expression(*seqs)
+            return Expression(seqs)
 
-    def _Sequence(self) -> Sequence | None:
+    def _Sequence(self) -> Optional[Alt]:
         prefixes = []
         while p := self._Prefix():
             prefixes.append(p)
-        return Sequence(*prefixes)
+        return Alt(prefixes)
 
-    def _Prefix(self) -> tuple[Predicate, tuple] | None:
-        if self._AND():
-            p = Predicate(Predicate.AND)
-        elif self._NOT():
-            p = Predicate(Predicate.NOT)
-        else:
-            p = None
+    def _Prefix(self) -> Optional[Part]:
+        p = self._AND() or self._NOT()
         if s := self._Suffix():
-            return (p, s)  # (Predicate, (Primary, Quantifier))
+            return Part(pred=p, prime=s[0], quant=s[1])
 
-    def _Suffix(self) -> tuple | None:
+    def _Suffix(self) -> Optional[tuple[PrimaryType, Optional[Quantifier]]]:
         if p := self._Primary():
-            if self._QUESTION():
-                q = Quantifier(Quantifier.OPTIONAL)
-            elif self._STAR():
-                q = Quantifier(Quantifier.ZERO_OR_MORE)
-            elif self._PLUS():
-                q = Quantifier(Quantifier.ONE_OR_MORE)
-            elif q := self._Repetition():
-                q = Quantifier(q)
-            else:
-                q = None
+            q = (self._QUESTION() or self._STAR() or
+                 self._PLUS() or self._Repetition())
             return (p, q)  # (Primary, Quantifier)
 
-    def _Primary(self) -> Identifier | Expression | None:
+    def _Primary(self) -> PrimaryType:
         pos = self._mark()
         if i := self._Identifier():
             if self._LEFTARROW():
@@ -100,7 +92,7 @@ class GrammarParser(Parser):
                     return e
         return self._Literal() or self._Class() or self._DOT()
 
-    def _Identifier(self) -> Identifier | None:
+    def _Identifier(self) -> Optional[Identifier]:
         if c := self._IdentStart():
             chars = [c]
             while c := self._IdentCont():
@@ -108,21 +100,21 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Identifier(''.join(chars))
 
-    def _IdentStart(self) -> str | None:
+    def _IdentStart(self) -> Optional[str]:
         pos = self._mark()
         ch = self._get_char()
         if self.__IDENTSTART_RE.match(ch):
             return ch
         self._reset(pos)
 
-    def _IdentCont(self) -> str | None:
+    def _IdentCont(self) -> Optional[str]:
         pos = self._mark()
         ch = self._get_char()
         if self.__IDENTCONT_RE.match(ch):
             return ch
         self._reset(pos)
 
-    def _Literal(self) -> Literal | None:
+    def _Literal(self) -> Optional[LiteralNode]:
         pos = self._mark()
         if (q := self._expect('\'')) or (q := self._expect('\"')):
             chars = []
@@ -130,10 +122,10 @@ class GrammarParser(Parser):
                 chars.append(c)
             if self._expect(q):
                 if self._Spacing():
-                    return Literal(*chars)
+                    return LiteralNode(chars)
         self._reset(pos)
 
-    def _Class(self):
+    def _Class(self) -> Optional[Class]:
         pos = self._mark()
         if self._expect('['):
             ranges = []
@@ -141,10 +133,10 @@ class GrammarParser(Parser):
                 ranges.append(r)
             if self._expect(']'):
                 if self._Spacing():
-                    return Class(*ranges)
+                    return Class(ranges)
         self._reset(pos)
 
-    def _Range(self) -> Range | None:
+    def _Range(self) -> Optional[Range]:
         if beg := self._Char():
             pos = self._mark()
             if self._expect('-'):
@@ -164,7 +156,7 @@ class GrammarParser(Parser):
         '\\': Char('\\')
     }
 
-    def _Char(self) -> str | Char | None:
+    def _Char(self) -> Optional[str | Char]:
         pos = self._mark()
         if self._expect('\\'):
             ch = self._get_char()
@@ -207,7 +199,7 @@ class GrammarParser(Parser):
             return Char(ord(ch))
         self._reset(pos)
 
-    def _Repetition(self) -> Repetition | None:
+    def _Repetition(self) -> Optional[Repetition]:
         pos = self._mark()
         if self._expect('{'):
             if beg := self._Number():
@@ -215,14 +207,14 @@ class GrammarParser(Parser):
                 if self._expect(','):
                     if end := self._Number():
                         if self._expect('}'):
-                            return Repetition(beg, end)
+                            return Repetition(int(beg), int(end))
                 self._reset(pos1)
                 if self._expect('}'):
                     if self._Spacing():
-                        return Repetition(beg)
+                        return Repetition(int(beg))
         self._reset(pos)
 
-    def _Number(self) -> str | None:
+    def _Number(self) -> Optional[str]:
         pos = self._mark()
         if (c := self._get_char()) and c.isdigit():
             chars = [c]
@@ -234,13 +226,13 @@ class GrammarParser(Parser):
             return ''.join(chars)
         self._reset(pos)
 
-    def _HexDigit(self) -> str | None:
+    def _HexDigit(self) -> Optional[str]:
         pos = self._mark()
         if (c := self._get_char()) and self.__HEXDIGIT_RE.match(c):
             return c
         self._reset(pos)
 
-    def _LEFTARROW(self) -> str | None:
+    def _LEFTARROW(self) -> Optional[str]:
         pos = self._mark()
         if c1 := self._expect('<'):
             if c2 := self._expect('-'):
@@ -248,75 +240,75 @@ class GrammarParser(Parser):
                     return c1 + c2
         self._reset(pos)
 
-    def _SLASH(self) -> str | None:
+    def _SLASH(self) -> Optional[str]:
         pos = self._mark()
         if s := self._expect('/'):
             if self._Spacing():
                 return s
         self._reset(pos)
 
-    def _AND(self) -> str | None:
+    def _AND(self) -> Optional[Predicate]:
         pos = self._mark()
-        if s := self._expect('&'):
+        if self._expect('&'):
             if self._Spacing():
-                return s
+                return Predicate.AND
         self._reset(pos)
 
-    def _NOT(self) -> str | None:
+    def _NOT(self) -> Optional[Predicate]:
         pos = self._mark()
-        if s := self._expect('!'):
+        if self._expect('!'):
             if self._Spacing():
-                return s
+                return Predicate.NOT
         self._reset(pos)
 
-    def _QUESTION(self) -> str | None:
+    def _QUESTION(self) -> Optional[Quantifier]:
         pos = self._mark()
-        if s := self._expect('?'):
+        if self._expect('?'):
             if self._Spacing():
-                return s
+                return Quantifier.OPTIONAL
         self._reset(pos)
 
-    def _STAR(self) -> str | None:
+    def _STAR(self) -> Optional[Quantifier]:
         pos = self._mark()
-        if s := self._expect('*'):
+        if self._expect('*'):
             if self._Spacing():
-                return s
+                return Quantifier.ZERO_OR_MORE
         self._reset(pos)
 
-    def _PLUS(self) -> str | None:
+    def _PLUS(self) -> Optional[Quantifier]:
         pos = self._mark()
-        if s := self._expect('+'):
+        if self._expect('+'):
             if self._Spacing():
-                return s
+                return Quantifier.ONE_OR_MORE
         self._reset(pos)
 
-    def _OPEN(self) -> str | None:
+    def _OPEN(self) -> Optional[str]:
         pos = self._mark()
         if s := self._expect('('):
             if self._Spacing():
                 return s
         self._reset(pos)
 
-    def _CLOSE(self) -> str | None:
+    def _CLOSE(self) -> Optional[str]:
         pos = self._mark()
         if s := self._expect(')'):
             if self._Spacing():
                 return s
         self._reset(pos)
 
-    def _DOT(self) -> str | None:
+    def _DOT(self) -> Optional[AnyChar]:
         pos = self._mark()
-        if s := self._expect('.'):
+        if self._expect('.'):
             if self._Spacing():
-                return s
+                return AnyChar()
         self._reset(pos)
 
-    def _Spacing(self) -> typing.Literal[True]:
+    def _Spacing(self) -> Literal[True]:
         while self._Space() or self._Comment():
             pass
         return True
 
-    def _Comment(self) -> str | None:
+    def _Comment(self) -> Optional[str]:
         pos = self._mark()
         if c := self._expect('#'):
             chars = [c]
@@ -325,14 +317,14 @@ class GrammarParser(Parser):
             return ''.join(chars)
         self._reset(pos)
 
-    def _Space(self) -> str | None:
+    def _Space(self) -> Optional[str]:
         pos = self._mark()
         if (c := (self._expect(' ')) or
                 self._expect('\t') or self._EndOfLine()):
             return c
         self._reset(pos)
 
-    def _EndOfLine(self) -> str | None:
+    def _EndOfLine(self) -> Optional[str]:
         pos = self._mark()
         if c1 := self._expect('\r'):
             pos1 = self._mark()
@@ -344,7 +336,7 @@ class GrammarParser(Parser):
             return c
         self._reset(pos)
 
-    def _EndOfFile(self) -> typing.Literal[True] | None:
+    def _EndOfFile(self) -> Optional[Literal[True]]:
         pos = self._mark()
         if self._get_char() == '\0':
             return True
