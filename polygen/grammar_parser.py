@@ -20,6 +20,13 @@ from .node import (
 )
 
 PrimaryType = Optional[Identifier | Expression | LiteralNode | Class | AnyChar]
+SuffixType = Optional[
+    tuple[
+        Optional[
+            Identifier | Expression | LiteralNode | Class | AnyChar],
+        Optional[Quantifier | Repetition]
+    ]
+]
 
 
 class GrammarParser(Parser):
@@ -48,12 +55,14 @@ class GrammarParser(Parser):
                     defs.append(d)
                 if self._EndOfFile():
                     return Grammar(defs)
+        return None
 
     def _Definition(self) -> Optional[Rule]:
         if i := self._Identifier():
             if self._LEFTARROW():
                 if e := self._Expression():
                     return Rule(i, e)
+        return None
 
     def _Expression(self) -> Optional[Expression]:
         if s := self._Sequence():
@@ -61,6 +70,7 @@ class GrammarParser(Parser):
             while self._SLASH() and (s := self._Sequence()):
                 seqs.append(s)
             return Expression(seqs)
+        return None
 
     def _Sequence(self) -> Optional[Alt]:
         prefixes = []
@@ -72,19 +82,21 @@ class GrammarParser(Parser):
         p = self._AND() or self._NOT()
         if s := self._Suffix():
             return Part(pred=p, prime=s[0], quant=s[1])
+        return None
 
-    def _Suffix(self) -> Optional[tuple[PrimaryType, Optional[Quantifier]]]:
+    def _Suffix(self) -> SuffixType:
         if p := self._Primary():
             q = (self._QUESTION() or self._STAR() or
                  self._PLUS() or self._Repetition())
             return (p, q)  # (Primary, Quantifier)
+        return None
 
     def _Primary(self) -> PrimaryType:
         pos = self._mark()
         if i := self._Identifier():
             if self._LEFTARROW():
                 self._reset(pos)
-                return
+                return None
             return i
         if self._OPEN():
             if e := self._Expression():
@@ -99,6 +111,7 @@ class GrammarParser(Parser):
                 chars.append(c)
             if self._Spacing():
                 return Identifier(''.join(chars))
+        return None
 
     def _IdentStart(self) -> Optional[str]:
         pos = self._mark()
@@ -106,6 +119,7 @@ class GrammarParser(Parser):
         if self.__IDENTSTART_RE.match(ch):
             return ch
         self._reset(pos)
+        return None
 
     def _IdentCont(self) -> Optional[str]:
         pos = self._mark()
@@ -113,6 +127,7 @@ class GrammarParser(Parser):
         if self.__IDENTCONT_RE.match(ch):
             return ch
         self._reset(pos)
+        return None
 
     def _Literal(self) -> Optional[LiteralNode]:
         pos = self._mark()
@@ -124,6 +139,7 @@ class GrammarParser(Parser):
                 if self._Spacing():
                     return LiteralNode(chars)
         self._reset(pos)
+        return None
 
     def _Class(self) -> Optional[Class]:
         pos = self._mark()
@@ -135,6 +151,7 @@ class GrammarParser(Parser):
                 if self._Spacing():
                     return Class(ranges)
         self._reset(pos)
+        return None
 
     def _Range(self) -> Optional[Range]:
         if beg := self._Char():
@@ -144,6 +161,7 @@ class GrammarParser(Parser):
                     return Range(beg, end)
             self._reset(pos)
             return Range(beg)
+        return None
 
     __CHR_MAP = {
         'n': Char('\n'),
@@ -156,7 +174,7 @@ class GrammarParser(Parser):
         '\\': Char('\\')
     }
 
-    def _Char(self) -> Optional[str | Char]:
+    def _Char(self) -> Optional[Char]:
         pos = self._mark()
         if self._expect('\\'):
             ch = self._get_char()
@@ -198,6 +216,7 @@ class GrammarParser(Parser):
         elif (ch := self._get_char()) and ch not in '\\\0':
             return Char(ord(ch))
         self._reset(pos)
+        return None
 
     def _Repetition(self) -> Optional[Repetition]:
         pos = self._mark()
@@ -213,6 +232,7 @@ class GrammarParser(Parser):
                     if self._Spacing():
                         return Repetition(int(beg))
         self._reset(pos)
+        return None
 
     def _Number(self) -> Optional[str]:
         pos = self._mark()
@@ -225,12 +245,14 @@ class GrammarParser(Parser):
             self._reset(pos1)
             return ''.join(chars)
         self._reset(pos)
+        return None
 
     def _HexDigit(self) -> Optional[str]:
         pos = self._mark()
         if (c := self._get_char()) and self.__HEXDIGIT_RE.match(c):
             return c
         self._reset(pos)
+        return None
 
     def _LEFTARROW(self) -> Optional[str]:
         pos = self._mark()
@@ -239,6 +261,7 @@ class GrammarParser(Parser):
                 if self._Spacing():
                     return c1 + c2
         self._reset(pos)
+        return None
 
     def _SLASH(self) -> Optional[str]:
         pos = self._mark()
@@ -246,6 +269,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return s
         self._reset(pos)
+        return None
 
     def _AND(self) -> Optional[Predicate]:
         pos = self._mark()
@@ -253,6 +277,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Predicate.AND
         self._reset(pos)
+        return None
 
     def _NOT(self) -> Optional[Predicate]:
         pos = self._mark()
@@ -260,6 +285,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Predicate.NOT
         self._reset(pos)
+        return None
 
     def _QUESTION(self) -> Optional[Quantifier]:
         pos = self._mark()
@@ -267,6 +293,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Quantifier.OPTIONAL
         self._reset(pos)
+        return None
 
     def _STAR(self) -> Optional[Quantifier]:
         pos = self._mark()
@@ -274,6 +301,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Quantifier.ZERO_OR_MORE
         self._reset(pos)
+        return None
 
     def _PLUS(self) -> Optional[Quantifier]:
         pos = self._mark()
@@ -281,6 +309,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return Quantifier.ONE_OR_MORE
         self._reset(pos)
+        return None
 
     def _OPEN(self) -> Optional[str]:
         pos = self._mark()
@@ -288,6 +317,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return s
         self._reset(pos)
+        return None
 
     def _CLOSE(self) -> Optional[str]:
         pos = self._mark()
@@ -295,6 +325,7 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return s
         self._reset(pos)
+        return None
 
     def _DOT(self) -> Optional[AnyChar]:
         pos = self._mark()
@@ -302,11 +333,13 @@ class GrammarParser(Parser):
             if self._Spacing():
                 return AnyChar()
         self._reset(pos)
+        return None
 
     def _Spacing(self) -> Literal[True]:
         while self._Space() or self._Comment():
             pass
         return True
+        return None
 
     def _Comment(self) -> Optional[str]:
         pos = self._mark()
@@ -316,6 +349,7 @@ class GrammarParser(Parser):
                 chars.append(c)
             return ''.join(chars)
         self._reset(pos)
+        return None
 
     def _Space(self) -> Optional[str]:
         pos = self._mark()
@@ -323,6 +357,7 @@ class GrammarParser(Parser):
                 self._expect('\t') or self._EndOfLine()):
             return c
         self._reset(pos)
+        return None
 
     def _EndOfLine(self) -> Optional[str]:
         pos = self._mark()
@@ -335,9 +370,11 @@ class GrammarParser(Parser):
         elif c := self._expect('\n'):
             return c
         self._reset(pos)
+        return None
 
     def _EndOfFile(self) -> Optional[Literal[True]]:
         pos = self._mark()
         if self._get_char() == '\0':
             return True
         self._reset(pos)
+        return None

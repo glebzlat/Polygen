@@ -55,7 +55,7 @@ class Expression(Node, ArgsRepr):
 
 
 class Rule(Node, ArgsRepr):
-    def __init__(self, name: str, rhs: Expression):
+    def __init__(self, name: Identifier, rhs: Expression):
         self.name = name
         self.rhs = rhs
 

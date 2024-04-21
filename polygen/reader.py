@@ -28,7 +28,7 @@ class Reader:
             self.eof = False
 
             if not stream.readable():
-                with_name = f": {self.filename}" if self.filename else ""
+                with_name = f": {self.name}" if self.name else ""
                 raise ValueError("stream must be readable" + with_name)
 
     def __iter__(self) -> Reader:
@@ -56,6 +56,7 @@ class Reader:
         return char
 
     def update(self, length: int = 1) -> None:
+        assert self.stream
         if self.eof:
             return
         self.buffer = self.buffer[self.pointer:]

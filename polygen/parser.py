@@ -4,7 +4,7 @@ from .reader import Reader
 class Parser:
     def __init__(self, reader: Reader):
         self.reader = reader
-        self.chars = []
+        self.chars: list[str] = []
         self.pos = 0
 
     def _mark(self) -> int:
