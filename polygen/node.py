@@ -1,7 +1,7 @@
 from __future__ import annotations
 import string
 
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any
 from enum import StrEnum
 from itertools import chain
 
@@ -12,7 +12,6 @@ class Node:
     @property
     def descendants(self):
         def iterate():
-            print(self.__class__)
             for child in self:
                 if isinstance(child, Node):
                     yield from child.descendants
@@ -269,3 +268,25 @@ class Char(Node, ArgsRepr):
             return c
         return '\\u' + hex(self.code)[2:].rjust(4, '0')
 
+
+class GrammarVisitor:
+    # stolen from pegen
+    # https://github.com/we-like-parsers/pegen/blob/main/src/pegen/grammar.py
+
+    def visit(self, node: Any, *args: Any, **kwargs: Any) -> Any:
+        """Visit a node."""
+        method = "visit_" + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node, *args, **kwargs)
+
+    def generic_visit(self,
+                      node: Iterable[Any],
+                      *args: Any,
+                      **kwargs: Any) -> None:
+        """Called if no explicit visitor function exists for a node."""
+        for value in node:
+            if isinstance(value, list):
+                for item in value:
+                    self.visit(item, *args, **kwargs)
+            else:
+                self.visit(value, *args, **kwargs)
