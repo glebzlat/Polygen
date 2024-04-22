@@ -48,6 +48,11 @@ class Expression(Node, ArgsRepr):
     def __iter__(self):
         yield from self.alts
 
+    def __eq__(self, other):
+        if not isinstance(other, Expression):
+            return NotImplemented
+        return self.alts == other.alts
+
     def __str__(self):
         alts = ', '.join(map(str, self.alts))
         return f"Expression({alts})"
@@ -78,6 +83,8 @@ class Identifier(Node, ArgsRepr):
         return [self.string]
 
     def __eq__(self, other):
+        if not isinstance(other, Identifier):
+            return NotImplemented
         return self.string == other.string
 
     def __hash__(self):
@@ -130,7 +137,8 @@ class Part(Node, AttributeHolder):
 
 
 class AnyChar(Node, AttributeHolder):
-    pass
+    def __eq__(self, other):
+        return True if isinstance(other, AnyChar) else NotImplemented
 
 
 class Literal(Node, ArgsRepr):
