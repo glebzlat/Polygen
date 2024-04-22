@@ -7,16 +7,18 @@ from polygen.reader import Reader
 from polygen.grammar_parser import GrammarParser
 from polygen.node import (
     Rule,
+    Part,
     Range,
     Expression,
-    Sequence,
+    Alt,
     Identifier,
     Literal,
     Class,
     Predicate,
     Quantifier,
     Repetition,
-    Char
+    Char,
+    AnyChar
 )
 
 
@@ -33,6 +35,7 @@ class TestGrammarParser(unittest.TestCase):
                       *cases: tuple[str, list[Callable]] |
                       tuple[str, list[Callable], list[Any | type[Omit]]]):
         for case in cases:
+            clue: list | type | Any
             string, events, *clue = case
 
             reader = Reader(string)
@@ -56,21 +59,14 @@ class TestGrammarParser(unittest.TestCase):
                     msg = (f"SUCCESS CASE: {exc_name}: {exc} : "
                            f"function {fn_name} "
                            f"on input {string!r}")
-                    raise Exception(msg) from None
+                    raise Exception(msg)
 
-    def parse_failure(self, *cases: str):
+    def parse_failure(self, *cases: tuple[str, list[Callable]]):
         for string, events in cases:
             reader = Reader(string)
             parser = GrammarParser(reader)
-            event = events[0]
-            try:
-                self.assertIsNone(event(parser))
-            except AssertionError as exc:
-                exc_name, fn_name = exc.__class__.__name__, event.__name__
-                msg = (f"FAILURE CASE: {exc_name}: {exc} : "
-                       f"function {fn_name} "
-                       f"on input {string!r}")
-                raise Exception(msg) from None
+            if all(e(parser) for e in events):
+                raise AssertionError()
 
     def test_EndOfFile(self):
         self.parse_success(("", [P._EndOfFile], [True]))
@@ -183,39 +179,39 @@ class TestGrammarParser(unittest.TestCase):
     def test_Class(self):
         fn = [P._Class, P._EndOfFile]
         self.parse_success(
-            ("[]", fn, [Class()]),
-            ("[]\n", fn, [Class()]),
-            ("[a]", fn, [Class(Range(Char('a')))]),
-            ("[a-z]", fn, [Class(Range(Char('a'), Char('z')))]),
-            ("[0-9]", fn, [Class(Range(Char('0'), Char('9')))]),
+            ("[]", fn, [Class([])]),
+            ("[]\n", fn, [Class([])]),
+            ("[a]", fn, [Class([Range(Char('a'))])]),
+            ("[a-z]", fn, [Class([Range(Char('a'), Char('z'))])]),
+            ("[0-9]", fn, [Class([Range(Char('0'), Char('9'))])]),
             ("[abc]", fn, [
-                Class(Range(Char('a')),
+                Class([Range(Char('a')),
                       Range(Char('b')),
-                      Range(Char('c')))
+                      Range(Char('c'))])
             ]),
             ("[a-z0-9]", fn, [
-                Class(Range(Char('a'), Char('z')),
-                      Range(Char('0'), Char('9')))
+                Class([Range(Char('a'), Char('z')),
+                      Range(Char('0'), Char('9'))])
             ]),
             ("[a-zA-Z0-9_]", fn, [
-                Class(Range(Char('a'), Char('z')),
+                Class([Range(Char('a'), Char('z')),
                       Range(Char('A'), Char('Z')),
                       Range(Char('0'), Char('9')),
-                      Range(Char('_')))
+                      Range(Char('_'))])
             ])
         )
 
     def test_Literal(self):
         fn = [P._Literal, P._EndOfFile]
         self.parse_success(
-            (r"''", fn, [Literal(), True]),
-            (r"'a'", fn, [Literal(Char('a'))]),
-            (r"'\''", fn, [Literal(Char('\''))]),
-            (r"'\\'", fn, [Literal(Char('\\'))]),
-            (r'"\""', fn, [Literal(Char('\"'))]),
-            (r'"\n"', fn, [Literal(Char('\n'))]),
-            (r"'\141'", fn, [Literal(Char('a'))]),
-            (r"'\u03c0'", fn, [Literal(Char(0x03c0))]),
+            (r"''", fn, [Literal([]), True]),
+            (r"'a'", fn, [Literal([Char('a')])]),
+            (r"'\''", fn, [Literal([Char('\'')])]),
+            (r"'\\'", fn, [Literal([Char('\\')])]),
+            (r'"\""', fn, [Literal([Char('\"')])]),
+            (r'"\n"', fn, [Literal([Char('\n')])]),
+            (r"'\141'", fn, [Literal([Char('a')])]),
+            (r"'\u03c0'", fn, [Literal([Char(0x03c0)])]),
             ("'a'\n", fn),
             ("'a'\r\n", fn),
             ('"a"\n', fn),
@@ -246,79 +242,95 @@ class TestGrammarParser(unittest.TestCase):
         fn = [P._Primary, P._EndOfFile]
         self.parse_success(
             ("abc", fn, [Identifier('abc')]),
-            ("'a'", fn, [Literal(Char('a'))]),
-            ("[a]", fn, [Class(Range(Char('a')))]),
-            (".", fn, ['.']),
+            ("'a'", fn, [Literal([Char('a')])]),
+            ("[a]", fn, [Class([Range(Char('a'))])]),
+            (".", fn, [AnyChar()]),
             ("(Id)", fn, [
-                Expression(Sequence((None, (Identifier('Id'), None))))
+                Expression([Alt([Part(prime=Identifier('Id'))])])
             ])
         )
 
-    def test_Sequence(self):
+    def test_nested_Primary(self):
+        fn = [P._Primary, P._EndOfFile]
+        self.parse_success(
+            ("((Id))", fn, [
+                Expression([
+                    Alt([
+                        Part(prime=Expression([
+                            Alt([
+                                Part(prime=Identifier('Id'))
+                            ])
+                        ]))
+                    ])
+                ])
+            ])
+        )
+        self.parse_failure(
+            ("((Id)", fn),
+            ("(Id))", fn)
+        )
+
+    def test_Alt(self):
         fn = [P._Sequence, P._EndOfFile]
         self.parse_success(
-            ("Id", fn, [Sequence((None, (Identifier('Id'), None)))]),
+            ("Id", fn, [Alt([Part(prime=Identifier('Id'))])]),
             ("!Id", fn, [
-                Sequence((Predicate(Predicate.NOT), (Identifier('Id'), None)))
+                Alt([Part(pred=Predicate.NOT, prime=Identifier('Id'))])
             ]),
             ("&Id", fn, [
-                Sequence((Predicate(Predicate.AND), (Identifier('Id'), None)))
+                Alt([Part(pred=Predicate.AND, prime=Identifier('Id'))])
             ]),
             ("Id?", fn, [
-                Sequence(
-                    (None,
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.OPTIONAL)))
-                )
+                Alt([Part(prime=Identifier('Id'), quant=Quantifier.OPTIONAL)])
             ]),
             ("Id*", fn, [
-                Sequence(
-                    (None,
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.ZERO_OR_MORE)))
-                )
+                Alt([
+                    Part(
+                        prime=Identifier('Id'),
+                        quant=Quantifier.ZERO_OR_MORE)
+                ])
             ]),
             ("Id+", fn, [
-                Sequence(
-                    (None,
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.ONE_OR_MORE)))
-                )
+                Alt([
+                    Part(
+                        prime=Identifier('Id'),
+                        quant=Quantifier.ONE_OR_MORE)
+                ])
             ]),
             ("Id{1}", fn, [
-                Sequence(
-                    (None,
-                     (Identifier('Id'),
-                      Quantifier(Repetition(1))))
-                )
+                Alt([Part(prime=Identifier('Id'), quant=Repetition(1))])
             ]),
             ("!Id?", fn, [
-                Sequence(
-                    (Predicate(Predicate.NOT),
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.OPTIONAL)))
-                )
+                Alt([
+                    Part(
+                        pred=Predicate.NOT,
+                        prime=Identifier('Id'),
+                        quant=Quantifier.OPTIONAL)
+                ])
             ]),
             ("&Id?", fn, [
-                Sequence(
-                    (Predicate(Predicate.AND),
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.OPTIONAL)))
-                )
+                Alt([
+                    Part(
+                        pred=Predicate.AND,
+                        prime=Identifier('Id'),
+                        quant=Quantifier.OPTIONAL)
+                ])
             ]),
             ("& Id *", fn, [
-                Sequence(
-                    (Predicate(Predicate.AND),
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.ZERO_OR_MORE)))
-                )
+                Alt([
+                    Part(
+                        pred=Predicate.AND,
+                        prime=Identifier('Id'),
+                        quant=Quantifier.ZERO_OR_MORE)
+                ])
             ]),
             ("&\rId\n+", fn, [
-                Sequence(
-                    (Predicate(Predicate.AND),
-                     (Identifier('Id'),
-                      Quantifier(Quantifier.ONE_OR_MORE)))
-                )
+                Alt([
+                    Part(
+                        pred=Predicate.AND,
+                        prime=Identifier('Id'),
+                        quant=Quantifier.ONE_OR_MORE)
+                ])
             ]),
         )
 
@@ -327,18 +339,18 @@ class TestGrammarParser(unittest.TestCase):
         self.parse_success(
             ("Alt", fn),
             ("Alt1 / Alt2", fn, [
-                Expression(
-                    Sequence((None, (Identifier("Alt1"), None))),
-                    Sequence((None, (Identifier("Alt2"), None)))
-                )
+                Expression([
+                    Alt([Part(prime=Identifier('Alt1'))]),
+                    Alt([Part(prime=Identifier('Alt2'))])
+                ])
             ]),
             ("/ Alt", fn, [
-                Expression(
-                    Sequence(),
-                    Sequence((None, (Identifier("Alt"), None)))
-                )
+                Expression([
+                    Alt([]),
+                    Alt([Part(prime=Identifier('Alt'))])
+                ])
             ]),
-            ("/", fn, [Expression(Sequence(), Sequence())])
+            ("/", fn, [Expression([Alt([]), Alt([])])])
         )
 
     def test_Definition(self):
@@ -347,13 +359,18 @@ class TestGrammarParser(unittest.TestCase):
             ("Id <- Rule", fn, [
                 Rule(
                     Identifier("Id"),
-                    Expression(Sequence((None, (Identifier('Rule'), None))))
+                    Expression([Alt([Part(prime=Identifier('Rule'))])])
+                )
+            ]),
+            ("Id <-", fn, [
+                Rule(
+                    Identifier("Id"),
+                    Expression([Alt([])])
                 )
             ])
         )
         self.parse_failure(
             ("Id Rule", fn),
-            # ("Id <-", fn)  # should it be a failure case?
             ("<- Rule", fn)
         )
 
@@ -372,4 +389,10 @@ class TestGrammarParser(unittest.TestCase):
                 Target     <- ID
                 """, fn
             ),
+            (
+                """
+                Empty <-
+                Rule  <- E1 E2
+                """, fn
+            )
         )
