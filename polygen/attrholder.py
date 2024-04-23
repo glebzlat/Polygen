@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Callable, Any, Iterable
 
 
 class AttributeHolder:
@@ -24,13 +24,16 @@ class AttributeHolder:
         args = ', '.join(arg_strings)
         return f"{type_name}({args})"
 
-    def _get_kwargs(self):
-        return list(self.__dict__.items())
+    def _get_kwargs(self) -> Iterable[tuple[str, Any]]:
+        return self.__dict__.items()
 
-    def _get_args(self):
-        return []
+    def _get_args(self) -> Iterable[Any]:
+        return ()
 
 
 class ArgsRepr(AttributeHolder):
-    def _get_kwargs(self):
-        return []
+    def _repr(self, repr_fn: Callable[[Any], str]) -> str:
+        type_name = type(self).__name__
+        arg_strings = (repr_fn(arg) for arg in self._get_args())
+        args = ', '.join(arg_strings)
+        return f"{type_name}({args})"
