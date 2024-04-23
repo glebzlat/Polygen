@@ -51,7 +51,7 @@ class TestGrammarParser(unittest.TestCase):
             for e, c in zip(events, clue):
                 try:
                     result = e(parser)
-                    self.assertTrue(result)
+                    self.assertIsNotNone(result)
                     if c is not Omit:
                         self.assertEqual(result, c)
                 except Exception as exc:

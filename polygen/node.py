@@ -41,6 +41,9 @@ class Grammar(Node, AttributeHolder, Sized):
     def __str__(self):
         return '\n'.join(map(str, self.rules.values()))
 
+    def __bool__(self):
+        return True
+
 
 class Expression(Node, ArgsRepr, Sized):
     def __init__(self, alts: Iterable[Alt]):
@@ -69,6 +72,9 @@ class Expression(Node, ArgsRepr, Sized):
         alts = ', '.join(map(str, self.alts))
         return f"Expression({alts})"
 
+    def __bool__(self):
+        return True
+
 
 class Rule(Node, ArgsRepr, Sized):
     def __init__(self, name: Identifier, rhs: Expression):
@@ -88,6 +94,9 @@ class Rule(Node, ArgsRepr, Sized):
         if not isinstance(other, Rule):
             return NotImplemented
         return (self.name, self.rhs) == (other.name, other.rhs)
+
+    def __bool__(self):
+        return True
 
 
 class Identifier(Node, ArgsRepr):
@@ -128,6 +137,9 @@ class Alt(Node, ArgsRepr, Sized):
         if not isinstance(other, Alt):
             raise TypeError
         return Alt(list(self.parts) + list(other.parts))
+
+    def __bool__(self):
+        return True
 
 
 class Part(Node, AttributeHolder):
@@ -189,6 +201,9 @@ class Literal(Node, ArgsRepr):
         lit = ''.join(map(str, self.chars))
         return f"Literal({lit!r})"
 
+    def __bool__(self):
+        return True
+
 
 class Class(Node, ArgsRepr, Sized):
     def __init__(self, ranges: Iterable[Range]):
@@ -207,6 +222,9 @@ class Class(Node, ArgsRepr, Sized):
 
     def __iter__(self):
         yield from self.ranges
+
+    def __bool__(self):
+        return True
 
 
 class Range(Node, ArgsRepr):
@@ -256,14 +274,18 @@ def _enum_evaluable_repr(cls):
     return cls
 
 
+class _EnumNodeMeta(type(StrEnum), type(Node)):
+    pass
+
+
 @_enum_evaluable_repr
-class Predicate(Node, StrEnum):
+class Predicate(Node, StrEnum, metaclass=_EnumNodeMeta):
     NOT = '!'
     AND = '&'
 
 
 @_enum_evaluable_repr
-class Quantifier(Node, StrEnum):
+class Quantifier(Node, StrEnum, metaclass=_EnumNodeMeta):
     OPTIONAL = '?'
     ZERO_OR_MORE = '*'
     ONE_OR_MORE = '+'
