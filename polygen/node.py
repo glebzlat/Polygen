@@ -332,7 +332,7 @@ class Char(LeafNode, ArgsRepr):
 
 
 class GrammarVisitor:
-    # stolen from pegen
+    # taken from pegen
     # https://github.com/we-like-parsers/pegen/blob/main/src/pegen/grammar.py
 
     def visit(self, node: Any, *args: Any, **kwargs: Any) -> Any:
@@ -347,18 +347,14 @@ class GrammarVisitor:
                       **kwargs: Any) -> None:
         """Called if no explicit visitor function exists for a node."""
         for value in node:
-            if isinstance(value, list):
-                for item in value:
-                    self.visit(item, *args, **kwargs)
-            else:
-                self.visit(value, *args, **kwargs)
+            self.visit(value, *args, **kwargs)
 
 
-def common_prefix(lhs: Node, rhs: Node) -> Optional[list[Node]]:
+def common_prefix(lhs: Node, rhs: Node) -> list[Node]:
     parts = []
     for a, b in zip(lhs, rhs):
         if a != b:
-            return None
+            break
         parts.append(a)
     return parts
 
