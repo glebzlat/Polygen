@@ -1,0 +1,56 @@
+# Additions
+
+Add start, end indexes to generated nodes.
+
+Create an algorithm for rule rewriting and warnings. RuleRewriter should
+perform transformations and checks in stages. Each stage has a sequence of
+rules to transform one node type and/or structure to the other and rules
+to check, whether the tree contains an error (then generate an error) or
+a mistake (then generate a warning). Rewriter should perform a rule in a loop,
+until it raises a flag "nothing to do more". The same with the whole stages:
+all rules should be applied in sequence, until they all raise a flag.
+
+Stages are needed in case of rules, that require the specific condition of a
+tree.
+
+So I need to create a mechanism of some kind of "subscribing" to certain
+node types and nodes of certain structure. To be clarified...
+
+Stages and rules in them should be easily modifiable from the config.
+
+Add the config. Which format to use?
+
+Add parser syntastic error reporting (use "Exception Handling for Error
+Reporting in Parsing Expression Grammars" research paper).
+
+Add the parser generator. All the project should be split into parts:
+- Front-end -- parser, creates the tree, checks for syntax errors,
+- Middleware -- converter, applies rules to the tree, checks for semantic
+  errors, and
+- Back-end -- parser generator.
+
+Front-end does not and should not know about the semantic rules, applied by
+the Middleware -- its responsibility is to generate the AST.
+
+Middleware, I think, will consist mainly of RuleRewriter.
+
+Back-end must implement a set of basic features (ordered choice, zero-or-more,
+not predicate, etc.) and it may implement additional features (like one-or-more,
+and predicate, etc.). In case if it implements additional features, it may
+instruct the Middleware to not eliminate them from the tree.
+
+Back-end may be implemented in _any_ language (at the cost of writing and
+debugging time, of course). That is, the tree should have an ability to be
+represented in some fancy and easy parseable way (e.g., it should be
+convertible to JSON). For the same reason, configs and other ways for the
+system parts (and the end-user) to interact should be convertible to another
+parseable (and human-readable) format.
+
+BTW, user should have an ability to write his own Middleware rules and attach
+them, even if he writes them in another language.
+
+Add semantic actions. How?
+
+Semantic actions and the grammar should be distinct. No curly braces with
+pieces of code in the grammar file -- semantic actions in generated parsers
+should be attached at the end -- this is responsibility of the Back-end.
