@@ -4,6 +4,7 @@ import string
 from typing import Optional, Any
 from collections.abc import Iterable, Sized
 from enum import StrEnum
+from .fixes.enum_repr import enum_evaluable_repr
 from itertools import chain
 
 from .attrholder import AttributeHolder, ArgsRepr
@@ -247,48 +248,24 @@ class Range(Node, ArgsRepr):
             yield self.end
 
 
-def _enum_evaluable_repr(cls):
-    """
-    Changes default enum class' representation to evaluable
-
-    The default repr of an enum member "FOO" with value 42 of an
-    enum "MyEnum" is:
-
-    ```python
-    MyEnum.FOO: 42>
-    ```
-
-    `_enum_evaluable_repr` makes it:
-
-    ```python
-    MyEnum.FOO
-    ```
-    """
-
-    def _repr(self):
-        class_name = self.__class__.__name__
-        self_name = self.name
-        return f"{class_name}.{self_name}"
-
-    cls.__repr__ = _repr
-    return cls
-
-
-class _EnumNodeMeta(type(StrEnum), type(Node)):
+class _EnumNodeMeta(type(StrEnum), type(Node)):  # type: ignore
     pass
 
 
-@_enum_evaluable_repr
+@enum_evaluable_repr
 class Predicate(Node, StrEnum, metaclass=_EnumNodeMeta):
-    NOT = '!'
-    AND = '&'
+    # enum members are typed due to mypy bug:
+    #     error: Argument "quant" to "Part" has incompatible type "str";
+    #     expected "Quantifier | Repetition | None"  [arg-type]
+    NOT: Predicate = '!'  # type: ignore
+    AND: Predicate = '&'  # type: ignore
 
 
-@_enum_evaluable_repr
+@enum_evaluable_repr
 class Quantifier(Node, StrEnum, metaclass=_EnumNodeMeta):
-    OPTIONAL = '?'
-    ZERO_OR_MORE = '*'
-    ONE_OR_MORE = '+'
+    OPTIONAL: Quantifier = '?'  # type: ignore
+    ZERO_OR_MORE: Quantifier = '*'  # type: ignore
+    ONE_OR_MORE: Quantifier = '+'  # type: ignore
 
 
 class Repetition(Node, ArgsRepr):
