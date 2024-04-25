@@ -1,32 +1,39 @@
 from __future__ import annotations
 import string
 
-from typing import Optional, Any
+from typing import Optional, Any, Iterator
 from collections.abc import Iterable, Sized
+from abc import abstractmethod
 from enum import StrEnum
 from .fixes.enum_repr import enum_evaluable_repr
-from itertools import chain
+from itertools import zip_longest
 
 from .attrholder import AttributeHolder, ArgsRepr
 
 
+def seq_cmp(seq1, seq2):
+    return all(i == j for i, j in zip_longest(seq1, seq2))
+
+
 class Node(Iterable):
     @property
-    def descendants(self):
-        def iterate():
-            for child in self:
-                if isinstance(child, Node):
-                    yield from child.descendants
-                else:
-                    yield child
+    def descendants(self) -> Iterator[Node]:
+        yield self
+        for e in self:
+            yield from e.descendants
 
-        yield from chain(self._yield(), *iterate())
+    @abstractmethod
+    def __iter__(self):
+        ...
+
+
+class LeafNode(Iterable):
+    @property
+    def descendants(self) -> Iterator[LeafNode]:
+        yield self
 
     def __iter__(self):
         yield from tuple()
-
-    def _yield(self):
-        yield self
 
 
 class Grammar(Node, AttributeHolder, Sized):
@@ -59,7 +66,7 @@ class Expression(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Expression):
             return NotImplemented
-        return self.alts == other.alts
+        return seq_cmp(self.alts, other.alts)
 
     def __add__(self, other):
         if not isinstance(other, Expression):
@@ -100,7 +107,7 @@ class Rule(Node, ArgsRepr, Sized):
         return True
 
 
-class Identifier(Node, ArgsRepr):
+class Identifier(LeafNode, ArgsRepr):
     def __init__(self, string: str):
         self.string = string
 
@@ -126,7 +133,7 @@ class Alt(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Alt):
             return NotImplemented
-        return self.parts == other.parts
+        return seq_cmp(self.parts, other.parts)
 
     def __iter__(self):
         yield from self.parts
@@ -168,14 +175,10 @@ class Part(Node, AttributeHolder):
                 (other.pred, other.prime, other.quant))
 
     def __iter__(self):
-        if self.pred:
-            yield self.pred
         yield self.prime
-        if self.quant:
-            yield self.quant
 
 
-class AnyChar(Node, AttributeHolder):
+class AnyChar(LeafNode, AttributeHolder):
     def __eq__(self, other):
         return True if isinstance(other, AnyChar) else NotImplemented
 
@@ -190,7 +193,7 @@ class Literal(Node, ArgsRepr):
     def __eq__(self, other):
         if not isinstance(other, Literal):
             return NotImplemented
-        return self.chars == other.chars
+        return seq_cmp(self.chars, other.chars)
 
     def __len__(self):
         return len(self.chars)
@@ -216,7 +219,7 @@ class Class(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Class):
             return NotImplemented
-        return self.ranges == other.ranges
+        return seq_cmp(self.ranges, other.ranges)
 
     def __len__(self):
         return len(self.ranges)
@@ -248,12 +251,12 @@ class Range(Node, ArgsRepr):
             yield self.end
 
 
-class _EnumNodeMeta(type(StrEnum), type(Node)):  # type: ignore
+class _EnumNodeMeta(type(StrEnum), type(LeafNode)):  # type: ignore
     pass
 
 
 @enum_evaluable_repr
-class Predicate(Node, StrEnum, metaclass=_EnumNodeMeta):
+class Predicate(LeafNode, StrEnum, metaclass=_EnumNodeMeta):
     # enum members are typed due to mypy bug:
     #     error: Argument "quant" to "Part" has incompatible type "str";
     #     expected "Quantifier | Repetition | None"  [arg-type]
@@ -262,13 +265,13 @@ class Predicate(Node, StrEnum, metaclass=_EnumNodeMeta):
 
 
 @enum_evaluable_repr
-class Quantifier(Node, StrEnum, metaclass=_EnumNodeMeta):
+class Quantifier(LeafNode, StrEnum, metaclass=_EnumNodeMeta):
     OPTIONAL: Quantifier = '?'  # type: ignore
     ZERO_OR_MORE: Quantifier = '*'  # type: ignore
     ONE_OR_MORE: Quantifier = '+'  # type: ignore
 
 
-class Repetition(Node, ArgsRepr):
+class Repetition(LeafNode, ArgsRepr):
     def __init__(self, beg: int, end: Optional[int] = None):
         self.beg = beg
         self.end = end
@@ -285,7 +288,7 @@ class Repetition(Node, ArgsRepr):
         return (self.beg, self.end) == (other.beg, other.end)
 
 
-class Char(Node, ArgsRepr):
+class Char(LeafNode, ArgsRepr):
     def __init__(self, code: int | str):
         if isinstance(code, str):
             self.code = ord(code)
@@ -293,6 +296,7 @@ class Char(Node, ArgsRepr):
             self.code = code
 
     def _get_args(self):
+        assert isinstance(self.code, int), "char code is integer"
         if (c := chr(self.code)) and c in string.printable:
             return [c]
         return [self.code]
@@ -313,7 +317,7 @@ class Char(Node, ArgsRepr):
         return self.code > other.code
 
     def __ne__(self, other):
-        return not self.__eq(other)
+        return not self.__eq__(other)
 
     def __le__(self, other):
         return self.__eq__(other) or self.__lt(other)
