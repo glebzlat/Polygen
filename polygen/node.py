@@ -27,7 +27,7 @@ class Node(Iterable):
         ...
 
 
-class LeafNode(Iterable):
+class LeafNode(Node):
     @property
     def descendants(self) -> Iterator[LeafNode]:
         yield self
