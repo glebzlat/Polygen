@@ -2,6 +2,29 @@
 
 Add start, end indexes to generated nodes.
 
+Add tree transformations:
+  - Eliminate AND predicate
+  - Remove zero or one quantifiers
+  - Remove one or more quantifiers
+  - Expand character classes
+  - Expand repetitions
+  - Create rules for nested expressions
+
+Perform checks:
+  - Check for redefined rules (two+ rules with the same name)
+  - Check for undefined rules (identifiers in expressions that have no
+    corresponding rule)
+  - Check for unused rules (how to distinguish, e.g., unused rule
+    and a root node like the Grammar node?)
+
+Add tree transformer.
+
+Implement true tree structure: do not use standard types like lists
+and dicts in the tree, as they does not allow modifications while
+iterating them.
+
+# Thoughts
+
 Create an algorithm for rule rewriting and warnings. RuleRewriter should
 perform transformations and checks in stages. Each stage has a sequence of
 rules to transform one node type and/or structure to the other and rules
