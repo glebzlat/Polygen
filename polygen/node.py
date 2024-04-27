@@ -16,11 +16,23 @@ def seq_cmp(seq1, seq2):
 
 
 class Node(Iterable):
+    def __init__(self, *args, **kwargs):
+        self._parent = None
+
     @property
     def descendants(self) -> Iterator[Node]:
         yield self
         for e in self:
             yield from e.descendants
+
+    @property
+    def parent(self) -> Node:
+        return self._parent
+
+    def _set_parent(self, nodes: Iterable[Node]):
+        for node in nodes:
+            if node is not None:
+                node._parent = self
 
     @abstractmethod
     def __iter__(self):
@@ -38,7 +50,16 @@ class LeafNode(Node):
 
 class Grammar(Node, AttributeHolder, Sized):
     def __init__(self, rules: Iterable[Rule]):
+        self.nodes = list(rules)
         self.rules = {rule.name: rule for rule in rules}
+        self._set_parent(self.nodes)
+
+    def add(self, rule: Rule) -> bool:
+        if rule.name in self.rules:
+            return False
+        self.nodes.append(rule)
+        self.rules[rule.name] = rule
+        return True
 
     def __iter__(self):
         yield from self.rules.values()
@@ -56,6 +77,7 @@ class Grammar(Node, AttributeHolder, Sized):
 class Expression(Node, ArgsRepr, Sized):
     def __init__(self, alts: Iterable[Alt]):
         self.alts = alts
+        self._set_parent(self.alts)
 
     def _get_args(self):
         return [self.alts]
@@ -88,6 +110,7 @@ class Rule(Node, ArgsRepr, Sized):
     def __init__(self, name: Identifier, rhs: Expression):
         self.name = name
         self.rhs = rhs
+        self._set_parent([self.name, self.rhs])
 
     def _get_args(self):
         return [self.name, self.rhs]
@@ -126,6 +149,7 @@ class Identifier(LeafNode, ArgsRepr):
 class Alt(Node, ArgsRepr, Sized):
     def __init__(self, parts: Iterable[Part]):
         self.parts = parts
+        self._set_parent(self.parts)
 
     def _get_args(self):
         return [self.parts]
@@ -158,6 +182,7 @@ class Part(Node, AttributeHolder):
         self.pred = pred
         self.prime = prime
         self.quant = quant
+        self._set_parent([self.pred, self.prime, self.quant])
 
     def _get_kwargs(self):
         dct = {}
@@ -186,6 +211,7 @@ class AnyChar(LeafNode, AttributeHolder):
 class Literal(Node, ArgsRepr):
     def __init__(self, chars):
         self.chars = chars
+        self._set_parent(self.chars)
 
     def _get_args(self):
         return [self.chars]
@@ -212,6 +238,7 @@ class Literal(Node, ArgsRepr):
 class Class(Node, ArgsRepr, Sized):
     def __init__(self, ranges: Iterable[Range]):
         self.ranges = ranges
+        self._set_parent(self.ranges)
 
     def _get_args(self):
         return [self.ranges]
@@ -235,10 +262,11 @@ class Range(Node, ArgsRepr):
     def __init__(self, beg: Char, end: Optional[Char] = None):
         self.beg = beg
         self.end = end
+        self._set_parent([beg, end])
 
     def _get_args(self):
         args = [self.beg, self.end] if self.end else [self.beg]
-        return [repr(str(a)) for a in args]
+        return [str(a) for a in args]
 
     def __eq__(self, other):
         if not isinstance(other, Range):
@@ -329,6 +357,9 @@ class Char(LeafNode, ArgsRepr):
         if (c := chr(self.code)) and c in string.printable:
             return c
         return '\\u' + hex(self.code)[2:].rjust(4, '0')
+
+    def __hash__(self):
+        return hash(self.code)
 
 
 class GrammarVisitor:
