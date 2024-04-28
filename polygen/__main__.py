@@ -4,6 +4,17 @@ from argparse import ArgumentParser, FileType
 
 from .reader import Reader
 from .grammar_parser import GrammarParser
+from .tree_transformer import (
+    ExpandClassRule,
+    ReplaceRepRule,
+    ReplaceZeroOrOneRule,
+    ReplaceOneOrMore,
+    EliminateAndRule,
+    CheckUndefRedefRule,
+    SimplifyNestedExps,
+    ReplaceNestedExpsRule,
+    TreeTransformer
+)
 
 argparser = ArgumentParser()
 argparser.add_argument("file", nargs='?', type=FileType('r', encoding='utf-8'),
@@ -12,6 +23,7 @@ repr_types = argparser.add_mutually_exclusive_group()
 repr_types.add_argument("--str", "-s", action='store_true')
 repr_types.add_argument("--repr", "-r", action='store_true')
 repr_types.add_argument("--descendants", "-d", action='store_true')
+repr_types.add_argument("--convert", "-c", action='store_true')
 
 
 def main():
@@ -26,6 +38,20 @@ def main():
     elif ns.descendants:
         for node in map(repr, grammar.descendants):
             print(node)
+    elif ns.convert:
+        write_rules = [
+            [ExpandClassRule(), ReplaceRepRule(), ReplaceZeroOrOneRule()],
+            [EliminateAndRule()],
+            [ReplaceOneOrMore()],
+            [CheckUndefRedefRule()],
+            [SimplifyNestedExps()],
+            [ReplaceNestedExpsRule()]
+        ]
+        writer = TreeTransformer(write_rules)
+        writer.traverse(grammar)
+
+        for rule in grammar:
+            print(repr(rule), end='\n\n')
     else:
         print(grammar)
 
