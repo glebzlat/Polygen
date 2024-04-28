@@ -13,6 +13,8 @@ class AttributeHolder:
         arg_strings = [repr_fn(arg) for arg in self._get_args()]
         star_args = {}
         for name, value in self._get_kwargs():
+            if name.startswith('_'):
+                continue
             if name.isidentifier():
                 value_repr = repr_fn(value)
                 arg_strings.append(f"{name}={value_repr}")
