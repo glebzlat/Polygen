@@ -8,7 +8,44 @@ Perform checks:
   - Check for unused rules? (how to distinguish, e.g., unused rule
     and a root node like the Grammar node?)
 
+# Proposals
+
+Apply another mechanism of node filtering for semantic rules. Instead of
+keeping a `node_type` variable, which may be a single type or a sequence
+of types, define methods with the name `visit_*`, where `*` designates
+node's type name. Like so: `visit_Expression`.
+
+Allow post-visit actions.
+
 # Thoughts
+
+I think there may take place a specific problem with the tree traversal.
+Suppose a tree like this:
+
+```
+  A
+  |
+  +-- C
+      |
+      +--D
+```
+
+Suppose that some semantic rule, applied to C, replaces it in its parent
+node, A, to another node, B:
+
+```
+  A
+  |
+  +   C
+  |   |
+  |   +--D
+  |
+  +-- B
+```
+
+What will happen with the traversal process? Node C is detached from the
+tree, but the traversal continues on its nodes, so, it goes to D. It
+potentially may cause problems.
 
 Create an algorithm for rule rewriting and warnings. RuleRewriter should
 perform transformations and checks in stages. Each stage has a sequence of
