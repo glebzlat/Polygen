@@ -182,39 +182,39 @@ class TestGrammarParser(unittest.TestCase):
     def test_Class(self):
         fn = [P._Class, P._EndOfFile]
         self.parse_success(
-            ("[]", fn, [Class([])]),
-            ("[]\n", fn, [Class([])]),
-            ("[a]", fn, [Class([Range(Char('a'))])]),
-            ("[a-z]", fn, [Class([Range(Char('a'), Char('z'))])]),
-            ("[0-9]", fn, [Class([Range(Char('0'), Char('9'))])]),
+            ("[]", fn, [Class()]),
+            ("[]\n", fn, [Class()]),
+            ("[a]", fn, [Class(Range(Char('a')))]),
+            ("[a-z]", fn, [Class(Range(Char('a'), Char('z')))]),
+            ("[0-9]", fn, [Class(Range(Char('0'), Char('9')))]),
             ("[abc]", fn, [
-                Class([Range(Char('a')),
+                Class(Range(Char('a')),
                       Range(Char('b')),
-                      Range(Char('c'))])
+                      Range(Char('c')))
             ]),
             ("[a-z0-9]", fn, [
-                Class([Range(Char('a'), Char('z')),
-                      Range(Char('0'), Char('9'))])
+                Class(Range(Char('a'), Char('z')),
+                      Range(Char('0'), Char('9')))
             ]),
             ("[a-zA-Z0-9_]", fn, [
-                Class([Range(Char('a'), Char('z')),
+                Class(Range(Char('a'), Char('z')),
                       Range(Char('A'), Char('Z')),
                       Range(Char('0'), Char('9')),
-                      Range(Char('_'))])
+                      Range(Char('_')))
             ])
         )
 
     def test_Literal(self):
         fn = [P._Literal, P._EndOfFile]
         self.parse_success(
-            (r"''", fn, [Literal([]), True]),
-            (r"'a'", fn, [Literal([Char('a')])]),
-            (r"'\''", fn, [Literal([Char('\'')])]),
-            (r"'\\'", fn, [Literal([Char('\\')])]),
-            (r'"\""', fn, [Literal([Char('\"')])]),
-            (r'"\n"', fn, [Literal([Char('\n')])]),
-            (r"'\141'", fn, [Literal([Char('a')])]),
-            (r"'\u03c0'", fn, [Literal([Char(0x03c0)])]),
+            (r"''", fn, [Literal(), True]),
+            (r"'a'", fn, [Literal(Char('a'))]),
+            (r"'\''", fn, [Literal(Char('\''))]),
+            (r"'\\'", fn, [Literal(Char('\\'))]),
+            (r'"\""', fn, [Literal(Char('\"'))]),
+            (r'"\n"', fn, [Literal(Char('\n'))]),
+            (r"'\141'", fn, [Literal(Char('a'))]),
+            (r"'\u03c0'", fn, [Literal(Char(0x03c0))]),
             ("'a'\n", fn),
             ("'a'\r\n", fn),
             ('"a"\n', fn),
@@ -245,11 +245,11 @@ class TestGrammarParser(unittest.TestCase):
         fn = [P._Primary, P._EndOfFile]
         self.parse_success(
             ("abc", fn, [Identifier('abc')]),
-            ("'a'", fn, [Literal([Char('a')])]),
-            ("[a]", fn, [Class([Range(Char('a'))])]),
+            ("'a'", fn, [Literal(Char('a'))]),
+            ("[a]", fn, [Class(Range(Char('a')))]),
             (".", fn, [AnyChar()]),
             ("(Id)", fn, [
-                Expression([Alt([Part(prime=Identifier('Id'))])])
+                Expression(Alt(Part(prime=Identifier('Id'))))
             ])
         )
 
@@ -257,15 +257,15 @@ class TestGrammarParser(unittest.TestCase):
         fn = [P._Primary, P._EndOfFile]
         self.parse_success(
             ("((Id))", fn, [
-                Expression([
-                    Alt([
-                        Part(prime=Expression([
-                            Alt([
+                Expression(
+                    Alt(
+                        Part(prime=Expression(
+                            Alt(
                                 Part(prime=Identifier('Id'))
-                            ])
-                        ]))
-                    ])
-                ])
+                            )
+                        ))
+                    )
+                )
             ])
         )
         self.parse_failure(
@@ -276,64 +276,64 @@ class TestGrammarParser(unittest.TestCase):
     def test_Alt(self):
         fn = [P._Sequence, P._EndOfFile]
         self.parse_success(
-            ("Id", fn, [Alt([Part(prime=Identifier('Id'))])]),
+            ("Id", fn, [Alt(Part(prime=Identifier('Id')))]),
             ("!Id", fn, [
-                Alt([Part(pred=Not(), prime=Identifier('Id'))])
+                Alt(Part(pred=Not(), prime=Identifier('Id')))
             ]),
             ("&Id", fn, [
-                Alt([Part(pred=And(), prime=Identifier('Id'))])
+                Alt(Part(pred=And(), prime=Identifier('Id')))
             ]),
             ("Id?", fn, [
-                Alt([Part(prime=Identifier('Id'), quant=ZeroOrOne())])
+                Alt(Part(prime=Identifier('Id'), quant=ZeroOrOne()))
             ]),
             ("Id*", fn, [
-                Alt([
+                Alt(
                     Part(
                         prime=Identifier('Id'),
                         quant=ZeroOrMore())
-                ])
+                )
             ]),
             ("Id+", fn, [
-                Alt([
+                Alt(
                     Part(
                         prime=Identifier('Id'),
                         quant=OneOrMore())
-                ])
+                )
             ]),
             ("Id{1}", fn, [
-                Alt([Part(prime=Identifier('Id'), quant=Repetition(1))])
+                Alt(Part(prime=Identifier('Id'), quant=Repetition(1)))
             ]),
             ("!Id?", fn, [
-                Alt([
+                Alt(
                     Part(
                         pred=Not(),
                         prime=Identifier('Id'),
                         quant=ZeroOrOne())
-                ])
+                )
             ]),
             ("&Id?", fn, [
-                Alt([
+                Alt(
                     Part(
                         pred=And(),
                         prime=Identifier('Id'),
                         quant=ZeroOrOne())
-                ])
+                )
             ]),
             ("& Id *", fn, [
-                Alt([
+                Alt(
                     Part(
                         pred=And(),
                         prime=Identifier('Id'),
                         quant=ZeroOrMore())
-                ])
+                )
             ]),
             ("&\rId\n+", fn, [
-                Alt([
+                Alt(
                     Part(
                         pred=And(),
                         prime=Identifier('Id'),
                         quant=OneOrMore())
-                ])
+                )
             ]),
         )
 
@@ -342,18 +342,18 @@ class TestGrammarParser(unittest.TestCase):
         self.parse_success(
             ("Alt", fn),
             ("Alt1 / Alt2", fn, [
-                Expression([
-                    Alt([Part(prime=Identifier('Alt1'))]),
-                    Alt([Part(prime=Identifier('Alt2'))])
-                ])
+                Expression(
+                    Alt(Part(prime=Identifier('Alt1'))),
+                    Alt(Part(prime=Identifier('Alt2')))
+                )
             ]),
             ("/ Alt", fn, [
-                Expression([
-                    Alt([]),
-                    Alt([Part(prime=Identifier('Alt'))])
-                ])
+                Expression(
+                    Alt(),
+                    Alt(Part(prime=Identifier('Alt')))
+                )
             ]),
-            ("/", fn, [Expression([Alt([]), Alt([])])])
+            ("/", fn, [Expression(Alt(), Alt())])
         )
 
     def test_Definition(self):
@@ -362,13 +362,13 @@ class TestGrammarParser(unittest.TestCase):
             ("Id <- Rule", fn, [
                 Rule(
                     Identifier("Id"),
-                    Expression([Alt([Part(prime=Identifier('Rule'))])])
+                    Expression(Alt(Part(prime=Identifier('Rule'))))
                 )
             ]),
             ("Id <-", fn, [
                 Rule(
                     Identifier("Id"),
-                    Expression([Alt([])])
+                    Expression(Alt())
                 )
             ])
         )

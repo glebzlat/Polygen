@@ -46,8 +46,8 @@ class LeafNode(Node):
         yield from tuple()
 
 
-class Grammar(Node, AttributeHolder, Sized):
-    def __init__(self, rules: Iterable[Rule]):
+class Grammar(Node, ArgsRepr, Sized):
+    def __init__(self, *rules: Rule):
         self.nodes = list(rules)
         self.rules = {rule.name: rule for rule in rules}
         self._set_parent(self.nodes)
@@ -59,6 +59,9 @@ class Grammar(Node, AttributeHolder, Sized):
         self.rules[rule.name] = rule
         rule._parent = self
         return True
+
+    def _get_args(self):
+        return self.nodes
 
     def __iter__(self):
         yield from self.rules.values()
@@ -74,12 +77,12 @@ class Grammar(Node, AttributeHolder, Sized):
 
 
 class Expression(Node, ArgsRepr, Sized):
-    def __init__(self, alts: Iterable[Alt]):
-        self.alts = alts
+    def __init__(self, *alts: Alt):
+        self.alts = list(alts)
         self._set_parent(self.alts)
 
     def _get_args(self):
-        return [self.alts]
+        return self.alts
 
     def __iter__(self):
         yield from self.alts
@@ -151,12 +154,12 @@ class Identifier(LeafNode, ArgsRepr):
 
 
 class Alt(Node, ArgsRepr, Sized):
-    def __init__(self, parts: Iterable[Part]):
-        self.parts = parts
+    def __init__(self, *parts: Part):
+        self.parts = list(parts)
         self._set_parent(self.parts)
 
     def _get_args(self):
-        return [self.parts]
+        return self.parts
 
     def __eq__(self, other):
         if not isinstance(other, Alt):
@@ -247,12 +250,12 @@ class AnyChar(LeafNode, AttributeHolder):
 
 
 class Literal(Node, ArgsRepr):
-    def __init__(self, chars):
-        self.chars = chars
+    def __init__(self, *chars: Char):
+        self.chars = list(chars)
         self._set_parent(self.chars)
 
     def _get_args(self):
-        return [self.chars]
+        return self.chars
 
     def __eq__(self, other):
         if not isinstance(other, Literal):
@@ -274,12 +277,12 @@ class Literal(Node, ArgsRepr):
 
 
 class Class(Node, ArgsRepr, Sized):
-    def __init__(self, ranges: Iterable[Range]):
-        self.ranges = ranges
+    def __init__(self, *ranges: Range):
+        self.ranges = list(ranges)
         self._set_parent(self.ranges)
 
     def _get_args(self):
-        return [self.ranges]
+        return self.ranges
 
     def __eq__(self, other):
         if not isinstance(other, Class):

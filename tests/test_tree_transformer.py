@@ -40,8 +40,8 @@ from polygen.tree_transformer import (
 class TestExpandClassRule(unittest.TestCase):
     def test_simple_range(self):
         A = Char('a')
-        tree = Part(prime=Class([Range(A)]))
-        clue = Part(prime=Expression([Alt([Part(prime=A)])]))
+        tree = Part(prime=Class(Range(A)))
+        clue = Part(prime=Expression(Alt(Part(prime=A))))
         rule = ExpandClassRule()
 
         node = tree.prime
@@ -51,13 +51,13 @@ class TestExpandClassRule(unittest.TestCase):
 
     def test_range_abc(self):
         A, B, C = Char('a'), Char('b'), Char('c')
-        tree = Part(prime=Class([Range(A, C)]))
+        tree = Part(prime=Class(Range(A, C)))
         clue = Part(
-            prime=Expression([
-                Alt([Part(prime=A)]),
-                Alt([Part(prime=B)]),
-                Alt([Part(prime=C)])
-            ])
+            prime=Expression(
+                Alt(Part(prime=A)),
+                Alt(Part(prime=B)),
+                Alt(Part(prime=C))
+            )
         )
         rule = ExpandClassRule()
 
@@ -69,16 +69,16 @@ class TestExpandClassRule(unittest.TestCase):
     def test_two_ranges(self):
         A, B, C = Char('a'), Char('b'), Char('c')
         _0, _1, _2 = Char('0'), Char('1'), Char('2')
-        tree = Part(prime=Class([Range(A, C), Range(_0, _2)]))
+        tree = Part(prime=Class(Range(A, C), Range(_0, _2)))
         clue = Part(
-            prime=Expression([
-                Alt([Part(prime=_0)]),
-                Alt([Part(prime=_1)]),
-                Alt([Part(prime=_2)]),
-                Alt([Part(prime=A)]),
-                Alt([Part(prime=B)]),
-                Alt([Part(prime=C)])
-            ])
+            prime=Expression(
+                Alt(Part(prime=_0)),
+                Alt(Part(prime=_1)),
+                Alt(Part(prime=_2)),
+                Alt(Part(prime=A)),
+                Alt(Part(prime=B)),
+                Alt(Part(prime=C))
+            )
         )
         rule = ExpandClassRule()
 
@@ -89,14 +89,14 @@ class TestExpandClassRule(unittest.TestCase):
 
     def test_intersecting_ranges(self):
         A, B, C, D = Char('a'), Char('b'), Char('c'), Char('d')
-        tree = Part(prime=Class([Range(A, C), Range(B, D)]))
+        tree = Part(prime=Class(Range(A, C), Range(B, D)))
         clue = Part(
-            prime=Expression([
-                Alt([Part(prime=A)]),
-                Alt([Part(prime=B)]),
-                Alt([Part(prime=C)]),
-                Alt([Part(prime=D)])
-            ])
+            prime=Expression(
+                Alt(Part(prime=A)),
+                Alt(Part(prime=B)),
+                Alt(Part(prime=C)),
+                Alt(Part(prime=D))
+            )
         )
         rule = ExpandClassRule()
 
@@ -107,7 +107,7 @@ class TestExpandClassRule(unittest.TestCase):
     def test_invalid_range(self):
         B, C = Char('b'), Char('c')
         rng = Range(C, B)
-        tree = Part(prime=Class([rng]))
+        tree = Part(prime=Class(rng))
         rule = ExpandClassRule()
 
         node = tree.prime
@@ -126,9 +126,9 @@ class TestReplaceRepRule(unittest.TestCase):
         tree = Part(prime=E, quant=Repetition(3))
         node = tree.quant
         clue = Part(
-            prime=Expression([
-                Alt(list(repeat(Part(prime=E), 3)))
-            ])
+            prime=Expression(
+                Alt(*repeat(Part(prime=E), 3))
+            )
         )
         rule = ReplaceRepRule()
 
@@ -139,14 +139,14 @@ class TestReplaceRepRule(unittest.TestCase):
         E = Char('e')
         tree = Part(prime=E, quant=Repetition(2, 6))
         clue = Part(
-            prime=Expression([
-                Alt([
+            prime=Expression(
+                Alt(
                     *repeat(Part(prime=E), 2),
-                    Part(prime=Expression([
-                        Alt(list(repeat(Part(prime=E), 4)))
-                    ]), quant=ZeroOrOne())
-                ])
-            ])
+                    Part(prime=Expression(
+                        Alt(*repeat(Part(prime=E), 4))
+                    ), quant=ZeroOrOne())
+                )
+            )
         )
         node = tree.quant
         rule = ReplaceRepRule()
@@ -170,10 +170,10 @@ class TestReplaceZeroOrOneRule(unittest.TestCase):
         tree = Part(prime=E, quant=ZeroOrOne())
         node = tree.quant
         clue = Part(
-            prime=Expression([
-                Alt([Part(prime=E)]),
-                Alt([])
-            ])
+            prime=Expression(
+                Alt(Part(prime=E)),
+                Alt()
+            )
         )
 
         rule = ReplaceZeroOrOneRule()
@@ -188,12 +188,12 @@ class TestReplaceOneOrMore(unittest.TestCase):
         tree = Part(prime=E, quant=OneOrMore())
         node = tree.quant
         clue = Part(
-            prime=Expression([
-                Alt([
+            prime=Expression(
+                Alt(
                     Part(prime=E),
                     Part(prime=E, quant=ZeroOrMore())
-                ])
-            ])
+                )
+            )
         )
 
         rule = ReplaceOneOrMore()
@@ -203,26 +203,26 @@ class TestReplaceOneOrMore(unittest.TestCase):
 
     def test_with_multiple_parts(self):
         Def = Identifier('Definition')
-        tree = Expression([
-            Alt([
+        tree = Expression(
+            Alt(
                 Part(prime=Identifier('Spacing')),
                 Part(prime=Def, quant=OneOrMore()),
                 Part(prime=Identifier('EndOfFile'))
-            ])
-        ])
+            )
+        )
         node = tree.alts[0].parts[1].quant
-        clue = Expression([
-            Alt([
+        clue = Expression(
+            Alt(
                 Part(prime=Identifier('Spacing')),
-                Part(prime=Expression([
-                    Alt([
+                Part(prime=Expression(
+                    Alt(
                         Part(prime=Def),
                         Part(prime=Def, quant=ZeroOrMore())
-                    ])
-                ])),
+                    )
+                )),
                 Part(prime=Identifier('EndOfFile'))
-            ])
-        ])
+            )
+        )
 
         rule = ReplaceOneOrMore()
         rule.apply(node)
@@ -233,15 +233,15 @@ class TestReplaceOneOrMore(unittest.TestCase):
 class TestEliminateAndRule(unittest.TestCase):
     def test_rule(self):
         E = Char('e')
-        tree = Part(pred=And, prime=E)
+        tree = Part(pred=And(), prime=E)
         node = tree.pred
         clue = Part(
             pred=Not,
-            prime=Expression([
-                Alt([
-                    Part(pred=Not, prime=E)
-                ])
-            ])
+            prime=Expression(
+                Alt(
+                    Part(pred=Not(), prime=E)
+                )
+            )
         )
 
         rule = EliminateAndRule()
@@ -253,9 +253,9 @@ class TestEliminateAndRule(unittest.TestCase):
 class TestCheckUndefRedefRule(unittest.TestCase):
     def test_undef(self):
         A, B = Identifier('A'), Identifier('B')
-        exp = Expression([Alt([Part(prime=B)])])
+        exp = Expression(Alt(Part(prime=B)))
         rule = Rule(A, exp)
-        _ = Grammar([rule])
+        _ = Grammar(rule)
 
         rule = CheckUndefRedefRule()
 
@@ -271,9 +271,9 @@ class TestCheckUndefRedefRule(unittest.TestCase):
 
     def test_redef(self):
         A = Identifier('A')
-        exp = Expression([Alt([Part(prime=Char('c'))])])
+        exp = Expression(Alt(Part(prime=Char('c'))))
         R = Rule(A, exp)
-        _ = Grammar([R])
+        _ = Grammar(R)
 
         rule = CheckUndefRedefRule()
 

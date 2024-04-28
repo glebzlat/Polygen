@@ -24,7 +24,7 @@ class TestDescendants(unittest.TestCase):
 
     def test_literal(self):
         A, B, C = Char('a'), Char('b'), Char('c')
-        tree = Literal([A, B, C])
+        tree = Literal(A, B, C)
 
         clue = [tree, A, B, C]
         self.assertEqual(list(tree.descendants), clue)
@@ -32,7 +32,7 @@ class TestDescendants(unittest.TestCase):
     def test_alt(self):
         A, B, C = Char('a'), Char('b'), Char('c')
         PA, PB, PC = Part(prime=A), Part(prime=B), Part(prime=C)
-        tree = Alt([PA, PB, PC])
+        tree = Alt(PA, PB, PC)
 
         clue = [tree, PA, A, PB, B, PC, C]
         self.assertEqual(list(tree.descendants), clue)
@@ -40,10 +40,10 @@ class TestDescendants(unittest.TestCase):
     def test_grammar(self):
         A, B, C = Char('a'), Char('b'), Char('c')
         PA, PB, PC = Part(prime=A), Part(prime=B), Part(prime=C)
-        ALT = Alt([PA, PB, PC])
-        EXP = Expression([ALT])
+        ALT = Alt(PA, PB, PC)
+        EXP = Expression(ALT)
         RULE = Rule(Identifier("rule"), EXP)
-        tree = Grammar([RULE])
+        tree = Grammar(RULE)
 
         clue = [tree, RULE, EXP, ALT, PA, A, PB, B, PC, C]
         self.assertEqual(list(tree.descendants), clue)
@@ -52,8 +52,8 @@ class TestDescendants(unittest.TestCase):
 class MiscTest(unittest.TestCase):
     def test_common_prefix(self):
         A, B, C, D = Char('a'), Char('b'), Char('c'), Char('d')
-        lhs = Literal([A, B, C])
-        rhs = Literal([A, B, D])
+        lhs = Literal(A, B, C)
+        rhs = Literal(A, B, D)
 
         clue = [A, B]
         result = common_prefix(lhs, rhs)
@@ -61,7 +61,7 @@ class MiscTest(unittest.TestCase):
 
     def test_has_prefix(self):
         A, B, C = Char('a'), Char('b'), Char('c')
-        lit = Literal([A, B, C])
+        lit = Literal(A, B, C)
 
         self.assertTrue(has_prefix([], lit))
         self.assertTrue(has_prefix([A], lit))
@@ -77,12 +77,12 @@ class TestVisitor(unittest.TestCase):
                 charlist.append(node)
 
         J, O, Y = Char('j'), Char('o'), Char('y')
-        PJ, PO, PY = (Expression([Alt([Part(prime=c)])]) for c in (J, O, Y))
+        PJ, PO, PY = (Expression(Alt(Part(prime=c))) for c in (J, O, Y))
 
         def rule(name, exp):
             return Rule(Identifier(name), Expression(exp))
 
-        grammar = Grammar([rule('j', PJ), rule('o', PO), rule('y', PY)])
+        grammar = Grammar(rule('j', PJ), rule('o', PO), rule('y', PY))
         visitor = Visitor()
         clue = [J, O, Y]
         result = []

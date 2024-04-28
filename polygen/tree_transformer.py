@@ -73,8 +73,8 @@ class ExpandClassRule(SemanticRule):
             operator.or_,
             (self._expand_range(rng) for rng in node),
             set())
-        alts = [Alt([Part(prime=c)]) for c in sorted(chars)]
-        node.parent.prime = Expression(alts)
+        exp = Expression(*(Alt(Part(prime=c)) for c in sorted(chars)))
+        node.parent.prime = exp
 
         return True
 
@@ -103,19 +103,17 @@ class ReplaceRepRule(SemanticRule):
         parts = [Part(prime=p) for p in repeat(prime, node.beg)]
 
         if not node.end:
-            exp = Expression([Alt(parts)])
-            exp._parent = part
-            part.prime = exp
+            part.prime = Expression(Alt(*parts))
             part.quant = None
             return True
 
         opt_parts = [Part(prime=p)
                      for p in repeat(prime, node.end - node.beg)]
         parts.append(
-            Part(prime=Expression([Alt(opt_parts)]),
+            Part(prime=Expression(Alt(*opt_parts)),
                  quant=ZeroOrOne()))
 
-        part.prime = Expression([Alt(parts)])
+        part.prime = Expression(Alt(*parts))
         part.quant = None
 
         return True
@@ -137,9 +135,9 @@ class ReplaceZeroOrOneRule(SemanticRule):
 
         part: Part = node.parent
         part.quant = None
-        part.prime = Expression([
-            Alt([
-                Part(prime=part.prime)]), Alt([])])
+        part.prime = Expression(
+            Alt(
+                Part(prime=part.prime)), Alt())
 
         return True
 
@@ -163,11 +161,11 @@ class ReplaceOneOrMore(SemanticRule):
         part: Part = node.parent
         # print(part)
         # print(part.parent)
-        part.prime = Expression([
-            Alt([
+        part.prime = Expression(
+            Alt(
                 Part(prime=part.prime),
                 Part(prime=part.prime,
-                     quant=ZeroOrMore())])])
+                     quant=ZeroOrMore())))
         part.quant = None
         # print(part.parent)
 
@@ -186,13 +184,12 @@ class EliminateAndRule(SemanticRule):
     node_type = And
 
     def apply(self, node: And):
-        print(node)
         assert type(node.parent) is Part
 
         part: Part = node.parent
-        nested = Expression([
-            Alt([
-                Part(pred=Not(), prime=part.prime)])])
+        nested = Expression(
+            Alt(
+                Part(pred=Not(), prime=part.prime)))
         part.prime = nested
         part.pred = Not()
 
@@ -262,6 +259,9 @@ class SimplifyNestedExps(SemanticRule):
 
         del exp.alts[0]
         exp.alts += node.alts
+        for alt in node.alts:
+            alt._parent = exp
+
         return True
 
 

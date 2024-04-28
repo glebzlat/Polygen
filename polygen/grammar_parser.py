@@ -55,11 +55,11 @@ class GrammarParser(Parser):
     def _Grammar(self) -> Optional[Grammar]:
         if self._Spacing():
             if d := self._Definition():
-                defs = [d]
+                g = Grammar()
                 while d := self._Definition():
-                    defs.append(d)
+                    g.add(d)
                 if self._EndOfFile():
-                    return Grammar(defs)
+                    return g
         return None
 
     def _Definition(self) -> Optional[Rule]:
@@ -74,14 +74,14 @@ class GrammarParser(Parser):
             seqs = [s]
             while self._SLASH() and (s := self._Sequence()):
                 seqs.append(s)
-            return Expression(seqs)
+            return Expression(*seqs)
         return None
 
     def _Sequence(self) -> Optional[Alt]:
         prefixes = []
         while p := self._Prefix():
             prefixes.append(p)
-        return Alt(prefixes)
+        return Alt(*prefixes)
 
     def _Prefix(self) -> Optional[Part]:
         p = self._AND() or self._NOT()
@@ -142,7 +142,7 @@ class GrammarParser(Parser):
                 chars.append(c)
             if self._expect(q):
                 if self._Spacing():
-                    return LiteralNode(chars)
+                    return LiteralNode(*chars)
         self._reset(pos)
         return None
 
@@ -154,7 +154,7 @@ class GrammarParser(Parser):
                 ranges.append(r)
             if self._expect(']'):
                 if self._Spacing():
-                    return Class(ranges)
+                    return Class(*ranges)
         self._reset(pos)
         return None
 
