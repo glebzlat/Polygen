@@ -4,8 +4,6 @@ import string
 from typing import Optional, Any, Iterator
 from collections.abc import Iterable, Sized
 from abc import abstractmethod
-from enum import StrEnum
-from .fixes.enum_repr import enum_evaluable_repr
 from itertools import zip_longest
 
 from .attrholder import AttributeHolder, ArgsRepr
@@ -16,7 +14,7 @@ def seq_cmp(seq1, seq2):
 
 
 class Node(Iterable):
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         self._parent = None
 
     @property
@@ -29,7 +27,7 @@ class Node(Iterable):
     def parent(self) -> Node:
         return self._parent
 
-    def _set_parent(self, nodes: Iterable[Node]):
+    def _set_parent(self, nodes: Iterable[Optional[Node]]):
         for node in nodes:
             if node is not None:
                 node._parent = self
@@ -59,6 +57,7 @@ class Grammar(Node, AttributeHolder, Sized):
             return False
         self.nodes.append(rule)
         self.rules[rule.name] = rule
+        rule._parent = self
         return True
 
     def __iter__(self):
@@ -142,6 +141,11 @@ class Identifier(LeafNode, ArgsRepr):
             return NotImplemented
         return self.string == other.string
 
+    def __lt__(self, other):
+        if not isinstance(other, Identifier):
+            return NotImplemented
+        return self.string < other.string
+
     def __hash__(self):
         return hash(self.string)
 
@@ -177,12 +181,42 @@ class Alt(Node, ArgsRepr, Sized):
 class Part(Node, AttributeHolder):
     def __init__(self, *,
                  prime,
-                 pred: Optional[Predicate] = None,
-                 quant: Optional[Quantifier | Repetition] = None):
-        self.pred = pred
-        self.prime = prime
-        self.quant = quant
+                 pred: Optional[And | Not] = None,
+                 quant: Optional[QuantifierType | Repetition] = None):
+        self._pred = pred
+        self._prime = prime
+        self._quant = quant
         self._set_parent([self.pred, self.prime, self.quant])
+
+    @property
+    def pred(self):
+        return self._pred
+
+    @pred.setter
+    def pred(self, value):
+        self._pred = value
+        if self._pred is not None:
+            self._pred._parent = self
+
+    @property
+    def prime(self):
+        return self._prime
+
+    @prime.setter
+    def prime(self, value):
+        self._prime = value
+        if self._prime is not None:
+            self._prime._parent = self
+
+    @property
+    def quant(self):
+        return self._quant
+
+    @quant.setter
+    def quant(self, value):
+        self._quant = value
+        if self._quant is not None:
+            self._quant._parent = self
 
     def _get_kwargs(self):
         dct = {}
@@ -200,7 +234,11 @@ class Part(Node, AttributeHolder):
                 (other.pred, other.prime, other.quant))
 
     def __iter__(self):
+        if self.pred:
+            yield self.pred
         yield self.prime
+        if self.quant:
+            yield self.quant
 
 
 class AnyChar(LeafNode, AttributeHolder):
@@ -279,24 +317,58 @@ class Range(Node, ArgsRepr):
             yield self.end
 
 
-class _EnumNodeMeta(type(StrEnum), type(LeafNode)):  # type: ignore
+class Predicate(LeafNode):
+    def __eq__(self, other):
+        return type(other) is type(self)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        type_name = type(self).__name__
+        return f"{type_name}()"
+
+    def __str__(self):
+        return type(self).__name__
+
+
+class And(Predicate):
     pass
 
 
-@enum_evaluable_repr
-class Predicate(LeafNode, StrEnum, metaclass=_EnumNodeMeta):
-    # enum members are typed due to mypy bug:
-    #     error: Argument "quant" to "Part" has incompatible type "str";
-    #     expected "Quantifier | Repetition | None"  [arg-type]
-    NOT: Predicate = '!'  # type: ignore
-    AND: Predicate = '&'  # type: ignore
+class Not(Predicate):
+    pass
 
 
-@enum_evaluable_repr
-class Quantifier(LeafNode, StrEnum, metaclass=_EnumNodeMeta):
-    OPTIONAL: Quantifier = '?'  # type: ignore
-    ZERO_OR_MORE: Quantifier = '*'  # type: ignore
-    ONE_OR_MORE: Quantifier = '+'  # type: ignore
+class Quantifier(LeafNode):
+    def __eq__(self, other):
+        return type(other) is type(self)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        type_name = type(self).__name__
+        return f"{type_name}()"
+
+    def __str__(self):
+        return type(self).__name__
+
+
+class ZeroOrOne(Quantifier):
+    pass
+
+
+class ZeroOrMore(Quantifier):
+    pass
+
+
+class OneOrMore(Quantifier):
+    pass
+
+
+PredicateType = And | Not
+QuantifierType = ZeroOrOne | ZeroOrMore | OneOrMore
 
 
 class Repetition(LeafNode, ArgsRepr):

@@ -14,9 +14,12 @@ from polygen.node import (
     Identifier,
     Literal,
     Class,
-    Predicate,
-    Quantifier,
     Repetition,
+    Not,
+    And,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
     Char,
     AnyChar
 )
@@ -275,26 +278,26 @@ class TestGrammarParser(unittest.TestCase):
         self.parse_success(
             ("Id", fn, [Alt([Part(prime=Identifier('Id'))])]),
             ("!Id", fn, [
-                Alt([Part(pred=Predicate.NOT, prime=Identifier('Id'))])
+                Alt([Part(pred=Not(), prime=Identifier('Id'))])
             ]),
             ("&Id", fn, [
-                Alt([Part(pred=Predicate.AND, prime=Identifier('Id'))])
+                Alt([Part(pred=And(), prime=Identifier('Id'))])
             ]),
             ("Id?", fn, [
-                Alt([Part(prime=Identifier('Id'), quant=Quantifier.OPTIONAL)])
+                Alt([Part(prime=Identifier('Id'), quant=ZeroOrOne())])
             ]),
             ("Id*", fn, [
                 Alt([
                     Part(
                         prime=Identifier('Id'),
-                        quant=Quantifier.ZERO_OR_MORE)
+                        quant=ZeroOrMore())
                 ])
             ]),
             ("Id+", fn, [
                 Alt([
                     Part(
                         prime=Identifier('Id'),
-                        quant=Quantifier.ONE_OR_MORE)
+                        quant=OneOrMore())
                 ])
             ]),
             ("Id{1}", fn, [
@@ -303,33 +306,33 @@ class TestGrammarParser(unittest.TestCase):
             ("!Id?", fn, [
                 Alt([
                     Part(
-                        pred=Predicate.NOT,
+                        pred=Not(),
                         prime=Identifier('Id'),
-                        quant=Quantifier.OPTIONAL)
+                        quant=ZeroOrOne())
                 ])
             ]),
             ("&Id?", fn, [
                 Alt([
                     Part(
-                        pred=Predicate.AND,
+                        pred=And(),
                         prime=Identifier('Id'),
-                        quant=Quantifier.OPTIONAL)
+                        quant=ZeroOrOne())
                 ])
             ]),
             ("& Id *", fn, [
                 Alt([
                     Part(
-                        pred=Predicate.AND,
+                        pred=And(),
                         prime=Identifier('Id'),
-                        quant=Quantifier.ZERO_OR_MORE)
+                        quant=ZeroOrMore())
                 ])
             ]),
             ("&\rId\n+", fn, [
                 Alt([
                     Part(
-                        pred=Predicate.AND,
+                        pred=And(),
                         prime=Identifier('Id'),
-                        quant=Quantifier.ONE_OR_MORE)
+                        quant=OneOrMore())
                 ])
             ]),
         )

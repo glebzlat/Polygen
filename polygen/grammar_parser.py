@@ -13,8 +13,13 @@ from .node import (
     AnyChar,
     Literal as LiteralNode,
     Class,
-    Predicate,
-    Quantifier,
+    Not,
+    And,
+    PredicateType,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
+    QuantifierType,
     Repetition,
     Char
 )
@@ -24,7 +29,7 @@ SuffixType = Optional[
     tuple[
         Optional[
             Identifier | Expression | LiteralNode | Class | AnyChar],
-        Optional[Quantifier | Repetition]
+        Optional[QuantifierType]
     ]
 ]
 
@@ -88,7 +93,7 @@ class GrammarParser(Parser):
         if p := self._Primary():
             q = (self._QUESTION() or self._STAR() or
                  self._PLUS() or self._Repetition())
-            return (p, q)  # (Primary, Quantifier)
+            return (p, q)  # (Primary, QuantifierType)
         return None
 
     def _Primary(self) -> PrimaryType:
@@ -271,43 +276,43 @@ class GrammarParser(Parser):
         self._reset(pos)
         return None
 
-    def _AND(self) -> Optional[Predicate]:
+    def _AND(self) -> Optional[PredicateType]:
         pos = self._mark()
         if self._expect('&'):
             if self._Spacing():
-                return Predicate.AND
+                return And()
         self._reset(pos)
         return None
 
-    def _NOT(self) -> Optional[Predicate]:
+    def _NOT(self) -> Optional[PredicateType]:
         pos = self._mark()
         if self._expect('!'):
             if self._Spacing():
-                return Predicate.NOT
+                return Not()
         self._reset(pos)
         return None
 
-    def _QUESTION(self) -> Optional[Quantifier]:
+    def _QUESTION(self) -> Optional[QuantifierType]:
         pos = self._mark()
         if self._expect('?'):
             if self._Spacing():
-                return Quantifier.OPTIONAL
+                return ZeroOrOne()
         self._reset(pos)
         return None
 
-    def _STAR(self) -> Optional[Quantifier]:
+    def _STAR(self) -> Optional[QuantifierType]:
         pos = self._mark()
         if self._expect('*'):
             if self._Spacing():
-                return Quantifier.ZERO_OR_MORE
+                return ZeroOrMore()
         self._reset(pos)
         return None
 
-    def _PLUS(self) -> Optional[Quantifier]:
+    def _PLUS(self) -> Optional[QuantifierType]:
         pos = self._mark()
         if self._expect('+'):
             if self._Spacing():
-                return Quantifier.ONE_OR_MORE
+                return OneOrMore()
         self._reset(pos)
         return None
 
