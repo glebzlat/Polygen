@@ -32,7 +32,7 @@ from polygen.tree_transformer import (
     ReplaceOneOrMore,
     EliminateAndRule,
     CheckUndefRedefRule,
-    # ReplaceNestedExpsRule,  # TODO: test
+    ReplaceNestedExpsRule,  # TODO: test
     # TreeWriter  # TODO: test
 )
 
@@ -285,3 +285,79 @@ class TestCheckUndefRedefRule(unittest.TestCase):
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, Errors.REDEF_RULES)
+
+
+class TestReplaceNestedExps(unittest.TestCase):
+    def test_simple_number_rule(self):
+        number_id = Identifier('Number')
+        number_gen_id = Identifier('Number_1')
+
+        nested_exp = Expression(Alt(Part(prime=Char('0'))),
+                                Alt(Part(prime=Char('1'))))
+
+        # nested_exp should hold initial tree's node as parent,
+        # do not copy here
+        tree = Grammar(
+            Rule(number_id.copy(),
+                 Expression(Alt(Part(prime=nested_exp))))
+        )
+
+        clue = Grammar(
+            Rule(number_id.copy(),
+                 Expression(Alt(Part(prime=number_gen_id.copy())))),
+            Rule(number_gen_id, nested_exp.copy())
+        )
+
+        rule = ReplaceNestedExpsRule()
+
+        node = tree
+        rule.apply(node)
+
+        node = nested_exp
+        rule.apply(node)
+
+        rule.finalize()
+
+        self.assertEqual(tree, clue)
+
+    def test_complicated_number_rule(self):
+        number_id = Identifier('Number')
+        number_gen_id = Identifier('Number_1')
+
+        nested_exp = Expression(Alt(Part(prime=Char('0'))),
+                                Alt(Part(prime=Char('1'))))
+
+        nested_exp1 = nested_exp.copy()
+        nested_exp2 = nested_exp.copy()
+
+        tree = Grammar(
+            Rule(number_id.copy(),
+                 Expression(
+                     Alt(Part(prime=nested_exp1)),
+                     Alt(Part(prime=nested_exp2, quant=ZeroOrMore())))
+                 )
+        )
+
+        clue = Grammar(
+            Rule(number_id.copy(),
+                 Expression(
+                     Alt(Part(prime=number_gen_id.copy())),
+                     Alt(Part(prime=number_gen_id.copy(), quant=ZeroOrMore())))
+                 ),
+            Rule(number_gen_id, nested_exp.copy())
+        )
+
+        rule = ReplaceNestedExpsRule()
+
+        node = tree
+        rule.apply(node)
+
+        node = nested_exp1
+        rule.apply(node)
+
+        node = nested_exp2
+        rule.apply(node)
+
+        rule.finalize()
+
+        self.assertEqual(tree, clue)

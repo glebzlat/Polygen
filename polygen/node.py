@@ -74,6 +74,11 @@ class Grammar(Node, ArgsRepr, Sized):
     def _get_args(self):
         return self.nodes
 
+    def __eq__(self, other):
+        if not isinstance(other, Grammar):
+            return NotImplemented
+        return self.rules == other.rules
+
     def __iter__(self):
         yield from self.rules.values()
 
