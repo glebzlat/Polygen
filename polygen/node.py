@@ -114,6 +114,24 @@ class Rule(Node, ArgsRepr, Sized):
         self.rhs = rhs
         self._set_parent([self.name, self.rhs])
 
+    @property
+    def id(self):
+        return self.name
+
+    @id.setter
+    def id(self, value):
+        self.name = id
+        self.name._parent = self
+
+    @property
+    def expression(self):
+        return self.rhs
+
+    @expression.setter
+    def expression(self, value):
+        self.rhs = value
+        value._parent = self
+
     def _get_args(self):
         return [self.name, self.rhs]
 
