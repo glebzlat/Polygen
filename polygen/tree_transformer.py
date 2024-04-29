@@ -234,6 +234,28 @@ class CheckUndefRedefRule(SemanticRule):
 
 
 class SimplifyNestedExps(SemanticRule):
+    """Move nested expressions to their parent expressions in some cases.
+
+    If an expression is occured inside the other expression, like so:
+
+    ```
+    Rule(A, Expression(Expression(e1, e2)))
+    ```
+
+    It is not needed to create an artificial rule for it:
+
+    ```
+    Rule(A, Expression(Ag))
+    Rule(Ag, Expression(e1, e2))
+    ```
+
+    Instead, it is possible to move nested expression up to higher level:
+
+    ```
+    Rule(A, Expression(e1, e2))
+    ```
+    """
+
     node_type = Expression
 
     def apply(self, node: Node):
@@ -302,12 +324,12 @@ class ReplaceNestedExpsRule(SemanticRule):
         n = node
         while type(n) is not Rule:
             n = n.parent
-        return n.name
+        return n.id
 
     def _create_id(self, id: Identifier) -> Identifier:
         idx = self.id_count.setdefault(id, 0) + 1
         self.id_count[id] = idx
-        return Identifier(f"_{id.string}_{idx}")
+        return Identifier(f"{id.string}_{idx}")
 
     def apply(self, node):
         nodetype = type(node)
@@ -331,11 +353,8 @@ class ReplaceNestedExpsRule(SemanticRule):
 
             rule_id = self._get_rule_id(node)
             new_id = self._create_id(rule_id)
-
             new_rule = Rule(new_id, node)
-
-            id = new_rule.name
-            part.prime = id
+            part.prime = new_id
 
             self.created_rules.append(new_rule)
 
