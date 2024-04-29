@@ -223,10 +223,9 @@ class Part(Node, AttributeHolder):
                  prime,
                  pred: Optional[And | Not] = None,
                  quant: Optional[QuantifierType | Repetition] = None):
-        self._pred = pred
-        self._prime = prime
-        self._quant = quant
-        self._set_parent([self.pred, self.prime, self.quant])
+        self.pred = pred
+        self.prime = prime
+        self.quant = quant
 
     @property
     def pred(self):
