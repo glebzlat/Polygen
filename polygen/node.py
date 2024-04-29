@@ -36,6 +36,14 @@ class Node(Iterable):
     def __iter__(self):
         ...
 
+    def copy(self):
+        nodes = []
+        for node in self:
+            nodes.append(node)
+
+        self_type = type(self)
+        return self_type(*nodes)
+
 
 class LeafNode(Node):
     @property
@@ -44,6 +52,9 @@ class LeafNode(Node):
 
     def __iter__(self):
         yield from tuple()
+
+    def copy(self):
+        return type(self)()
 
 
 class Grammar(Node, ArgsRepr, Sized):
@@ -166,6 +177,9 @@ class Identifier(LeafNode, ArgsRepr):
         if not isinstance(other, Identifier):
             return NotImplemented
         return self.string < other.string
+
+    def copy(self):
+        return Identifier(self.string)
 
     def __hash__(self):
         return hash(self.string)
