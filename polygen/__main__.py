@@ -16,6 +16,8 @@ from .tree_transformer import (
     TreeTransformer
 )
 
+from .generate_python import Generator
+
 argparser = ArgumentParser()
 argparser.add_argument("file", nargs='?', type=FileType('r', encoding='utf-8'),
                        default=sys.stdin)
@@ -24,6 +26,7 @@ repr_types.add_argument("--str", "-s", action='store_true')
 repr_types.add_argument("--repr", "-r", action='store_true')
 repr_types.add_argument("--descendants", "-d", action='store_true')
 repr_types.add_argument("--convert", "-c", action='store_true')
+repr_types.add_argument("--generate", "-g", action='store_true')
 
 
 def main():
@@ -35,23 +38,36 @@ def main():
 
     if ns.repr:
         print(repr(grammar))
+
     elif ns.descendants:
         for node in map(repr, grammar.descendants):
             print(node)
-    elif ns.convert:
+
+    elif ns.convert or ns.generate:
         write_rules = [
-            [ExpandClassRule(), ReplaceRepRule(), ReplaceZeroOrOneRule()],
+            [
+                ExpandClassRule(),
+                ReplaceRepRule(),
+                ReplaceZeroOrOneRule()
+            ],
             [EliminateAndRule()],
-            [ReplaceOneOrMore()],
             [CheckUndefRedefRule()],
+            [ReplaceOneOrMore(), ReplaceNestedExpsRule()],
             [SimplifyNestedExps()],
-            [ReplaceNestedExpsRule()]
         ]
         writer = TreeTransformer(write_rules)
-        writer.traverse(grammar)
+        success, errors, warnings = writer.traverse(grammar)
 
-        for rule in grammar:
-            print(repr(rule), end='\n\n')
+        if ns.convert:
+            if not success:
+                print(*errors, sep='\n')
+
+            for rule in grammar:
+                print(repr(rule), end='\n\n')
+        else:
+            gen = Generator()
+            gen.generate(grammar)
+
     else:
         print(grammar)
 
