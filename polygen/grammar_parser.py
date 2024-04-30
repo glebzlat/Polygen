@@ -56,7 +56,7 @@ class GrammarParser(Parser):
     def _Grammar(self) -> Optional[Grammar]:
         if self._Spacing():
             if d := self._Definition():
-                g = Grammar()
+                g = Grammar(d)
                 while d := self._Definition():
                     g.add(d)
                 if self._EndOfFile():

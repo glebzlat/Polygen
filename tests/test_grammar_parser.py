@@ -6,6 +6,7 @@ import unittest
 from polygen.reader import Reader
 from polygen.grammar_parser import GrammarParser
 from polygen.node import (
+    Grammar,
     Rule,
     Part,
     Range,
@@ -371,11 +372,30 @@ class TestGrammarParser(unittest.TestCase):
                     Identifier("Id"),
                     Expression(Alt())
                 )
-            ])
+            ]),
+            (
+                "Number <- ('0' / '1') ('0' / '1')*", fn, [
+                    Rule(
+                        Identifier("Number"),
+                        Expression(
+                            Alt(
+                                Part(prime=Expression(
+                                    Alt(Part(prime=Char('0'))),
+                                    Alt(Part(prime=Char('1'))))),
+                                Part(prime=Expression(
+                                    Alt(Part(prime=Char('0'))),
+                                    Alt(Part(prime=Char('1')))),
+                                    quant=ZeroOrMore())
+                            )
+                        )
+                    )
+                ]
+            )
         )
         self.parse_failure(
             ("Id Rule", fn),
-            ("<- Rule", fn)
+            ("<- Rule", fn),
+            ("Number <- (0 / 1) (0 / 1)*", fn)
         )
 
     def test_Grammar(self):
@@ -398,5 +418,16 @@ class TestGrammarParser(unittest.TestCase):
                 Empty <-
                 Rule  <- E1 E2
                 """, fn
+            ),
+            (
+                """
+                Rule1 <- E1
+                Rule2 <- E2
+                """, fn,
+                [Grammar(
+                    Rule(Identifier("Rule1"),
+                         Expression(Alt(Part(prime=Identifier('E1'))))),
+                    Rule(Identifier('Rule2'),
+                         Expression(Alt(Part(prime=Identifier('E2'))))))]
             )
         )

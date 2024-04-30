@@ -65,7 +65,7 @@ class Grammar(Node, ArgsRepr, Sized):
         self._set_parent(self.nodes)
 
     def add(self, rule: Rule) -> bool:
-        if rule.name in self.rules:
+        if rule.id in self.rules:
             return False
         self.nodes.append(rule)
         self.rules[rule.name] = rule
