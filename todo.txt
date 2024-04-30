@@ -2,11 +2,11 @@
 
 Add start, end indexes to generated nodes.
 
-Add minimal python code generator.
+Rename TreeTransformer to TreeModifier.
 
-Perform checks:
-  - Check for unused rules? (how to distinguish, e.g., unused rule
-    and a root node like the Grammar node?)
+Make minimal python code generator work.
+
+Develop a config protocol.
 
 # Proposals
 
@@ -16,52 +16,6 @@ of types, define methods with the name `visit_*`, where `*` designates
 node's type name. Like so: `visit_Expression`.
 
 Allow post-visit actions.
-
-# Thoughts
-
-I think there may take place a specific problem with the tree traversal.
-Suppose a tree like this:
-
-```
-  A
-  |
-  +-- C
-      |
-      +--D
-```
-
-Suppose that some semantic rule, applied to C, replaces it in its parent
-node, A, to another node, B:
-
-```
-  A
-  |
-  +   C
-  |   |
-  |   +--D
-  |
-  +-- B
-```
-
-What will happen with the traversal process? Node C is detached from the
-tree, but the traversal continues on its nodes, so, it goes to D. It
-potentially may cause problems.
-
-Create an algorithm for rule rewriting and warnings. RuleRewriter should
-perform transformations and checks in stages. Each stage has a sequence of
-rules to transform one node type and/or structure to the other and rules
-to check, whether the tree contains an error (then generate an error) or
-a mistake (then generate a warning). Rewriter should perform a rule in a loop,
-until it raises a flag "nothing to do more". The same with the whole stages:
-all rules should be applied in sequence, until they all raise a flag.
-
-Stages are needed in case of rules, that require the specific condition of a
-tree.
-
-So I need to create a mechanism of some kind of "subscribing" to certain
-node types and nodes of certain structure. To be clarified...
-
-Stages and rules in them should be easily modifiable from the config.
 
 Add the config. Which format to use?
 
