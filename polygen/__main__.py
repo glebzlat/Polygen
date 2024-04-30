@@ -13,6 +13,7 @@ from .tree_transformer import (
     CheckUndefRedefRule,
     SimplifyNestedExps,
     ReplaceNestedExpsRule,
+    CreateAnyCharRule,
     TreeTransformer
 )
 
@@ -45,6 +46,7 @@ def main():
 
     elif ns.convert or ns.generate:
         write_rules = [
+            [CreateAnyCharRule()],
             [
                 ExpandClassRule(),
                 ReplaceRepRule(),

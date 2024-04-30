@@ -21,6 +21,7 @@ from .node import (
     OneOrMore,
     Repetition,
     Char,
+    AnyChar
 )
 
 from .errors import (
@@ -328,6 +329,40 @@ class ReplaceNestedExpsRule:
         added = len(self.created_rules)
         self.created_rules = []
         return bool(added)
+
+
+class CreateAnyCharRule:
+    """Create a rule to place AnyChar handling into one place.
+
+    This is may be needed because of the formal definition of AnyChar.
+    Formally, the '.' expression is a character class containing all
+    of the terminals of the grammar. This artificial rule allows code
+    generators to easily handle AnyChar logic in a custom manner.
+    """
+
+    def __init__(self):
+        self.rule_id = Identifier("AnyChar_generated")
+        self.created_rule = Rule(
+            self.rule_id.copy(),
+            Expression(Alt(Part(prime=AnyChar())))
+        )
+
+    def visit_Grammar(self, node: Grammar):
+        node.add(self.created_rule)
+        return False
+
+    def visit_AnyChar(self, node: AnyChar):
+        part = node.parent
+
+        node1 = part.parent
+        node2 = node1.parent
+        node3 = node2.parent
+        if type(node3) is Rule and node3.id == self.rule_id:
+            # created rule
+            return False
+
+        part.prime = self.rule_id.copy()
+        return False
 
 
 class TreeTransformer:
