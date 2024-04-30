@@ -1,5 +1,6 @@
 from __future__ import annotations
 import string
+import re
 
 from typing import Optional, Any, Iterator
 from collections.abc import Iterable, Sized
@@ -327,9 +328,13 @@ class String(Node, ArgsRepr):
     def __iter__(self):
         yield from self.chars
 
+    _UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
+
     def __str__(self):
-        lit = ''.join(map(str, self.chars))
-        return f"String({lit!r})"
+        string = ''.join(map(lambda c: str(c)[1:-1], self.chars))
+        if self._UNESCAPED_DOUBLE_QUOTE_RE.match(string):
+            string = string.replace('"', '\\"')
+        return '"' + string + '"'
 
     def __bool__(self):
         return True
@@ -507,7 +512,7 @@ class Char(LeafNode, ArgsRepr):
 
     def __str__(self):
         if (c := chr(self.code)) and c in string.printable:
-            return c
+            return repr(c)
         return '\\u' + hex(self.code)[2:].rjust(4, '0')
 
     def __hash__(self):
