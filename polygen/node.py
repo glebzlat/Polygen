@@ -285,16 +285,39 @@ class AnyChar(LeafNode, AttributeHolder):
         return True if isinstance(other, AnyChar) else NotImplemented
 
 
-class Literal(Node, ArgsRepr):
+def isiterable(obj):
+    if isinstance(obj, str):
+        return False
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+
+class String(Node, ArgsRepr):
     def __init__(self, *chars: Char):
-        self.chars = list(chars)
-        self._set_parent(self.chars)
+        self.chars = None
+        self.contents = chars
+
+    @property
+    def contents(self):
+        return self.chars
+
+    @contents.setter
+    def contents(self, value):
+        if isiterable(value):
+            self.chars = list(value)
+        else:
+            self.chars = [value]
+        for c in self.chars:
+            c._parent = self
 
     def _get_args(self):
         return self.chars
 
     def __eq__(self, other):
-        if not isinstance(other, Literal):
+        if not isinstance(other, String):
             return NotImplemented
         return seq_cmp(self.chars, other.chars)
 
@@ -306,7 +329,7 @@ class Literal(Node, ArgsRepr):
 
     def __str__(self):
         lit = ''.join(map(str, self.chars))
-        return f"Literal({lit!r})"
+        return f"String({lit!r})"
 
     def __bool__(self):
         return True

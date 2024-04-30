@@ -7,7 +7,7 @@ from polygen.node import (
     Identifier,
     Alt,
     Part,
-    Literal,
+    String,
     Char,
     GrammarVisitor,
     common_prefix,
@@ -24,7 +24,7 @@ class TestDescendants(unittest.TestCase):
 
     def test_literal(self):
         A, B, C = Char('a'), Char('b'), Char('c')
-        tree = Literal(A, B, C)
+        tree = String(A, B, C)
 
         clue = [tree, A, B, C]
         self.assertEqual(list(tree.descendants), clue)
@@ -52,8 +52,8 @@ class TestDescendants(unittest.TestCase):
 class MiscTest(unittest.TestCase):
     def test_common_prefix(self):
         A, B, C, D = Char('a'), Char('b'), Char('c'), Char('d')
-        lhs = Literal(A, B, C)
-        rhs = Literal(A, B, D)
+        lhs = String(A, B, C)
+        rhs = String(A, B, D)
 
         clue = [A, B]
         result = common_prefix(lhs, rhs)
@@ -61,7 +61,7 @@ class MiscTest(unittest.TestCase):
 
     def test_has_prefix(self):
         A, B, C = Char('a'), Char('b'), Char('c')
-        lit = Literal(A, B, C)
+        lit = String(A, B, C)
 
         self.assertTrue(has_prefix([], lit))
         self.assertTrue(has_prefix([A], lit))

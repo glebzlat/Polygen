@@ -97,6 +97,15 @@ def A():
     return True
 
 
+# Char: A = 'c'
+def A():
+    pos = _mark()
+    if buffer[pos] == c:
+        _advance(1)
+        return True
+    return False
+
+
 # Any character: A = .
 def A():
     if not _eof():

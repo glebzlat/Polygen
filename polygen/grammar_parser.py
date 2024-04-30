@@ -11,7 +11,7 @@ from .node import (
     Alt,
     Part,
     AnyChar,
-    Literal as LiteralNode,
+    String as LiteralNode,
     Class,
     Not,
     And,
@@ -24,7 +24,8 @@ from .node import (
     Char
 )
 
-PrimaryType = Optional[Identifier | Expression | LiteralNode | Class | AnyChar]
+PrimaryType = Optional[
+    Identifier | Expression | LiteralNode | Class | Char | AnyChar]
 SuffixType = Optional[
     tuple[
         Optional[
@@ -134,7 +135,7 @@ class GrammarParser(Parser):
         self._reset(pos)
         return None
 
-    def _Literal(self) -> Optional[LiteralNode]:
+    def _Literal(self) -> Optional[LiteralNode | Char]:
         pos = self._mark()
         if (q := self._expect('\'')) or (q := self._expect('\"')):
             chars = []
@@ -142,6 +143,8 @@ class GrammarParser(Parser):
                 chars.append(c)
             if self._expect(q):
                 if self._Spacing():
+                    if len(chars) == 1:
+                        return chars[0]
                     return LiteralNode(*chars)
         self._reset(pos)
         return None

@@ -12,7 +12,7 @@ from polygen.node import (
     Expression,
     Alt,
     Identifier,
-    Literal,
+    String,
     Class,
     Repetition,
     Not,
@@ -207,14 +207,14 @@ class TestGrammarParser(unittest.TestCase):
     def test_Literal(self):
         fn = [P._Literal, P._EndOfFile]
         self.parse_success(
-            (r"''", fn, [Literal(), True]),
-            (r"'a'", fn, [Literal(Char('a'))]),
-            (r"'\''", fn, [Literal(Char('\''))]),
-            (r"'\\'", fn, [Literal(Char('\\'))]),
-            (r'"\""', fn, [Literal(Char('\"'))]),
-            (r'"\n"', fn, [Literal(Char('\n'))]),
-            (r"'\141'", fn, [Literal(Char('a'))]),
-            (r"'\u03c0'", fn, [Literal(Char(0x03c0))]),
+            (r"''", fn, [String(), True]),
+            (r"'a'", fn, [Char('a')]),
+            (r"'\''", fn, [Char('\'')]),
+            (r"'\\'", fn, [Char('\\')]),
+            (r'"\""', fn, [Char('\"')]),
+            (r'"\n"', fn, [Char('\n')]),
+            (r"'\141'", fn, [Char('a')]),
+            (r"'\u03c0'", fn, [Char(0x03c0)]),
             ("'a'\n", fn),
             ("'a'\r\n", fn),
             ('"a"\n', fn),
@@ -245,7 +245,8 @@ class TestGrammarParser(unittest.TestCase):
         fn = [P._Primary, P._EndOfFile]
         self.parse_success(
             ("abc", fn, [Identifier('abc')]),
-            ("'a'", fn, [Literal(Char('a'))]),
+            ("'a'", fn, [Char('a')]),
+            ("'ab'", fn, [String(Char('a'), Char('b'))]),
             ("[a]", fn, [Class(Range(Char('a')))]),
             (".", fn, [AnyChar()]),
             ("(Id)", fn, [
