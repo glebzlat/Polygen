@@ -30,17 +30,7 @@ from .errors import (
 )
 
 
-class SemanticRule:
-    node_type: type | Iterable[type]
-
-    def apply(self, node: Node) -> bool:
-        return False
-
-    def finalize(self) -> None:
-        pass
-
-
-class ExpandClassRule(SemanticRule):
+class ExpandClassRule:
     """Expand class of ranges into expression.
 
     ```
@@ -48,8 +38,6 @@ class ExpandClassRule(SemanticRule):
         Expression(Alt(m1), ..., Alt(n1), ... Alt(mn), ..., Alt(nn))
     ```
     """
-
-    node_type = Class
 
     def _expand_range(self, rng: Range) -> set[Char]:
         """Expand range.
@@ -66,7 +54,7 @@ class ExpandClassRule(SemanticRule):
             raise TreeTransformerError(Errors.INVALID_RANGE, rng)
         return set(map(Char, range(rng.beg.code, rng.end.code + 1)))
 
-    def apply(self, node: Class):
+    def visit_Class(self, node: Class):
         assert type(node.parent) is Part
 
         chars: set[Char] = reduce(
@@ -79,7 +67,7 @@ class ExpandClassRule(SemanticRule):
         return True
 
 
-class ReplaceRepRule(SemanticRule):
+class ReplaceRepRule:
     """Replace repetition into a sequence of parts.
 
     ```
@@ -90,9 +78,7 @@ class ReplaceRepRule(SemanticRule):
     ```
     """
 
-    node_type = Repetition
-
-    def apply(self, node: Repetition):
+    def visit_Repetition(self, node: Repetition):
         assert type(node.parent) is Part
 
         if node.end and node.beg > node.end:
@@ -119,7 +105,7 @@ class ReplaceRepRule(SemanticRule):
         return True
 
 
-class ReplaceZeroOrOneRule(SemanticRule):
+class ReplaceZeroOrOneRule:
     """Replace zero or one by an expression with an empty alternative
 
     ```
@@ -128,9 +114,7 @@ class ReplaceZeroOrOneRule(SemanticRule):
     ```
     """
 
-    node_type = ZeroOrOne
-
-    def apply(self, node: ZeroOrOne):
+    def visit_ZeroOrMore(self, node: ZeroOrOne):
         assert type(node.parent) is Part
 
         part: Part = node.parent
@@ -142,7 +126,7 @@ class ReplaceZeroOrOneRule(SemanticRule):
         return True
 
 
-class ReplaceOneOrMore(SemanticRule):
+class ReplaceOneOrMore:
     """Replace one or more by a part, followed by zero or more parts
 
     ```
@@ -153,9 +137,7 @@ class ReplaceOneOrMore(SemanticRule):
     ```
     """
 
-    node_type = OneOrMore
-
-    def apply(self, node: OneOrMore):
+    def visit_OneOrMore(self, node: OneOrMore):
         assert type(node.parent) is Part
 
         part: Part = node.parent
@@ -172,7 +154,7 @@ class ReplaceOneOrMore(SemanticRule):
         return True
 
 
-class EliminateAndRule(SemanticRule):
+class EliminateAndRule:
     """Replace AND(E) by NOT(NOT(E))
 
     ```
@@ -181,9 +163,7 @@ class EliminateAndRule(SemanticRule):
     ```
     """
 
-    node_type = And
-
-    def apply(self, node: And):
+    def visit_And(self, node: And):
         assert type(node.parent) is Part
 
         part: Part = node.parent
@@ -196,18 +176,16 @@ class EliminateAndRule(SemanticRule):
         return True
 
 
-class CheckUndefRedefRule(SemanticRule):
+class CheckUndefRedefRule:
     """Check for undefined rules in expressions and for rules with same names.
     """
-
-    node_type = Identifier
 
     def __init__(self):
         self.rhs_names_set = set()
         self.rule_names_set = set()
         self.rule_names = []
 
-    def apply(self, node: Identifier):
+    def visit_Identifier(self, node: Identifier):
         if type(node.parent) is Rule:
             self.rule_names.append(node)
             if node in self.rule_names_set:
@@ -220,7 +198,7 @@ class CheckUndefRedefRule(SemanticRule):
 
         return True
 
-    def finalize(self):
+    def exit_Grammar(self, node: Grammar):
         if diff := self.rhs_names_set - self.rule_names_set:
             raise TreeTransformerError(Errors.UNDEF_RULES, *sorted(diff))
 
@@ -233,7 +211,7 @@ class CheckUndefRedefRule(SemanticRule):
             raise TreeTransformerError(Errors.REDEF_RULES, *duplicates)
 
 
-class SimplifyNestedExps(SemanticRule):
+class SimplifyNestedExps:
     """Move nested expressions to their parent expressions in some cases.
 
     If an expression is occured inside the other expression, like so:
@@ -256,9 +234,7 @@ class SimplifyNestedExps(SemanticRule):
     ```
     """
 
-    node_type = Expression
-
-    def apply(self, node: Node):
+    def visit_Expression(self, node: Expression):
         if type(node.parent) is not Part:
             return False
 
@@ -287,7 +263,7 @@ class SimplifyNestedExps(SemanticRule):
         return True
 
 
-class ReplaceNestedExpsRule(SemanticRule):
+class ReplaceNestedExpsRule:
     """Creates new rules for nested expressions.
 
     Suppose the following grammar, containing nested expression `(En1 En2)`:
@@ -304,8 +280,6 @@ class ReplaceNestedExpsRule(SemanticRule):
     ```
     """
 
-    node_type = (Grammar, Expression)
-
     # For nested expression in grammar:
     #   if expression already in created rules:
     #      id = created rule id with expression
@@ -318,7 +292,6 @@ class ReplaceNestedExpsRule(SemanticRule):
     def __init__(self):
         self.created_rules: list[Rule] = []
         self.id_count: dict[Identifier, int] = {}
-        self.grammar: Grammar | None = None
 
     def _get_rule_id(self, node: Node) -> Identifier:
         n = node
@@ -331,118 +304,95 @@ class ReplaceNestedExpsRule(SemanticRule):
         self.id_count[id] = idx
         return Identifier(f"{id.string}_{idx}")
 
-    def apply(self, node):
-        nodetype = type(node)
-
-        if nodetype is Grammar:
-            if self.grammar is None:
-                self.grammar = node
+    def visit_Expression(self, node: Expression):
+        if type(node.parent) is Rule:
             return False
 
-        elif nodetype is Expression:
-            if type(node.parent) is Rule:
-                return False
+        assert type(node.parent) is Part
+        part = node.parent
 
-            assert type(node.parent) is Part
-            part = node.parent
+        for r in self.created_rules:
+            if node == r.rhs:
+                part.prime = r.name
+                return True
 
-            for r in self.created_rules:
-                if node == r.rhs:
-                    part.prime = r.name
-                    return True
+        rule_id = self._get_rule_id(node)
+        new_id = self._create_id(rule_id)
+        new_rule = Rule(new_id, node)
+        part.prime = new_id
 
-            rule_id = self._get_rule_id(node)
-            new_id = self._create_id(rule_id)
-            new_rule = Rule(new_id, node)
-            part.prime = new_id
+        self.created_rules.append(new_rule)
+        return True
 
-            self.created_rules.append(new_rule)
-
-            return True
-        return False
-
-    def finalize(self):
+    def exit_Grammar(self, node: Grammar):
         assert len(self.created_rules)
         for rule in self.created_rules:
-            result = self.grammar.add(rule)
+            result = node.add(rule)
             assert result
         self.created_rules = []
 
 
 class TreeTransformer:
-    def __init__(self, stages: list[list[SemanticRule]]):
+    def __init__(self, stages: Iterable[Iterable[object]]):
         self.stages = stages
         self.errors: list[TreeTransformerError] = []
         self.warnings: list[TreeTransformerWarning] = []
 
-    def _traverse(self, node: Node, rules):
-        rule_infos = rules.get(type(node))
-        if rule_infos:
-            for rule_info in rule_infos:
-                if rule_info[1] is None:
-                    continue
+    def _visit(self, node: Node, rules: list[object], flags: list[bool]):
+        node_type_name = type(node).__name__
+        method_name = f"visit_{node_type_name}"
 
-                rule, flag = rule_info
-                try:
-                    rule_info[1] = rule.apply(node) or flag
-                except TreeTransformerError as exc:
-                    self.errors.append(exc)
-                    rule_info[1] = None
-                except TreeTransformerWarning as warn:
-                    self.warnings.append(warn)
+        for i, rule in enumerate(rules):
+            if flags[i] is None:
+                continue
+
+            visit = getattr(rule, method_name, None)
+            if not visit:
+                continue
+
+            try:
+                flags[i] = visit(node) or flags[i]
+            except TreeTransformerError as exc:
+                self.errors.append(exc)
+                flags[i] = None
+            except TreeTransformerWarning as warn:
+                self.warnings.append(warn)
 
         for child in node:
-            self._traverse(child, rules)
+            self._visit(child, rules, flags)
 
-    def traverse(self, tree: Grammar):
-        for stage in self.stages:
+        exit_name = f"exit_{node_type_name}"
+        exit = getattr(rule, exit_name, None)
+        if not exit:
+            return
 
-            rules: dict[type, SemanticRule] = {}
-            for rule in stage:
-                nodes = []
-                if isinstance(rule.node_type, type):
-                    nodes.append(rule.node_type)
-                else:
-                    nodes += rule.node_type
+        try:
+            flags[i] = exit(node) or flags[i]
+        except TreeTransformerError as exc:
+            self.errors.append(exc)
+            flags[i] = None
+        except TreeTransformerWarning as warn:
+            self.warnings.append(warn)
 
-                # append a list[rule, flag]
-                # flag may be True, if rule is applied at least once,
-                # False if not, and None if rule raised an exception
-                for node in nodes:
-                    actions = rules.setdefault(node, [])
-                    actions.append([rule, False])
+    def transform(self, tree: Grammar):
+        stage_done = False
+        while not stage_done:
+            for stage in self.stages:
 
-            stage_done = False
-            while not stage_done:
-                self._traverse(tree, rules)
+                rules = list(stage)
+                flags = [False for _ in rules]
 
-                # remove rules that aren't applied at least once
-                # or rules that raised an exception. If no rule is applied,
-                # then move to the next stage
-                for node_type in tuple(rules.keys()):
-                    rule_list = rules[node_type]
-                    applied_rules = []
+                self._visit(tree, rules, flags)
 
-                    for rule_info in rule_list:
-                        rule, flag = rule_info
-                        if not flag:
-                            continue
-                        try:
-                            rule.finalize()
-                            rule_info[1] = False
-                            applied_rules.append(rule_info)
-                        except TreeTransformerError as exc:
-                            self.errors.append(exc)
-                            rule_info[1] = None
-                        except TreeTransformerWarning as warn:
-                            self.warnings.append(warn)
+                for i, rule in enumerate(rules):
+                    if not flags[i]:
+                        continue
 
-                    if not applied_rules:
-                        rules.pop(node_type)
-                    else:
-                        rules[node_type] = applied_rules
-
+                rules = [rule for i, rule in enumerate(rules) if flags[i]]
                 stage_done = not rules
 
         success = not self.errors
         return success, self.warnings, self.errors
+
+    def traverse(self, tree: Grammar):
+        return self.transform(tree)

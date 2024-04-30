@@ -32,7 +32,7 @@ from polygen.tree_transformer import (
     ReplaceOneOrMore,
     EliminateAndRule,
     CheckUndefRedefRule,
-    ReplaceNestedExpsRule,  # TODO: test
+    ReplaceNestedExpsRule,
     # TreeWriter  # TODO: test
 )
 
@@ -45,7 +45,7 @@ class TestExpandClassRule(unittest.TestCase):
         rule = ExpandClassRule()
 
         node = tree.prime
-        rule.apply(node)
+        rule.visit_Class(node)
         self.assertEqual(tree, clue)
         self.assertEqual(tree.prime.parent, tree)
 
@@ -62,7 +62,7 @@ class TestExpandClassRule(unittest.TestCase):
         rule = ExpandClassRule()
 
         node = tree.prime
-        rule.apply(node)
+        rule.visit_Class(node)
         self.assertEqual(tree, clue)
         self.assertEqual(tree.prime.parent, tree)
 
@@ -83,7 +83,7 @@ class TestExpandClassRule(unittest.TestCase):
         rule = ExpandClassRule()
 
         node = tree.prime
-        rule.apply(node)
+        rule.visit_Class(node)
         self.assertEqual(tree, clue)
         self.assertEqual(tree.prime.parent, tree)
 
@@ -101,7 +101,7 @@ class TestExpandClassRule(unittest.TestCase):
         rule = ExpandClassRule()
 
         node = tree.prime
-        rule.apply(node)
+        rule.visit_Class(node)
         self.assertEqual(tree, clue)
 
     def test_invalid_range(self):
@@ -113,7 +113,7 @@ class TestExpandClassRule(unittest.TestCase):
         node = tree.prime
 
         with self.assertRaises(TreeTransformerError) as raised_exc:
-            rule.apply(node)
+            rule.visit_Class(node)
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, Errors.INVALID_RANGE)
@@ -132,7 +132,7 @@ class TestReplaceRepRule(unittest.TestCase):
         )
         rule = ReplaceRepRule()
 
-        rule.apply(node)
+        rule.visit_Repetition(node)
         self.assertEqual(tree, clue)
 
     def test_apply_repetition_with_end(self):
@@ -151,7 +151,7 @@ class TestReplaceRepRule(unittest.TestCase):
         node = tree.quant
         rule = ReplaceRepRule()
 
-        rule.apply(node)
+        rule.visit_Repetition(node)
         self.assertEqual(tree, clue)
 
     def test_apply_repetition_invalid_end(self):
@@ -160,7 +160,7 @@ class TestReplaceRepRule(unittest.TestCase):
         part = Part(prime=E, quant=Repetition(3, 2))
         node = part.quant
         with self.assertRaises(TreeTransformerError) as context:
-            rule.apply(node)
+            rule.visit_Repetition(node)
         self.assertEqual(context.exception.what, Errors.INVALID_REPETITION)
 
 
@@ -177,7 +177,7 @@ class TestReplaceZeroOrOneRule(unittest.TestCase):
         )
 
         rule = ReplaceZeroOrOneRule()
-        rule.apply(node)
+        rule.visit_ZeroOrMore(node)
 
         self.assertEqual(tree, clue)
 
@@ -197,7 +197,7 @@ class TestReplaceOneOrMore(unittest.TestCase):
         )
 
         rule = ReplaceOneOrMore()
-        rule.apply(node)
+        rule.visit_OneOrMore(node)
 
         self.assertEqual(tree, clue)
 
@@ -225,7 +225,7 @@ class TestReplaceOneOrMore(unittest.TestCase):
         )
 
         rule = ReplaceOneOrMore()
-        rule.apply(node)
+        rule.visit_OneOrMore(node)
 
         self.assertEqual(tree, clue)
 
@@ -245,7 +245,7 @@ class TestEliminateAndRule(unittest.TestCase):
         )
 
         rule = EliminateAndRule()
-        rule.apply(node)
+        rule.visit_And(node)
 
         self.assertTrue(node, clue)
 
@@ -255,15 +255,15 @@ class TestCheckUndefRedefRule(unittest.TestCase):
         A, B = Identifier('A'), Identifier('B')
         exp = Expression(Alt(Part(prime=B)))
         rule = Rule(A, exp)
-        _ = Grammar(rule)
+        g = Grammar(rule)
 
         rule = CheckUndefRedefRule()
 
-        rule.apply(A)
-        rule.apply(B)
+        rule.visit_Identifier(A)
+        rule.visit_Identifier(B)
 
         with self.assertRaises(TreeTransformerError) as raised_exc:
-            rule.finalize()
+            rule.exit_Grammar(g)
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, Errors.UNDEF_RULES)
@@ -273,15 +273,15 @@ class TestCheckUndefRedefRule(unittest.TestCase):
         A = Identifier('A')
         exp = Expression(Alt(Part(prime=Char('c'))))
         R = Rule(A, exp)
-        _ = Grammar(R)
+        g = Grammar(R)
 
         rule = CheckUndefRedefRule()
 
-        rule.apply(A)
-        rule.apply(A)
+        rule.visit_Identifier(A)
+        rule.visit_Identifier(A)
 
         with self.assertRaises(TreeTransformerError) as raised_exc:
-            rule.finalize()
+            rule.exit_Grammar(g)
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, Errors.REDEF_RULES)
@@ -310,13 +310,10 @@ class TestReplaceNestedExps(unittest.TestCase):
 
         rule = ReplaceNestedExpsRule()
 
-        node = tree
-        rule.apply(node)
-
         node = nested_exp
-        rule.apply(node)
+        rule.visit_Expression(node)
 
-        rule.finalize()
+        rule.exit_Grammar(tree)
 
         self.assertEqual(tree, clue)
 
@@ -349,15 +346,12 @@ class TestReplaceNestedExps(unittest.TestCase):
 
         rule = ReplaceNestedExpsRule()
 
-        node = tree
-        rule.apply(node)
-
         node = nested_exp1
-        rule.apply(node)
+        rule.visit_Expression(node)
 
         node = nested_exp2
-        rule.apply(node)
+        rule.visit_Expression(node)
 
-        rule.finalize()
+        rule.exit_Grammar(tree)
 
         self.assertEqual(tree, clue)
