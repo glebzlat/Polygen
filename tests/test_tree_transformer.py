@@ -177,7 +177,7 @@ class TestReplaceZeroOrOneRule(unittest.TestCase):
         )
 
         rule = ReplaceZeroOrOneRule()
-        rule.visit_ZeroOrMore(node)
+        rule.visit_ZeroOrOne(node)
 
         self.assertEqual(tree, clue)
 
@@ -313,7 +313,7 @@ class TestReplaceNestedExps(unittest.TestCase):
         node = nested_exp
         rule.visit_Expression(node)
 
-        rule.exit_Grammar(tree)
+        rule.visit_Grammar(tree)
 
         self.assertEqual(tree, clue)
 
@@ -352,6 +352,6 @@ class TestReplaceNestedExps(unittest.TestCase):
         node = nested_exp2
         rule.visit_Expression(node)
 
-        rule.exit_Grammar(tree)
+        rule.visit_Grammar(tree)
 
         self.assertEqual(tree, clue)

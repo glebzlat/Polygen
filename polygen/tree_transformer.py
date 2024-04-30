@@ -114,7 +114,7 @@ class ReplaceZeroOrOneRule:
     ```
     """
 
-    def visit_ZeroOrMore(self, node: ZeroOrOne):
+    def visit_ZeroOrOne(self, node: ZeroOrOne):
         assert type(node.parent) is Part
 
         part: Part = node.parent
@@ -324,12 +324,13 @@ class ReplaceNestedExpsRule:
         self.created_rules.append(new_rule)
         return True
 
-    def exit_Grammar(self, node: Grammar):
-        assert len(self.created_rules)
+    def visit_Grammar(self, node: Grammar):
         for rule in self.created_rules:
             result = node.add(rule)
             assert result
+        added = len(self.created_rules)
         self.created_rules = []
+        return bool(added)
 
 
 class TreeTransformer:
@@ -339,13 +340,13 @@ class TreeTransformer:
         self.warnings: list[TreeTransformerWarning] = []
 
     def _visit(self, node: Node, rules: list[object], flags: list[bool]):
+        for child in node:
+            self._visit(child, rules, flags)
+
         node_type_name = type(node).__name__
         method_name = f"visit_{node_type_name}"
 
         for i, rule in enumerate(rules):
-            if flags[i] is None:
-                continue
-
             visit = getattr(rule, method_name, None)
             if not visit:
                 continue
@@ -358,23 +359,10 @@ class TreeTransformer:
             except TreeTransformerWarning as warn:
                 self.warnings.append(warn)
 
-        for child in node:
-            self._visit(child, rules, flags)
-
-        exit_name = f"exit_{node_type_name}"
-        exit = getattr(rule, exit_name, None)
-        if not exit:
-            return
-
-        try:
-            flags[i] = exit(node) or flags[i]
-        except TreeTransformerError as exc:
-            self.errors.append(exc)
-            flags[i] = None
-        except TreeTransformerWarning as warn:
-            self.warnings.append(warn)
-
     def transform(self, tree: Grammar):
+        if not self.stages:
+            return True, self.warnings, self.errors
+
         stage_done = False
         while not stage_done:
             for stage in self.stages:
