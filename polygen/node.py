@@ -346,8 +346,6 @@ class Range(Node, ArgsRepr):
 
     @beg.setter
     def beg(self, value):
-        if len(value) != 1:
-            raise RuntimeError
         self._beg = value
         self._beg._parent = self
 
@@ -357,8 +355,6 @@ class Range(Node, ArgsRepr):
 
     @end.setter
     def end(self, value):
-        if len(value) != 1:
-            raise RuntimeError
         self._end = value
         if self._end is not None:
             self._end._parent = self
