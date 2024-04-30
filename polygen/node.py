@@ -339,7 +339,29 @@ class Range(Node, ArgsRepr):
     def __init__(self, beg: Char, end: Optional[Char] = None):
         self.beg = beg
         self.end = end
-        self._set_parent([beg, end])
+
+    @property
+    def beg(self):
+        return self._beg
+
+    @beg.setter
+    def beg(self, value):
+        if len(value) != 1:
+            raise RuntimeError
+        self._beg = value
+        self._beg._parent = self
+
+    @property
+    def end(self):
+        return self._end
+
+    @end.setter
+    def end(self, value):
+        if len(value) != 1:
+            raise RuntimeError
+        self._end = value
+        if self._end is not None:
+            self._end._parent = self
 
     def _get_args(self):
         args = [self.beg, self.end] if self.end else [self.beg]
