@@ -141,15 +141,12 @@ class ReplaceOneOrMore:
         assert type(node.parent) is Part
 
         part: Part = node.parent
-        # print(part)
-        # print(part.parent)
         part.prime = Expression(
             Alt(
                 Part(prime=part.prime),
                 Part(prime=part.prime,
                      quant=ZeroOrMore())))
         part.quant = None
-        # print(part.parent)
 
         return True
 
@@ -255,7 +252,7 @@ class SimplifyNestedExps:
         # if type(exp.parent) is not Rule:
         #     return False
 
-        del exp.alts[0]
+        exp.alts.clear()
         exp.alts += node.alts
         for alt in node.alts:
             alt._parent = exp
