@@ -43,11 +43,12 @@ class Generator:
         return '\n'.join(self.indentation + s for s in parts)
 
     def generate(self, grammar: Grammar):
-        for rule in grammar:
-            self.gen_rule(rule)
+        for i, rule in enumerate(grammar):
+            self.gen_rule(i, rule)
 
-    def gen_rule(self, rule: Rule):
-        self.putni()
+    def gen_rule(self, index: int, rule: Rule):
+        if index:
+            self.putni()
         self.put('@memoize')
         self.put(f'def _{rule.name.string}(self):')
 

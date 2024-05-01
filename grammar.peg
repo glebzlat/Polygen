@@ -8,8 +8,12 @@
 #   Number - a sequence of digits needed for repetition
 #   unicode escape characters
 
+@entry
 Grammar    <- Spacing Definition+ EndOfFile
-Definition <- Identifier LEFTARROW Expression
+Definition <- Directive* Identifier LEFTARROW Expression
+
+Directive  <- AT DirName Spacing
+DirName    <- Identifier
 
 Expression <- Sequence (SLASH Sequence)*
 Sequence   <- Prefix*
@@ -47,6 +51,7 @@ PLUS       <- '+' Spacing
 OPEN       <- '(' Spacing
 CLOSE      <- ')' Spacing
 DOT        <- '.' Spacing
+AT         <- '@' Spacing
 
 Spacing    <- (Space / Comment)*
 Comment    <- '#' (!EndOfLine .)* EndOfLine

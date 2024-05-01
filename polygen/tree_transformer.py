@@ -365,6 +365,23 @@ class CreateAnyCharRule:
         return False
 
 
+class FindEntryRule:
+    def __init__(self):
+        self.entry: Rule | None = None
+
+    def visit_Rule(self, node: Rule):
+        if Identifier('entry') in node.directives:
+            if self.entry is not None:
+                if self.entry == node:
+                    return
+                raise TreeTransformerError
+            self.entry = node
+
+    def visit_Grammar(self, node: Grammar):
+        if self.entry is None:
+            raise TreeTransformerError
+
+
 class TreeTransformer:
     def __init__(self, stages: Iterable[Iterable[object]]):
         self.stages = stages

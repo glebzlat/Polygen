@@ -1,5 +1,6 @@
 import sys
 
+from io import StringIO
 from argparse import ArgumentParser, FileType
 
 from .reader import Reader
@@ -14,10 +15,12 @@ from .tree_transformer import (
     SimplifyNestedExps,
     ReplaceNestedExpsRule,
     CreateAnyCharRule,
+    FindEntryRule,
     TreeTransformer
 )
 
 from .generate_python import Generator
+from .preprocessor import Preprocessor
 
 argparser = ArgumentParser()
 argparser.add_argument("file", nargs='?', type=FileType('r', encoding='utf-8'),
@@ -45,6 +48,7 @@ def main():
             print(node)
 
     elif ns.convert or ns.generate:
+        find_entry = FindEntryRule()
         write_rules = [
             [CreateAnyCharRule()],
             [
@@ -55,6 +59,7 @@ def main():
             [EliminateAndRule()],
             [CheckUndefRedefRule()],
             [ReplaceOneOrMore(), ReplaceNestedExpsRule()],
+            [find_entry],
             [SimplifyNestedExps()],
         ]
         writer = TreeTransformer(write_rules)
@@ -67,8 +72,16 @@ def main():
             for rule in grammar:
                 print(repr(rule), end='\n\n')
         else:
-            gen = Generator()
+            stream = StringIO()
+            gen = Generator(stream)
             gen.generate(grammar)
+
+            proc = Preprocessor({
+                "body": stream.getvalue(),
+                "entry": f'return self._{find_entry.entry.id.string}()\n'
+            })
+            with open('parser.py.in', 'r', encoding='utf-8') as fin:
+                proc.process(fin)
 
     else:
         print(grammar)

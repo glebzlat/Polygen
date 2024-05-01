@@ -64,10 +64,26 @@ class GrammarParser(Parser):
         return None
 
     def _Definition(self) -> Optional[Rule]:
+        directives = []
+        while d := self._Directive():
+            directives.append(d)
+
         if i := self._Identifier():
             if self._LEFTARROW():
                 if e := self._Expression():
-                    return Rule(i, e)
+                    return Rule(i, e, directives=directives)
+        return None
+
+    def _Directive(self) -> Optional[Identifier]:
+        if self._AT():
+            if id := self._DirName():
+                if self._Spacing():
+                    return id
+        return None
+
+    def _DirName(self) -> Optional[Identifier]:
+        if i := self._Identifier():
+            return i
         return None
 
     def _Expression(self) -> Optional[Expression]:
@@ -340,6 +356,14 @@ class GrammarParser(Parser):
         if self._expect('.'):
             if self._Spacing():
                 return AnyChar()
+        self._reset(pos)
+        return None
+
+    def _AT(self) -> Optional[str]:
+        pos = self._mark()
+        if s := self._expect('@'):
+            if self._Spacing():
+                return s
         self._reset(pos)
         return None
 

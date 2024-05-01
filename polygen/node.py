@@ -126,10 +126,14 @@ class Expression(Node, ArgsRepr, Sized):
 
 
 class Rule(Node, ArgsRepr, Sized):
-    def __init__(self, name: Identifier, rhs: Expression):
+    def __init__(self,
+                 name: Identifier,
+                 rhs: Expression,
+                 directives: list[Identifier] | None = None):
         self.name = name
         self.rhs = rhs
         self._set_parent([self.name, self.rhs])
+        self.directives = directives or []
 
     @property
     def id(self):
@@ -151,6 +155,12 @@ class Rule(Node, ArgsRepr, Sized):
 
     def _get_args(self):
         return [self.name, self.rhs]
+
+    def __str__(self):
+        directives_parts = (id.string for id in self.directives)
+        directives = ('[' + ', '.join(directives_parts) + ']'
+                      if self.directives else '')
+        return f'Rule{directives}({self.name}, {self.rhs})'
 
     def __iter__(self):
         yield self.rhs
