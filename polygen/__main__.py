@@ -6,17 +6,17 @@ from argparse import ArgumentParser, FileType
 from .reader import Reader
 from .grammar_parser import GrammarParser
 from .tree_transformer import (
-    ExpandClassRule,
-    ReplaceRepRule,
-    ReplaceZeroOrOneRule,
+    ExpandClass,
+    ReplaceRep,
+    ReplaceZeroOrOne,
     ReplaceOneOrMore,
-    EliminateAndRule,
-    CheckUndefRedefRule,
+    EliminateAnd,
+    CheckUndefRedef,
     SimplifyNestedExps,
-    ReplaceNestedExpsRule,
+    ReplaceNestedExps,
     CreateAnyCharRule,
     FindEntryRule,
-    TreeTransformer
+    TreeModifier
 )
 
 from .generate_python import Generator
@@ -52,18 +52,18 @@ def main():
         write_rules = [
             [CreateAnyCharRule()],
             [
-                ExpandClassRule(),
-                ReplaceRepRule(),
-                ReplaceZeroOrOneRule()
+                ExpandClass(),
+                ReplaceRep(),
+                ReplaceZeroOrOne()
             ],
-            [EliminateAndRule()],
-            [CheckUndefRedefRule()],
-            [ReplaceOneOrMore(), ReplaceNestedExpsRule()],
+            [EliminateAnd()],
+            [CheckUndefRedef()],
+            [ReplaceOneOrMore(), ReplaceNestedExps()],
             [find_entry],
             [SimplifyNestedExps()],
         ]
-        writer = TreeTransformer(write_rules)
-        success, errors, warnings = writer.traverse(grammar)
+        writer = TreeModifier(write_rules)
+        success, errors, warnings = writer.visit(grammar)
 
         if ns.convert:
             if not success:
@@ -75,9 +75,10 @@ def main():
             stream = StringIO()
             gen = Generator(stream)
             gen.generate(grammar)
+            stream.seek(0)
 
             proc = Preprocessor({
-                "body": stream.getvalue(),
+                "body": stream,
                 "entry": f'return self._{find_entry.entry.id.string}()\n'
             })
             with open('parser.py.in', 'r', encoding='utf-8') as fin:

@@ -3,13 +3,12 @@ import io
 
 
 class Reader:
-    """
-    Reads the file and produces a stream of characters.
+    """Read the file and produces a stream of characters.
 
-    Reader supports strings and UTF-8 encoded streams only.
+    Cannot work with Unicode, except UTF-8.
     """
 
-    def __init__(self, stream: str | io.IOBase, bufsize=4096):
+    def __init__(self, stream: str | io.IOBase, bufsize: int = 4096) -> None:
         self.buffer = ""
         self.stream = None
         self.name = None
@@ -39,7 +38,7 @@ class Reader:
             char = self.buffer[self.pointer]
         except IndexError:
             if self.stream:
-                self.update()
+                self._update()
             try:
                 char = self.buffer[self.pointer]
             except IndexError:
@@ -55,7 +54,7 @@ class Reader:
         self.pointer += 1
         return char
 
-    def update(self, length: int = 1) -> None:
+    def _update(self, length: int = 1) -> None:
         assert self.stream
         if self.eof:
             return

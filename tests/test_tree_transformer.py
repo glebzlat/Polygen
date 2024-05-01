@@ -20,29 +20,26 @@ from polygen.node import (
     Char
 )
 
-from polygen.errors import (
-    Errors,
-    TreeTransformerError,
-)
-
 from polygen.tree_transformer import (
-    ExpandClassRule,
-    ReplaceRepRule,
-    ReplaceZeroOrOneRule,
+    SemanticError,
+    TreeModifierError,
+    ExpandClass,
+    ReplaceRep,
+    ReplaceZeroOrOne,
     ReplaceOneOrMore,
-    EliminateAndRule,
-    CheckUndefRedefRule,
-    ReplaceNestedExpsRule,
+    EliminateAnd,
+    CheckUndefRedef,
+    ReplaceNestedExps,
     # TreeWriter  # TODO: test
 )
 
 
-class TestExpandClassRule(unittest.TestCase):
+class TestExpandClass(unittest.TestCase):
     def test_simple_range(self):
         A = Char('a')
         tree = Part(prime=Class(Range(A)))
         clue = Part(prime=Expression(Alt(Part(prime=A))))
-        rule = ExpandClassRule()
+        rule = ExpandClass()
 
         node = tree.prime
         rule.visit_Class(node)
@@ -59,7 +56,7 @@ class TestExpandClassRule(unittest.TestCase):
                 Alt(Part(prime=C))
             )
         )
-        rule = ExpandClassRule()
+        rule = ExpandClass()
 
         node = tree.prime
         rule.visit_Class(node)
@@ -80,7 +77,7 @@ class TestExpandClassRule(unittest.TestCase):
                 Alt(Part(prime=C))
             )
         )
-        rule = ExpandClassRule()
+        rule = ExpandClass()
 
         node = tree.prime
         rule.visit_Class(node)
@@ -98,7 +95,7 @@ class TestExpandClassRule(unittest.TestCase):
                 Alt(Part(prime=D))
             )
         )
-        rule = ExpandClassRule()
+        rule = ExpandClass()
 
         node = tree.prime
         rule.visit_Class(node)
@@ -108,19 +105,19 @@ class TestExpandClassRule(unittest.TestCase):
         B, C = Char('b'), Char('c')
         rng = Range(C, B)
         tree = Part(prime=Class(rng))
-        rule = ExpandClassRule()
+        rule = ExpandClass()
 
         node = tree.prime
 
-        with self.assertRaises(TreeTransformerError) as raised_exc:
+        with self.assertRaises(TreeModifierError) as raised_exc:
             rule.visit_Class(node)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, Errors.INVALID_RANGE)
+        self.assertEqual(exception.what, SemanticError.INVALID_RANGE)
         self.assertEqual(exception.nodes, (rng,))
 
 
-class TestReplaceRepRule(unittest.TestCase):
+class TestReplaceRep(unittest.TestCase):
     def test_apply_repetition_without_end(self):
         E = Char('e')
         tree = Part(prime=E, quant=Repetition(3))
@@ -130,7 +127,7 @@ class TestReplaceRepRule(unittest.TestCase):
                 Alt(*repeat(Part(prime=E), 3))
             )
         )
-        rule = ReplaceRepRule()
+        rule = ReplaceRep()
 
         rule.visit_Repetition(node)
         self.assertEqual(tree, clue)
@@ -149,22 +146,23 @@ class TestReplaceRepRule(unittest.TestCase):
             )
         )
         node = tree.quant
-        rule = ReplaceRepRule()
+        rule = ReplaceRep()
 
         rule.visit_Repetition(node)
         self.assertEqual(tree, clue)
 
     def test_apply_repetition_invalid_end(self):
         E = Char('e')
-        rule = ReplaceRepRule()
+        rule = ReplaceRep()
         part = Part(prime=E, quant=Repetition(3, 2))
         node = part.quant
-        with self.assertRaises(TreeTransformerError) as context:
+        with self.assertRaises(TreeModifierError) as context:
             rule.visit_Repetition(node)
-        self.assertEqual(context.exception.what, Errors.INVALID_REPETITION)
+        self.assertEqual(context.exception.what,
+                         SemanticError.INVALID_REPETITION)
 
 
-class TestReplaceZeroOrOneRule(unittest.TestCase):
+class TestReplaceZeroOrOne(unittest.TestCase):
     def test_eliminate(self):
         E = Char('e')
         tree = Part(prime=E, quant=ZeroOrOne())
@@ -176,7 +174,7 @@ class TestReplaceZeroOrOneRule(unittest.TestCase):
             )
         )
 
-        rule = ReplaceZeroOrOneRule()
+        rule = ReplaceZeroOrOne()
         rule.visit_ZeroOrOne(node)
 
         self.assertEqual(tree, clue)
@@ -230,7 +228,7 @@ class TestReplaceOneOrMore(unittest.TestCase):
         self.assertEqual(tree, clue)
 
 
-class TestEliminateAndRule(unittest.TestCase):
+class TestEliminateAnd(unittest.TestCase):
     def test_rule(self):
         E = Char('e')
         tree = Part(pred=And(), prime=E)
@@ -244,29 +242,29 @@ class TestEliminateAndRule(unittest.TestCase):
             )
         )
 
-        rule = EliminateAndRule()
+        rule = EliminateAnd()
         rule.visit_And(node)
 
         self.assertTrue(node, clue)
 
 
-class TestCheckUndefRedefRule(unittest.TestCase):
+class TestCheckUndefRedef(unittest.TestCase):
     def test_undef(self):
         A, B = Identifier('A'), Identifier('B')
         exp = Expression(Alt(Part(prime=B)))
         rule = Rule(A, exp)
         g = Grammar(rule)
 
-        rule = CheckUndefRedefRule()
+        rule = CheckUndefRedef()
 
         rule.visit_Identifier(A)
         rule.visit_Identifier(B)
 
-        with self.assertRaises(TreeTransformerError) as raised_exc:
+        with self.assertRaises(TreeModifierError) as raised_exc:
             rule.exit_Grammar(g)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, Errors.UNDEF_RULES)
+        self.assertEqual(exception.what, SemanticError.UNDEF_RULES)
         self.assertEqual(exception.nodes, (B,))
 
     def test_redef(self):
@@ -275,16 +273,16 @@ class TestCheckUndefRedefRule(unittest.TestCase):
         R = Rule(A, exp)
         g = Grammar(R)
 
-        rule = CheckUndefRedefRule()
+        rule = CheckUndefRedef()
 
         rule.visit_Identifier(A)
         rule.visit_Identifier(A)
 
-        with self.assertRaises(TreeTransformerError) as raised_exc:
+        with self.assertRaises(TreeModifierError) as raised_exc:
             rule.exit_Grammar(g)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, Errors.REDEF_RULES)
+        self.assertEqual(exception.what, SemanticError.REDEF_RULES)
 
 
 class TestReplaceNestedExps(unittest.TestCase):
@@ -308,7 +306,7 @@ class TestReplaceNestedExps(unittest.TestCase):
             Rule(number_gen_id, nested_exp.copy())
         )
 
-        rule = ReplaceNestedExpsRule()
+        rule = ReplaceNestedExps()
 
         node = nested_exp
         rule.visit_Expression(node)
@@ -344,7 +342,7 @@ class TestReplaceNestedExps(unittest.TestCase):
             Rule(number_gen_id, nested_exp.copy())
         )
 
-        rule = ReplaceNestedExpsRule()
+        rule = ReplaceNestedExps()
 
         node = nested_exp1
         rule.visit_Expression(node)

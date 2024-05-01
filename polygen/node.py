@@ -5,7 +5,7 @@ import re
 from typing import Optional, Any, Iterator
 from collections.abc import Iterable, Sized
 from abc import abstractmethod
-from itertools import zip_longest
+from itertools import zip_longest, chain
 
 from .attrholder import AttributeHolder, ArgsRepr
 
@@ -25,19 +25,19 @@ class Node(Iterable):
             yield from e.descendants
 
     @property
-    def parent(self) -> Node:
+    def parent(self) -> Optional[Node]:
         return self._parent
 
-    def _set_parent(self, nodes: Iterable[Optional[Node]]):
+    def _set_parent(self, nodes: Iterable[Optional[Node]]) -> None:
         for node in nodes:
             if node is not None:
                 node._parent = self
 
     @abstractmethod
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Node]:
         ...
 
-    def copy(self):
+    def copy(self) -> Node:
         nodes = []
         for node in self:
             nodes.append(node)
@@ -51,10 +51,10 @@ class LeafNode(Node):
     def descendants(self) -> Iterator[LeafNode]:
         yield self
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Node]:
         yield from tuple()
 
-    def copy(self):
+    def copy(self) -> Node:
         return type(self)()
 
 
@@ -107,12 +107,12 @@ class Expression(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Expression):
             return NotImplemented
-        return seq_cmp(self.alts, other.alts)
+        return self.alts == other.alts
 
     def __add__(self, other):
         if not isinstance(other, Expression):
             raise TypeError
-        return Expression(list(self.alts) + list(other.alts))
+        return Expression(*chain(iter(self.alts), iter(other.alts)))
 
     def __len__(self):
         return len(self.alts)
@@ -136,20 +136,20 @@ class Rule(Node, ArgsRepr, Sized):
         self.directives = directives or []
 
     @property
-    def id(self):
+    def id(self) -> Identifier:
         return self.name
 
     @id.setter
-    def id(self, value):
-        self.name = id
+    def id(self, value) -> None:
+        self.name = value
         self.name._parent = self
 
     @property
-    def expression(self):
+    def expression(self) -> Expression:
         return self.rhs
 
     @expression.setter
-    def expression(self, value):
+    def expression(self, value) -> None:
         self.rhs = value
         value._parent = self
 
@@ -194,7 +194,7 @@ class Identifier(LeafNode, ArgsRepr):
             return NotImplemented
         return self.string < other.string
 
-    def copy(self):
+    def copy(self) -> Identifier:
         return Identifier(self.string)
 
     def __hash__(self):
@@ -212,7 +212,7 @@ class Alt(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Alt):
             return NotImplemented
-        return seq_cmp(self.parts, other.parts)
+        return self.parts == other.parts
 
     def __iter__(self):
         yield from self.parts
@@ -223,7 +223,7 @@ class Alt(Node, ArgsRepr, Sized):
     def __add__(self, other):
         if not isinstance(other, Alt):
             raise TypeError
-        return Alt(list(self.parts) + list(other.parts))
+        return Alt(*chain(iter(self.parts), iter(other.parts)))
 
     def __bool__(self):
         return True
@@ -239,11 +239,11 @@ class Part(Node, AttributeHolder):
         self.quant = quant
 
     @property
-    def pred(self):
+    def pred(self) -> Optional[PredicateType]:
         return self._pred
 
     @pred.setter
-    def pred(self, value):
+    def pred(self, value) -> None:
         self._pred = value
         if self._pred is not None:
             self._pred._parent = self
@@ -253,17 +253,17 @@ class Part(Node, AttributeHolder):
         return self._prime
 
     @prime.setter
-    def prime(self, value):
+    def prime(self, value) -> None:
         self._prime = value
         if self._prime is not None:
             self._prime._parent = self
 
     @property
-    def quant(self):
+    def quant(self) -> Optional[QuantifierType | Repetition]:
         return self._quant
 
     @quant.setter
-    def quant(self, value):
+    def quant(self, value) -> None:
         self._quant = value
         if self._quant is not None:
             self._quant._parent = self
@@ -296,7 +296,8 @@ class AnyChar(LeafNode, AttributeHolder):
         return True if isinstance(other, AnyChar) else NotImplemented
 
 
-def isiterable(obj):
+def isiterable(obj: Any) -> bool:
+    """Check if an object is iterable, but not string."""
     if isinstance(obj, str):
         return False
     try:
@@ -308,19 +309,22 @@ def isiterable(obj):
 
 class String(Node, ArgsRepr):
     def __init__(self, *chars: Char):
-        self.chars = None
-        self.contents = chars
+        self.chars: list[Char]
+        self.contents = chars  # type: ignore[assignment]
 
     @property
-    def contents(self):
+    def contents(self) -> list[Char]:
         return self.chars
 
     @contents.setter
-    def contents(self, value):
+    def contents(self, value: Iterable[Char] | Char) -> None:
         if isiterable(value):
             self.chars = list(value)
-        else:
+        elif type(value) is Char:
             self.chars = [value]
+        else:
+            raise TypeError(
+                f"expected Iterable[Char] | Char, got {type(value)}")
         for c in self.chars:
             c._parent = self
 
@@ -330,12 +334,12 @@ class String(Node, ArgsRepr):
     def __eq__(self, other):
         if not isinstance(other, String):
             return NotImplemented
-        return seq_cmp(self.chars, other.chars)
+        return self.chars == other.chars
 
     def __len__(self):
         return len(self.chars)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Char]:
         yield from self.chars
 
     _UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
@@ -361,7 +365,7 @@ class Class(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Class):
             return NotImplemented
-        return seq_cmp(self.ranges, other.ranges)
+        return self.ranges == other.ranges
 
     def __len__(self):
         return len(self.ranges)
@@ -379,20 +383,20 @@ class Range(Node, ArgsRepr):
         self.end = end
 
     @property
-    def beg(self):
+    def beg(self) -> Char:
         return self._beg
 
     @beg.setter
-    def beg(self, value):
+    def beg(self, value) -> None:
         self._beg = value
         self._beg._parent = self
 
     @property
-    def end(self):
+    def end(self) -> Optional[Char]:
         return self._end
 
     @end.setter
-    def end(self, value):
+    def end(self, value) -> None:
         self._end = value
         if self._end is not None:
             self._end._parent = self

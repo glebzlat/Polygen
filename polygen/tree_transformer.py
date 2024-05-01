@@ -3,6 +3,7 @@ import operator
 from functools import reduce
 from itertools import repeat
 from typing import Iterable
+from enum import StrEnum
 
 from .node import (
     Node,
@@ -24,14 +25,33 @@ from .node import (
     AnyChar
 )
 
-from .errors import (
-    Errors,
-    TreeTransformerError,
-    TreeTransformerWarning,
-)
+
+class SemanticError(StrEnum):
+    INVALID_RANGE = "invalid-range"
+    INVALID_REPETITION = "invalid-rep"
+    UNDEF_RULES = "undef-rules"
+    REDEF_RULES = "redef-rules"
+    REDEF_ENTRY = "redef-entry"
+    ENTRY_NOT_DEFINED = "not-def-entry"
 
 
-class ExpandClassRule:
+class SemanticWarning(StrEnum):
+    UNUSED_RULES = "unused-rules"
+
+
+class TreeModifierError(Exception):
+    def __init__(self, what: SemanticError, *nodes: Node):
+        self.what = what
+        self.nodes = nodes
+
+
+class TreeModifierWarning(Warning):
+    def __init__(self, what: SemanticWarning, *nodes: Node):
+        self.what = what
+        self.nodes = nodes
+
+
+class ExpandClass:
     """Expand class of ranges into expression.
 
     ```
@@ -52,7 +72,7 @@ class ExpandClassRule:
             return {rng.beg}
 
         if rng.beg > rng.end:
-            raise TreeTransformerError(Errors.INVALID_RANGE, rng)
+            raise TreeModifierError(SemanticError.INVALID_RANGE, rng)
         return set(map(Char, range(rng.beg.code, rng.end.code + 1)))
 
     def visit_Class(self, node: Class):
@@ -68,7 +88,7 @@ class ExpandClassRule:
         return True
 
 
-class ReplaceRepRule:
+class ReplaceRep:
     """Replace repetition into a sequence of parts.
 
     ```
@@ -83,7 +103,7 @@ class ReplaceRepRule:
         assert type(node.parent) is Part
 
         if node.end and node.beg > node.end:
-            raise TreeTransformerError(Errors.INVALID_REPETITION, node)
+            raise TreeModifierError(SemanticError.INVALID_REPETITION, node)
 
         part: Part = node.parent
         prime = part.prime
@@ -106,7 +126,7 @@ class ReplaceRepRule:
         return True
 
 
-class ReplaceZeroOrOneRule:
+class ReplaceZeroOrOne:
     """Replace zero or one by an expression with an empty alternative
 
     ```
@@ -152,7 +172,7 @@ class ReplaceOneOrMore:
         return True
 
 
-class EliminateAndRule:
+class EliminateAnd:
     """Replace AND(E) by NOT(NOT(E))
 
     ```
@@ -174,7 +194,7 @@ class EliminateAndRule:
         return True
 
 
-class CheckUndefRedefRule:
+class CheckUndefRedef:
     """Check for undefined rules in expressions and for rules with same names.
     """
 
@@ -198,7 +218,7 @@ class CheckUndefRedefRule:
 
     def exit_Grammar(self, node: Grammar):
         if diff := self.rhs_names_set - self.rule_names_set:
-            raise TreeTransformerError(Errors.UNDEF_RULES, *sorted(diff))
+            raise TreeModifierError(SemanticError.UNDEF_RULES, *sorted(diff))
 
         if len(self.rule_names) > len(self.rule_names_set):
             names_count = {
@@ -206,7 +226,7 @@ class CheckUndefRedefRule:
                 for name in self.rule_names}
             duplicates = (
                 name for name, count in names_count.items() if count > 1)
-            raise TreeTransformerError(Errors.REDEF_RULES, *duplicates)
+            raise TreeModifierError(SemanticError.REDEF_RULES, *duplicates)
 
 
 class SimplifyNestedExps:
@@ -261,7 +281,7 @@ class SimplifyNestedExps:
         return True
 
 
-class ReplaceNestedExpsRule:
+class ReplaceNestedExps:
     """Creates new rules for nested expressions.
 
     Suppose the following grammar, containing nested expression `(En1 En2)`:
@@ -287,13 +307,14 @@ class ReplaceNestedExpsRule:
     #      create rule with new_id and expression
     #      replace expression by new_id
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.created_rules: list[Rule] = []
         self.id_count: dict[Identifier, int] = {}
 
     def _get_rule_id(self, node: Node) -> Identifier:
         n = node
         while type(n) is not Rule:
+            assert n.parent is not None
             n = n.parent
         return n.id
 
@@ -352,11 +373,16 @@ class CreateAnyCharRule:
         return False
 
     def visit_AnyChar(self, node: AnyChar):
+        assert node.parent is not None and type(node.parent) is Part
         part = node.parent
 
+        assert part.parent is not None
         node1 = part.parent
+        assert node1.parent is not None
         node2 = node1.parent
+        assert node2.parent is not None
         node3 = node2.parent
+
         if type(node3) is Rule and node3.id == self.rule_id:
             # created rule
             return False
@@ -366,7 +392,7 @@ class CreateAnyCharRule:
 
 
 class FindEntryRule:
-    def __init__(self):
+    def __init__(self) -> None:
         self.entry: Rule | None = None
 
     def visit_Rule(self, node: Rule):
@@ -374,21 +400,34 @@ class FindEntryRule:
             if self.entry is not None:
                 if self.entry == node:
                     return
-                raise TreeTransformerError
+                raise TreeModifierError(SemanticError.REDEF_ENTRY, node)
             self.entry = node
 
     def visit_Grammar(self, node: Grammar):
         if self.entry is None:
-            raise TreeTransformerError
+            raise TreeModifierError(SemanticError.ENTRY_NOT_DEFINED)
 
 
-class TreeTransformer:
+class TreeModifier:
+    """Traverses the tree and modifies it.
+
+    TreeModifier recursively traverses the tree in stages, applying the
+    rewriting rules from each stage bottom-up (calls visitors post-order),
+    until no rule was applied at least once.
+
+    Stages are sequences of rules applied until no rule was applied.
+    When all rules in the stage are done, then TreeModifier moves to the
+    next stage. Stages are needed because of some rules require the tree
+    being in some condition, created by another rules. So some rules should
+    be run before another.
+    """
+
     def __init__(self, stages: Iterable[Iterable[object]]):
         self.stages = stages
-        self.errors: list[TreeTransformerError] = []
-        self.warnings: list[TreeTransformerWarning] = []
+        self.errors: list[TreeModifierError] = []
+        self.warnings: list[TreeModifierWarning] = []
 
-    def _visit(self, node: Node, rules: list[object], flags: list[bool]):
+    def _visit(self, node: Node, rules: list[object], flags: list[bool | None]):
         for child in node:
             self._visit(child, rules, flags)
 
@@ -402,13 +441,13 @@ class TreeTransformer:
 
             try:
                 flags[i] = visit(node) or flags[i]
-            except TreeTransformerError as exc:
+            except TreeModifierError as exc:
                 self.errors.append(exc)
                 flags[i] = None
-            except TreeTransformerWarning as warn:
+            except TreeModifierWarning as warn:
                 self.warnings.append(warn)
 
-    def transform(self, tree: Grammar):
+    def visit(self, tree: Grammar):
         if not self.stages:
             return True, self.warnings, self.errors
 
@@ -417,7 +456,7 @@ class TreeTransformer:
             for stage in self.stages:
 
                 rules = list(stage)
-                flags = [False for _ in rules]
+                flags: list[bool | None] = [False for _ in rules]
 
                 self._visit(tree, rules, flags)
 
@@ -430,6 +469,3 @@ class TreeTransformer:
 
         success = not self.errors
         return success, self.warnings, self.errors
-
-    def traverse(self, tree: Grammar):
-        return self.transform(tree)

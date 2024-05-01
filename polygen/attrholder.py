@@ -2,10 +2,10 @@ from typing import Callable, Any, Iterable
 
 
 class AttributeHolder:
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self._repr(repr)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self._repr(str)
 
     def _repr(self, repr_fn: Callable[[Any], str]) -> str:
