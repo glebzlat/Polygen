@@ -26,71 +26,62 @@ from .preprocessor import Preprocessor
 datetimefmt = "%Y-%m-%d %I:%M %p"
 
 argparser = ArgumentParser()
-argparser.add_argument("file", nargs='?', type=FileType('r', encoding='utf-8'),
-                       default=sys.stdin)
-repr_types = argparser.add_mutually_exclusive_group()
-repr_types.add_argument("--str", "-s", action='store_true')
-repr_types.add_argument("--repr", "-r", action='store_true')
-repr_types.add_argument("--descendants", "-d", action='store_true')
-repr_types.add_argument("--convert", "-c", action='store_true')
-repr_types.add_argument("--generate", "-g", action='store_true')
+argparser.add_argument("--grammar", "-g", type=FileType('r', encoding='utf-8'),
+                       help="Grammar file")
+argparser.add_argument("--skeleton", "-s", type=str, help="Skeletons directory")
+argparser.add_argument("--output", "-o", type=str, help="Output directory")
+
+VERSION = "0.0.1"
 
 
 def main():
     ns = argparser.parse_args()
 
-    reader = Reader(ns.file)
+    reader = Reader(ns.grammar)
     parser = GrammarParser(reader)
     grammar = parser.parse()
 
-    if ns.repr:
-        print(repr(grammar))
+    find_entry = FindEntryRule()
 
-    elif ns.descendants:
-        for node in map(repr, grammar.descendants):
-            print(node)
+    write_rules = [
+        [CreateAnyCharRule()],
+        [
+            ExpandClass(),
+            ReplaceRep(),
+            ReplaceZeroOrOne()
+        ],
+        [EliminateAnd()],
+        [CheckUndefRedef()],
+        [ReplaceOneOrMore(), ReplaceNestedExps()],
+        [find_entry],
+        [SimplifyNestedExps()],
+    ]
 
-    elif ns.convert or ns.generate:
-        find_entry = FindEntryRule()
-        write_rules = [
-            [CreateAnyCharRule()],
-            [
-                ExpandClass(),
-                ReplaceRep(),
-                ReplaceZeroOrOne()
-            ],
-            [EliminateAnd()],
-            [CheckUndefRedef()],
-            [ReplaceOneOrMore(), ReplaceNestedExps()],
-            [find_entry],
-            [SimplifyNestedExps()],
-        ]
-        writer = TreeModifier(write_rules)
-        success, errors, warnings = writer.visit(grammar)
+    modifier = TreeModifier(write_rules)
+    success, errors, warnings = modifier.visit(grammar)
 
-        if ns.convert:
-            if not success:
-                print(*errors, sep='\n')
+    if not success:
+        print(*errors, sep='\n', file=sys.stderr)
+        return 1
 
-            for rule in grammar:
-                print(repr(rule), end='\n\n')
-        else:
-            stream = StringIO()
-            gen = Generator(stream)
-            gen.generate(grammar)
-            stream.seek(0)
+    if warnings:
+        print(*warnings, sep='\n', file=sys.stderr)
 
-            proc = Preprocessor({
-                "body": stream,
-                "entry": f'return self._{find_entry.entry.id.string}()\n',
-                "version": "0.0.1",
-                "datetime": datetime.today().strftime(datetimefmt)
-            })
-            with open('parser.py.in', 'r', encoding='utf-8') as fin:
-                proc.process(fin)
+    stream = StringIO()
+    gen = Generator(stream)
+    gen.generate(grammar)
+    stream.seek(0)
 
-    else:
-        print(grammar)
+    directives = {
+        "body": stream,
+        "entry": f"return self._{find_entry.entry.id.string}()",
+        "version": VERSION,
+        "datetime": datetime.today().strftime(datetimefmt)
+    }
+
+    proc = Preprocessor(directives)
+
+    proc.process(ns.skeleton, ns.output)
 
     return 0
 
