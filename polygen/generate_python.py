@@ -4,7 +4,6 @@ from .node import (
     Grammar,
     Rule,
     Identifier,
-    Alt,
     AnyChar,
     Char,
     String,
@@ -31,10 +30,10 @@ class Generator:
         print(*args, file=self.stream)
 
     @contextmanager
-    def indent(self):
+    def indent(self, level: int = 1):
         save = self.indentation
         try:
-            self.indentation += '    '
+            self.indentation += '    ' * level
             yield
         finally:
             self.indentation = save
@@ -52,28 +51,49 @@ class Generator:
         self.put('@memoize')
         self.put(f'def _{rule.name.string}(self):')
 
+        # Check for the last empty alternative, signaling that there is
+        # a desugared ZeroOrOne quantifier. If the last is empty, do not
+        # save and restore current position
+        last_alt = rule.rhs.alts[-1]
+        last_alt_length = len(last_alt)
+
         with self.indent():
-            self.put('pos = self._mark()')
+            if last_alt_length != 0:
+                self.put('pos = self._mark()')
 
-            empty_alt = False
             for alt in rule.rhs:
-                empty_alt = self.gen_alt(alt)
+                last_idx = len(alt) - 1
 
-            if not empty_alt:
+                return_level, cleanup_level = None, None
+
+                level = 0
+                for i, part in enumerate(alt):
+                    with self.indent(level):
+                        level += self.gen_part(part, level, last_idx)
+
+                        if i == last_idx:
+                            return_level = level
+
+                        # if this alternative is not the last, then
+                        # it should perform cleanup for the next alternative
+                        elif i == 0 and alt is not last_alt:
+                            cleanup_level = level
+
+                if return_level is not None:
+                    with self.indent(return_level):
+                        self.put('return True')
+
+                if cleanup_level is not None:
+                    with self.indent(cleanup_level):
+                        self.put('self._reset(pos)')
+
+            if last_alt_length == 0:
+                self.put('return True')
+            else:
                 self.put('self._reset(pos)')
                 self.put('return False')
 
-    def gen_alt(self, alt: Alt):
-        self.gen_part(alt.parts, 0, len(alt.parts))
-        return len(alt) == 0
-
-    def gen_part(self, parts, index, length, not_pred=False):
-        last = index == len(parts)
-        if last:
-            self.put('return True')
-            return
-
-        part = parts[index]
+    def gen_part(self, part, index: int, last_index: int) -> int:
         not_pred = type(part.pred) is Not
         quant = type(part.quant) is ZeroOrMore
 
@@ -96,7 +116,7 @@ class Generator:
             with self.indent():
                 self.put('pass')
 
-            self.gen_part(parts, index + 1, length, not_pred)
+            return 0
 
         else:
             if not_pred:
@@ -104,5 +124,4 @@ class Generator:
             else:
                 self.put(f'if {s}:')
 
-            with self.indent():
-                self.gen_part(parts, index + 1, length, not_pred)
+            return 1
