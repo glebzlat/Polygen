@@ -48,7 +48,6 @@ class Reader:
 
         if isinstance(stream, str):
             self.name = "<unicode string>"
-            self.buffer = stream + '\0'
         elif isinstance(stream, io.IOBase):
             self.name = getattr(stream, 'name', '<file>')
             self.stream = stream
@@ -75,8 +74,6 @@ class Reader:
         if char in '\r\n':
             self.line += 1
             self.column = 0
-        elif char == '\0':
-            pass  # Prevent column from incrementing by the last '\0' char.
         else:
             self.column += 1
         self.pointer += 1
@@ -94,7 +91,6 @@ class Reader:
                 self.buffer += data
             else:
                 self.eof = True
-                self.buffer += '\0'
                 break
 
 
@@ -131,7 +127,7 @@ class Parser:
 
     def _peek_char(self) -> str:
         if self.pos == len(self.chars):
-            self.chars.append(next(self.reader))
+            self.chars.append(next(self.reader, None))
         return self.chars[self.pos]
 
     def _mark(self) -> int:
