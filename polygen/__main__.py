@@ -2,6 +2,7 @@ import sys
 
 from io import StringIO
 from argparse import ArgumentParser, FileType
+from datetime import datetime
 
 from .reader import Reader
 from .grammar_parser import GrammarParser
@@ -21,6 +22,8 @@ from .tree_transformer import (
 
 from .generate_python import Generator
 from .preprocessor import Preprocessor
+
+datetimefmt = "%Y-%m-%d %I:%M %p"
 
 argparser = ArgumentParser()
 argparser.add_argument("file", nargs='?', type=FileType('r', encoding='utf-8'),
@@ -79,7 +82,9 @@ def main():
 
             proc = Preprocessor({
                 "body": stream,
-                "entry": f'return self._{find_entry.entry.id.string}()\n'
+                "entry": f'return self._{find_entry.entry.id.string}()\n',
+                "version": "0.0.1",
+                "datetime": datetime.today().strftime(datetimefmt)
             })
             with open('parser.py.in', 'r', encoding='utf-8') as fin:
                 proc.process(fin)
