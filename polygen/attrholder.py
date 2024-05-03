@@ -13,8 +13,6 @@ class AttributeHolder:
         arg_strings = [repr_fn(arg) for arg in self._get_args()]
         star_args = {}
         for name, value in self._get_kwargs():
-            if name.startswith('_'):
-                continue
             if name.isidentifier():
                 value_repr = repr_fn(value)
                 arg_strings.append(f"{name}={value_repr}")
@@ -27,7 +25,8 @@ class AttributeHolder:
         return f"{type_name}({args})"
 
     def _get_kwargs(self) -> Iterable[tuple[str, Any]]:
-        return self.__dict__.items()
+        items = self.__dict__.items()
+        return [(k, v) for k, v in items if not k.startswith('_')]
 
     def _get_args(self) -> Iterable[Any]:
         return ()

@@ -45,6 +45,23 @@ class Node(Iterable):
         self_type = type(self)
         return self_type(*nodes)
 
+    def dump(self) -> dict:
+        """Create a dictinary from the Node.
+
+        Created dictionary has `_node_type` item, which is a name
+        of the corresponding node. It can be used to create nodes
+        from the dictionary.
+        """
+        name = type(self).__name__
+        dct = {'_node_type': name}
+        for k, v in self._get_kwargs():
+            if isinstance(v, Node):
+                v = v.dump()
+            elif isiterable(v):
+                v = [i.dump() for i in v]
+            dct[k] = v
+        return dct
+
 
 class LeafNode(Node):
     @property
@@ -405,6 +422,9 @@ class Range(Node, ArgsRepr):
         args = [self.beg, self.end] if self.end else [self.beg]
         return [str(a) for a in args]
 
+    def _get_kwargs(self):
+        return (('beg', self.beg), ('end', self.end))
+
     def __eq__(self, other):
         if not isinstance(other, Range):
             return NotImplemented
@@ -417,6 +437,9 @@ class Range(Node, ArgsRepr):
 
 
 class Predicate(LeafNode):
+    def _get_kwargs(self):
+        return ()
+
     def __eq__(self, other):
         return type(other) is type(self)
 
@@ -440,6 +463,9 @@ class Not(Predicate):
 
 
 class Quantifier(LeafNode):
+    def _get_kwargs(self):
+        return ()
+
     def __eq__(self, other):
         return type(other) is type(self)
 
