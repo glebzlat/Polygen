@@ -1,12 +1,26 @@
 # Additions
 
+Rename Generator -> PythonGenerator, generate_python.py -> python_gen.py
+
+Rename tree_transformer.py -> tree_modifier.py
+
+Create a ParserGenerator class, which will incapsulate grammar parsing,
+grammar modification, parser generators registry, parser generation and
+preprocessing.
+
+Add TreeModifier tests.
+
+Add the whole grammar tests - compare generated AST with the saved.
+
+Add modified AST tests - compare modified AST with the saved.
+
 Add start, end indexes to generated nodes.
 
-Rename TreeTransformer to TreeModifier.
-
-Make minimal python code generator work.
-
 Develop a config protocol.
+
+Add generated parser tests. Parser without semantic actions should return
+True, if the grammar is parsed and False otherwise. This test should generate
+a temporary parser, evaluate it and test it against test grammar files.
 
 # Proposals
 
