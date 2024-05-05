@@ -120,6 +120,27 @@ class Parser:
             self.pos += 1
         return string
 
+    def _lookahead(self, positive, fn, *args):
+        pos = self._mark()
+        ok = fn(*args) is not None
+        self._reset(pos)
+        return ok == positive
+
+    def _loop(self, nonempty, fn, *args):
+        pos = self._mark()
+        nodes = []
+        while (node := fn(*args)) is not None:
+            nodes.append(node)
+        if len(nodes) >= nonempty:
+            return nodes
+        self._reset(pos)
+        return None
+
+    def _maybe(self, fn, *args):
+        if (result := fn(*args)) is not None:
+            return result
+        return True
+
     def _get_char(self) -> str:
         char = self._peek_char()
         self.pos += 1
@@ -141,7 +162,6 @@ class Parser:
 
     %% body %%
 
-
 if __name__ == '__main__':
     from argparse import ArgumentParser, FileType
     import sys
@@ -156,4 +176,4 @@ if __name__ == '__main__':
     result = parser.parse()
 
     print("Parsing successful" if result else "Parsing failure")
-    exit(result)
+    exit(not result)  # Unix-style: 0 is success

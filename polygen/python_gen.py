@@ -8,7 +8,10 @@ from .node import (
     Char,
     String,
     Not,
-    ZeroOrMore
+    And,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore
 )
 
 
@@ -21,13 +24,12 @@ class PythonGenerator:
         self.indentation = ''
         self.stream = stream
 
-    def put(self, *args):
-        print(end=self.indentation, file=self.stream)
-        print(*args, file=self.stream)
-
-    def putni(self, *args):
-        "Put no indent - print without indenting"
-        print(*args, file=self.stream)
+    def put(self, *args, newline=True, indent=True):
+        if indent:
+            print(end=self.indentation, file=self.stream)
+        print(*args, end='', file=self.stream)
+        if newline:
+            print(file=self.stream)
 
     @contextmanager
     def indent(self, level: int = 1):
@@ -38,90 +40,65 @@ class PythonGenerator:
         finally:
             self.indentation = save
 
-    def join(self, *parts: str):
-        return '\n'.join(self.indentation + s for s in parts)
-
     def generate(self, grammar: Grammar):
         for i, rule in enumerate(grammar):
             self.gen_rule(i, rule)
 
-    def gen_rule(self, index: int, rule: Rule):
-        if index:
-            self.putni()
+    def gen_rule(self, rule_index: int, rule: Rule):
+        if rule_index != 0:
+            self.put(indent=False)
+
         self.put('@memoize')
         self.put(f'def _{rule.name.string}(self):')
 
-        # Check for the last empty alternative, signaling that there is
-        # a desugared ZeroOrOne quantifier. If the last is empty, do not
-        # save and restore current position
-        last_alt = rule.rhs.alts[-1]
-        last_alt_length = len(last_alt)
+        with self.indent():
+            self.put('pos = self._mark()')
+            for i, alt in enumerate(rule.rhs):
+                self.gen_alt(alt, rule, i)
+            self.put('return None')
+
+    def gen_alt(self, alt, rule, alt_index):
+        items = []
+        put_newline = len(alt) > 1
+
+        self.put('if (', newline=put_newline)
+        with self.indent():
+            for i, part in enumerate(alt):
+                self.gen_part(part, items, alt_index, i, put_newline)
+        self.put('):', indent=put_newline)
 
         with self.indent():
-            if last_alt_length != 0:
-                self.put('pos = self._mark()')
+            self.put('return True')
+        self.put('self._reset(pos)')
 
-            for alt in rule.rhs:
-                last_idx = len(alt) - 1
-
-                return_level, cleanup_level = None, None
-
-                level = 0
-                for i, part in enumerate(alt):
-                    with self.indent(level):
-                        level += self.gen_part(part, level, last_idx)
-
-                        if i == last_idx:
-                            return_level = level
-
-                        # if this alternative is not the last, then
-                        # it should perform cleanup for the next alternative
-                        elif i == 0 and alt is not last_alt:
-                            cleanup_level = level
-
-                if return_level is not None:
-                    with self.indent(return_level):
-                        self.put('return True')
-
-                if cleanup_level is not None:
-                    with self.indent(cleanup_level):
-                        self.put('self._reset(pos)')
-
-            if last_alt_length == 0:
-                self.put('return True')
-            else:
-                self.put('self._reset(pos)')
-                self.put('return False')
-
-    def gen_part(self, part, index: int, last_index: int) -> int:
-        not_pred = type(part.pred) is Not
-        quant = type(part.quant) is ZeroOrMore
-
+    def gen_part(self, part, items, alt_index, part_index, newline):
         if type(part.prime) is Char:
-            s = f"self._expectc({part.prime})"
+            fn, args = 'self._expectc', (part.prime,)
         elif type(part.prime) is Identifier:
-            s = f'self._{part.prime.string}()'
+            fn, args = f'self._{part.prime.string}', ()
         elif type(part.prime) is String:
-            s = f'self._expects({part.prime})'
+            fn, args = 'self._expects', (part.prime,)
         elif type(part.prime) is AnyChar:
-            s = 'self._expectc()'
+            fn, args = 'self._expectc', ()
         else:
             raise GeneratorError('unsupported node type', part)
 
-        if quant:
-            if not_pred:
-                self.put(f'while not {s}:')
-            else:
-                self.put(f'while {s}:')
-            with self.indent():
-                self.put('pass')
+        if type(part.quant) is ZeroOrOne:
+            fn, args = 'self._maybe', (fn, *args)
+        elif type(part.quant) is ZeroOrMore:
+            fn, args = 'self._loop', (False, fn, *args)
+        elif type(part.quant) is OneOrMore:
+            fn, args = 'self._loop', (True, fn, *args)
 
-            return 0
+        if type(part.pred) is Not:
+            fn, args = 'self._lookahead', (False, fn, *args)
+        elif type(part.pred) is And:
+            fn, args = 'self._lookahead', (True, fn, *args)
 
-        else:
-            if not_pred:
-                self.put(f'if not {s}:')
-            else:
-                self.put(f'if {s}:')
+        args = ', '.join(str(i) for i in args)
+        call = f'{fn}({args})'
+        cond = 'is not None' if part.pred is None else ''
+        op = 'and' if part_index else ''
 
-            return 1
+        string = ' '.join(filter(None, (op, call, cond)))
+        self.put(string, newline=newline, indent=newline)

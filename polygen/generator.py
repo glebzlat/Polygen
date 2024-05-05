@@ -42,9 +42,7 @@ class Generator:
             [
                 ExpandClass(),
                 ReplaceRep(),
-                ReplaceZeroOrOne()
             ],
-            [EliminateAnd()],
             [CheckUndefRedef()],
             [ReplaceOneOrMore(), ReplaceNestedExps()],
             [FindEntryRule()],
