@@ -137,7 +137,7 @@ class Parser:
         self.pos = pos
 
     def parse(self):
-        %% entry %%
+        return self._%% entry %%()
 
     %% body %%
 

@@ -406,6 +406,7 @@ class FindEntryRule:
     def visit_Grammar(self, node: Grammar):
         if self.entry is None:
             raise TreeModifierError(SemanticError.ENTRY_NOT_DEFINED)
+        node.entry = self.entry
 
 
 class TreeModifier:

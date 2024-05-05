@@ -16,7 +16,7 @@ class GeneratorError(Exception):
     pass
 
 
-class Generator:
+class PythonGenerator:
     def __init__(self, stream=None):
         self.indentation = ''
         self.stream = stream

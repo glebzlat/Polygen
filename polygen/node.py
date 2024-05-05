@@ -79,6 +79,7 @@ class Grammar(Node, ArgsRepr, Sized):
     def __init__(self, *rules: Rule):
         self.nodes = list(rules)
         self.rules = {rule.name: rule for rule in rules}
+        self._entry: Optional[Rule] = None
         self._set_parent(self.nodes)
 
     def add(self, rule: Rule) -> bool:
@@ -88,6 +89,14 @@ class Grammar(Node, ArgsRepr, Sized):
         self.rules[rule.name] = rule
         rule._parent = self
         return True
+
+    @property
+    def entry(self):
+        return self._entry
+
+    @entry.setter
+    def entry(self, value):
+        self._entry = value
 
     def _get_args(self):
         return self.nodes

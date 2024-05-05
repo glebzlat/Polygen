@@ -20,7 +20,7 @@ from polygen.node import (
     Char
 )
 
-from polygen.tree_transformer import (
+from polygen.tree_modifier import (
     SemanticError,
     TreeModifierError,
     ExpandClass,
