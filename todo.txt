@@ -1,5 +1,9 @@
 # Additions
 
+Disallow metanames for lookahead particles.
+
+How to add semantic actions? Or just generate a parsing tree and that's enough?
+
 Add TreeModifier tests.
 
 Add the whole grammar tests - compare generated AST with the saved.

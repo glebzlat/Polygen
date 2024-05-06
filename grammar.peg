@@ -1,45 +1,41 @@
 # This is the PEG grammar syntax taken from "Parsing Expression Grammars:
 # A Recognition-Based Syntastic Foundation" by Bryan Ford with some extensions.
 
-# Extensions:
-#   Repetition - allows the following syntax:
-#     "x{n,m}" - from n to m times,
-#     "x{n}"   - exactly n times
-#   Number - a sequence of digits needed for repetition
-#   unicode escape characters
-
 @entry
-Grammar    <- Spacing Definition+ EndOfFile
-Definition <- Directive* Identifier LEFTARROW Expression
+Grammar    <- Spacing defs=Definition+ EndOfFile              % grammar_action
+Definition <- dirs=Directive* Identifier LEFTARROW Expression % def_action
 
-Directive  <- AT DirName Spacing
+Directive  <- AT DirName Spacing                              % directive_action
 DirName    <- Identifier
 
 Expression <- Sequence (SLASH Sequence)*
-Sequence   <- Prefix*
-Prefix     <- (AND / NOT)? Suffix
-Suffix     <- Primary (QUESTION / STAR / PLUS / Repetition)?
+Sequence   <- Prefix* MetaRule?                               % alt_action
+Prefix     <- grp=(MetaName / AND / NOT)? Suffix
+Suffix     <- Primary (QUESTION / STAR / PLUS / Repetition)?  % part_action
 Primary    <- Identifier !LEFTARROW
             / OPEN Expression CLOSE
-            / Literal / Class / DOT
+            / Literal / Class / grp=DOT
+MetaName   <- Identifier EQUAL
+MetaRule   <- PERCENT Identifier
 
 Identifier <- IdentStart IdentCont* Spacing
 IdentStart <- [a-zA-Z_]
 IdentCont  <- IdentStart / [0-9]
 
-Literal    <- ['] (!['] Char)* ['] Spacing
-            / ["] (!["] Char)* ["] Spacing
-Class      <- '[' (!']' Range)* ']' Spacing
-Range      <- Char '-' Char / Char
-Char       <- '\\' [nrt'"\[\]\\]
-            / '\\' [0-2][0-7][0-7]
-            / '\\' [0-7][0-7]?
-            / '\\u' HexDigit{4}
-            / !'\\' .
+Literal    <- ['] seq=(!['] Char)* ['] Spacing                % literal_action
+            / ["] seq=(!["] Char)* ["] Spacing                % literal_action
+Class      <- '[' (!']' Range)* ']' Spacing                   % class_action
+Range      <- Char '-' Char                                   % range_action
+            / Char                                            % range_action
+Char       <- '\\' char=[nrt'"\[\]\\]                         % esc_char_action
+            / '\\' char1=[0-2] char2=[0-7] char3=[0-7]        % oct_char_action
+            / '\\' char1=[0-7] char2=[0-7]?                   % oct_char_action
+            / '\\u' HexDigit{4}                               % uchar_action
+            / !'\\' char=.                                    % any_char_action
 
-Repetition <- '{' (Number ',' Number / Number) '}' Spacing
-Number     <- [0-9]+
-HexDigit   <- [0-9A-F]
+Repetition <- '{' grp=(Number ',' Number / Number) '}' Spacing % rep_action
+Number     <- chars=[0-9]+                                    % number
+HexDigit   <- char=[0-9A-F]                                   % hex_digit
 
 LEFTARROW  <- '<-' Spacing
 SLASH      <- '/' Spacing
@@ -52,7 +48,10 @@ OPEN       <- '(' Spacing
 CLOSE      <- ')' Spacing
 DOT        <- '.' Spacing
 AT         <- '@' Spacing
+EQUAL      <- '=' Spacing
+PERCENT    <- '%' Spacing
 
+@ignore
 Spacing    <- (Space / Comment)*
 Comment    <- '#' (!EndOfLine .)* EndOfLine
 Space      <- ' ' / '\t' / EndOfLine

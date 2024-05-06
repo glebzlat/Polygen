@@ -95,10 +95,11 @@ class Reader:
 
 
 class Parser:
-    def __init__(self, stream):
+    def __init__(self, stream, actions=None):
         self._memos = {}
         self.reader = Reader(stream)
         self.chars: list[str] = []
+        self.actions = actions
         self.pos = 0
 
     @memoize
@@ -156,6 +157,13 @@ class Parser:
 
     def _reset(self, pos: int):
         self.pos = pos
+
+    def _action(self, rulename, *args):
+        if self.actions is not None:
+            fn = getattr(self.actions, rulename, None)
+            if fn:
+                return fn(self.actions, *args)
+        return args
 
     def parse(self):
         return self._%% entry %%()

@@ -228,8 +228,9 @@ class Identifier(LeafNode, ArgsRepr):
 
 
 class Alt(Node, ArgsRepr, Sized):
-    def __init__(self, *parts: Part):
+    def __init__(self, *parts: Node, metarule: Optional[str] = None):
         self.parts = list(parts)
+        self.metarule = metarule
         self._set_parent(self.parts)
 
     def _get_args(self):
@@ -259,10 +260,12 @@ class Part(Node, AttributeHolder):
     def __init__(self, *,
                  prime,
                  pred: Optional[And | Not] = None,
-                 quant: Optional[QuantifierType | Repetition] = None):
+                 quant: Optional[QuantifierType | Repetition] = None,
+                 metaname: Optional[str] = None):
         self.pred = pred
         self.prime = prime
         self.quant = quant
+        self.metaname = metaname
 
     @property
     def pred(self) -> Optional[PredicateType]:

@@ -1,4 +1,7 @@
+import re
+
 from contextlib import contextmanager
+from keyword import iskeyword
 
 from .node import (
     Grammar,
@@ -13,6 +16,14 @@ from .node import (
     ZeroOrMore,
     OneOrMore
 )
+
+_UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
+
+
+def wrap_string(s: str):
+    if _UNESCAPED_DOUBLE_QUOTE_RE.match(s):
+        s = s.replace('"', '\\"')
+    return '"' + s + '"'
 
 
 class GeneratorError(Exception):
@@ -61,16 +72,25 @@ class PythonGenerator:
         put_newline = len(alt) > 1
 
         self.put('if (', newline=put_newline)
+        variables = []
         with self.indent():
             for i, part in enumerate(alt):
-                self.gen_part(part, i, put_newline)
+                self.gen_part(part, i, variables, put_newline)
         self.put('):', indent=put_newline)
 
         with self.indent():
-            self.put('return True')
+            retval = ', '.join(variables)
+            # if alt.metarule:
+            #     metarule = wrap_string(alt.metarule)
+            #     if retval:
+            #         self.put(f'return self._action({metarule}, {retval})')
+            #     else:
+            #         self.put(f'return self._action({metarule})')
+            # else:
+            self.put(f'return ({retval})')
         self.put('self._reset(pos)')
 
-    def gen_part(self, part, part_index, newline):
+    def gen_part(self, part, part_index, variables, newline):
         parts = []
 
         cond = ''
@@ -88,20 +108,41 @@ class PythonGenerator:
         elif type(part.quant) is OneOrMore:
             parts += 'self._loop', True
 
+        if part.metaname:
+            key = part.metaname
+            if iskeyword(key):
+                key = f'_{key}'
+            if key in variables:
+                raise GeneratorError
+        else:
+            var = None
+
+        def create_var():
+            nonlocal var
+            index = len(variables)
+            var = f'_{index}'
+            variables.append(var)
+
         if type(part.prime) is Char:
             parts += 'self._expectc', part.prime
+            create_var()
         elif type(part.prime) is Identifier:
-            parts.append(f'self._{part.prime.string}')
+            id = part.prime
+            parts.append(f'self._{id.string}')
+            create_var()
         elif type(part.prime) is String:
             parts += 'self._expects', part.prime
+            create_var()
         elif type(part.prime) is AnyChar:
             parts.append('self._expectc')
+            create_var()
         else:
             raise GeneratorError('unsupported node type', part.prime)
 
         fn, args = parts[0], ', '.join(str(i) for i in parts[1:])
-        call = f'{fn}({args})'
         op = 'and' if part_index else ''
+        call = f'{fn}({args})'
+        assignment = f'({var} := {call})' if var else call
 
-        string = ' '.join(filter(None, (op, call, cond)))
+        string = ' '.join(filter(None, (op, assignment, cond)))
         self.put(string, newline=newline, indent=newline)

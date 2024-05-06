@@ -98,12 +98,19 @@ class GrammarParser(Parser):
         prefixes = []
         while p := self._Prefix():
             prefixes.append(p)
-        return Alt(*prefixes)
+        meta = self._MetaRule()
+        return Alt(*prefixes, metarule=meta)
 
     def _Prefix(self) -> Optional[Part]:
-        p = self._AND() or self._NOT()
+        meta, p = None, None
+        if meta := self._MetaName():
+            pass
+        elif p := self._AND():
+            pass
+        elif p := self._NOT():
+            pass
         if s := self._Suffix():
-            return Part(pred=p, prime=s[0], quant=s[1])
+            return Part(pred=p, prime=s[0], quant=s[1], metaname=meta)
         return None
 
     def _Suffix(self) -> SuffixType:
@@ -125,6 +132,22 @@ class GrammarParser(Parser):
                 if self._CLOSE():
                     return e
         return self._Literal() or self._Class() or self._DOT()
+
+    def _MetaName(self) -> Optional[str]:
+        pos = self._mark()
+        if i := self._Identifier():
+            if self._EQUAL():
+                return i.string
+        self._reset(pos)
+        return None
+
+    def _MetaRule(self) -> Optional[str]:
+        pos = self._mark()
+        if self._PERCENT():
+            if i := self._Identifier():
+                return i.string
+        self._reset(pos)
+        return None
 
     def _Identifier(self) -> Optional[Identifier]:
         if c := self._IdentStart():
@@ -362,6 +385,22 @@ class GrammarParser(Parser):
     def _AT(self) -> Optional[str]:
         pos = self._mark()
         if s := self._expect('@'):
+            if self._Spacing():
+                return s
+        self._reset(pos)
+        return None
+
+    def _EQUAL(self) -> Optional[str]:
+        pos = self._mark()
+        if s := self._expect('='):
+            if self._Spacing():
+                return s
+        self._reset(pos)
+        return None
+
+    def _PERCENT(self) -> Optional[str]:
+        pos = self._mark()
+        if s := self._expect('%'):
             if self._Spacing():
                 return s
         self._reset(pos)
