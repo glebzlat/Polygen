@@ -1,7 +1,6 @@
 import re
 
 from contextlib import contextmanager
-from keyword import iskeyword
 
 from .node import (
     Grammar,
@@ -68,6 +67,11 @@ class PythonGenerator:
                 self.gen_alt(alt, rule, i)
             self.put('return None')
 
+    _INDEXED_VAR_RE = re.compile(r'_\d+')
+
+    def isindexedvar(self, name):
+        return self._INDEXED_VAR_RE.match(name) is not None
+
     def gen_alt(self, alt, rule, alt_index):
         put_newline = len(alt) > 1
 
@@ -80,14 +84,17 @@ class PythonGenerator:
 
         with self.indent():
             retval = ', '.join(variables)
-            # if alt.metarule:
-            #     metarule = wrap_string(alt.metarule)
-            #     if retval:
-            #         self.put(f'return self._action({metarule}, {retval})')
-            #     else:
-            #         self.put(f'return self._action({metarule})')
-            # else:
-            self.put(f'return ({retval})')
+            if alt.metarule:
+                metarule = wrap_string(alt.metarule)
+                kwargs = (f'{name}={name}' for name in variables
+                          if not self.isindexedvar(name))
+                kwargs = ', '.join(kwargs)
+                if kwargs:
+                    self.put(f'return self._action({metarule}, {retval}, {kwargs})')
+                else:
+                    self.put(f'return self._action({metarule}, {retval})')
+            else:
+                self.put(f'return ({retval})')
         self.put('self._reset(pos)')
 
     def gen_part(self, part, part_index, variables, newline):
@@ -108,36 +115,24 @@ class PythonGenerator:
         elif type(part.quant) is OneOrMore:
             parts += 'self._loop', True
 
-        if part.metaname:
-            key = part.metaname
-            if iskeyword(key):
-                key = f'_{key}'
-            if key in variables:
-                raise GeneratorError
-        else:
-            var = None
-
-        def create_var():
-            nonlocal var
-            index = len(variables)
-            var = f'_{index}'
-            variables.append(var)
-
         if type(part.prime) is Char:
             parts += 'self._expectc', part.prime
-            create_var()
         elif type(part.prime) is Identifier:
             id = part.prime
             parts.append(f'self._{id.string}')
-            create_var()
         elif type(part.prime) is String:
             parts += 'self._expects', part.prime
-            create_var()
         elif type(part.prime) is AnyChar:
             parts.append('self._expectc')
-            create_var()
         else:
             raise GeneratorError('unsupported node type', part.prime)
+
+        metaname = part.metaname
+        if metaname != '_':
+            var = metaname
+            variables.append(metaname)
+        else:
+            var = None
 
         fn, args = parts[0], ', '.join(str(i) for i in parts[1:])
         op = 'and' if part_index else ''

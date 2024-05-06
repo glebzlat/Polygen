@@ -58,7 +58,7 @@ class Node(Iterable):
             if isinstance(v, Node):
                 v = v.dump()
             elif isiterable(v):
-                v = [i.dump() for i in v]
+                v = [(i.dump() if isinstance(i, Node) else i) for i in v]
             dct[k] = v
         return dct
 
@@ -155,7 +155,7 @@ class Rule(Node, ArgsRepr, Sized):
     def __init__(self,
                  name: Identifier,
                  rhs: Expression,
-                 directives: list[Identifier] | None = None):
+                 directives: list[str] | None = None):
         self.name = name
         self.rhs = rhs
         self._set_parent([self.name, self.rhs])
@@ -229,8 +229,8 @@ class Identifier(LeafNode, ArgsRepr):
 
 class Alt(Node, ArgsRepr, Sized):
     def __init__(self, *parts: Node, metarule: Optional[str] = None):
-        self.parts = list(parts)
         self.metarule = metarule
+        self.parts = list(parts)
         self._set_parent(self.parts)
 
     def _get_args(self):
@@ -298,7 +298,7 @@ class Part(Node, AttributeHolder):
             self._quant._parent = self
 
     def _get_kwargs(self):
-        dct = {}
+        dct = {'metaname': self.metaname}
         if self.pred:
             dct['pred'] = self.pred
         dct['prime'] = self.prime

@@ -158,11 +158,11 @@ class Parser:
     def _reset(self, pos: int):
         self.pos = pos
 
-    def _action(self, rulename, *args):
+    def _action(self, rulename, *args, **kwargs):
         if self.actions is not None:
             fn = getattr(self.actions, rulename, None)
             if fn:
-                return fn(self.actions, *args)
+                return fn(**kwargs)
         return args
 
     def parse(self):

@@ -13,14 +13,14 @@ from .node import Grammar
 from .tree_modifier import (
     ExpandClass,
     ReplaceRep,
-    ReplaceZeroOrOne,
     ReplaceOneOrMore,
-    EliminateAnd,
     CheckUndefRedef,
     SimplifyNestedExps,
     ReplaceNestedExps,
     CreateAnyCharRule,
     FindEntryRule,
+    IgnoreRules,
+    GenerateMetanames,
     TreeModifier
 )
 
@@ -44,9 +44,10 @@ class Generator:
                 ReplaceRep(),
             ],
             [CheckUndefRedef()],
-            [ReplaceOneOrMore(), ReplaceNestedExps()],
-            [FindEntryRule()],
-            [SimplifyNestedExps()],
+            [FindEntryRule(), IgnoreRules()],
+            # [SimplifyNestedExps()],
+            [ReplaceNestedExps()],
+            [GenerateMetanames()],
         ]
 
         modifier = TreeModifier(write_rules)

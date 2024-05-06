@@ -4,6 +4,8 @@ from functools import reduce
 from itertools import repeat
 from typing import Iterable
 from enum import StrEnum
+from collections import defaultdict
+from keyword import iskeyword
 
 from .node import (
     Node,
@@ -21,6 +23,7 @@ from .node import (
     ZeroOrMore,
     OneOrMore,
     Repetition,
+    String,
     Char,
     AnyChar
 )
@@ -37,6 +40,8 @@ class SemanticError(StrEnum):
 
 class SemanticWarning(StrEnum):
     UNUSED_RULES = "unused-rules"
+    LOOKAHEAD_METANAME = "lookahead-metaname"
+    METANAME_REDEF = "redef-metaname"
 
 
 class TreeModifierError(Exception):
@@ -396,7 +401,7 @@ class FindEntryRule:
         self.entry: Rule | None = None
 
     def visit_Rule(self, node: Rule):
-        if Identifier('entry') in node.directives:
+        if 'entry' in node.directives:
             if self.entry is not None:
                 if self.entry == node:
                     return
@@ -407,6 +412,92 @@ class FindEntryRule:
         if self.entry is None:
             raise TreeModifierError(SemanticError.ENTRY_NOT_DEFINED)
         node.entry = self.entry
+
+
+class IgnoreRules:
+    """Find rules with `@ignore` directive and add empty metanames.
+
+    Rules with `@ignore` directive won't be captured by default.
+    So the content that they match will not be passed to the semantic
+    actions or returned.
+
+    This will be useful e.g. for spacing rules -- spaces and comments
+    don't matter.
+    """
+
+    def __init__(self):
+        self.parts = defaultdict(list)
+
+    def visit_Identifier(self, node: Identifier):
+        part = node.parent
+        self.parts[node].append(part)
+
+    def visit_Rule(self, node: Rule):
+        if 'ignore' in node.directives:
+            for part in self.parts[node.id]:
+                part.metaname = '_'
+
+
+class GenerateMetanames:
+    """Create metanames for all particles in the grammar tree.
+
+    Particle with the Identifier will have the metaname, created from
+    this Identifier's string. Particles with other kind of stuff will
+    have indexed metanames: index, prepended with the underscore like
+    this: `_1`.
+
+    Lookahead particles must not have any metaname, except for the
+    "ignore" metaname: `_`.
+
+    Metanames that are given by the user would be preserved. If the
+    user adds two (or more) metanames that are the same, so the second
+    metaname will redefine the first, a warning will be raised.
+    """
+
+    def __init__(self):
+        self.index = 1
+        self.metanames = set()
+
+    def visit_Part(self, node: Part):
+        metaname = node.metaname
+
+        if type(node.pred) in (Not, And):
+            if metaname is not None and metaname != '_':
+                node.metaname = '_'
+                raise TreeModifierWarning(SemanticWarning.LOOKAHEAD_METANAME)
+            node.metaname = '_'
+            return
+
+        if type(node.prime) in (Char, String, AnyChar):
+            varname = f'_{self.index}'
+            self.index += 1
+        elif type(node.prime) is Identifier:
+            id = node.prime
+
+            if metaname is not None:
+                if metaname == '_':
+                    return
+
+                if metaname in self.metanames:
+                    raise TreeModifierWarning(SemanticError.METANAME_REDEF)
+                self.metanames.add(metaname)
+                return
+
+            if '__GEN' in id.string:
+                varname = id.string.lower()
+                if iskeyword(varname):
+                    varname = '_' + varname
+            else:
+                varname = f'_{self.index}'
+                self.index += 1
+        else:
+            raise RuntimeError(f"unsupported node type: {node.prime}")
+
+        node.metaname = varname
+
+    def visit_Alt(self, node: Alt):
+        self.index = 1
+        self.metanames.clear()
 
 
 class TreeModifier:

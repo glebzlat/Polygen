@@ -74,11 +74,11 @@ class GrammarParser(Parser):
                     return Rule(i, e, directives=directives)
         return None
 
-    def _Directive(self) -> Optional[Identifier]:
+    def _Directive(self) -> Optional[str]:
         if self._AT():
             if id := self._DirName():
                 if self._Spacing():
-                    return id
+                    return id.string
         return None
 
     def _DirName(self) -> Optional[Identifier]:
