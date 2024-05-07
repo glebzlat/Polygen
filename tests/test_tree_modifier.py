@@ -288,7 +288,7 @@ class TestCheckUndefRedef(unittest.TestCase):
 class TestReplaceNestedExps(unittest.TestCase):
     def test_simple_number_rule(self):
         number_id = Identifier('Number')
-        number_gen_id = Identifier('Number_1')
+        number_gen_id = Identifier('Number__GEN_1')
 
         nested_exp = Expression(Alt(Part(prime=Char('0'))),
                                 Alt(Part(prime=Char('1'))))
@@ -317,7 +317,7 @@ class TestReplaceNestedExps(unittest.TestCase):
 
     def test_complicated_number_rule(self):
         number_id = Identifier('Number')
-        number_gen_id = Identifier('Number_1')
+        number_gen_id = Identifier('Number__GEN_1')
 
         nested_exp = Expression(Alt(Part(prime=Char('0'))),
                                 Alt(Part(prime=Char('1'))))

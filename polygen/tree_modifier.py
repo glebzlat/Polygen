@@ -312,6 +312,8 @@ class ReplaceNestedExps:
     #      create rule with new_id and expression
     #      replace expression by new_id
 
+    id_fmt = "{string}__GEN_{idx}"
+
     def __init__(self) -> None:
         self.created_rules: list[Rule] = []
         self.id_count: dict[Identifier, int] = {}
@@ -326,7 +328,7 @@ class ReplaceNestedExps:
     def _create_id(self, id: Identifier) -> Identifier:
         idx = self.id_count.setdefault(id, 0) + 1
         self.id_count[id] = idx
-        return Identifier(f"{id.string}_{idx}")
+        return Identifier(self.id_fmt.format(string=id.string, idx=idx))
 
     def visit_Expression(self, node: Expression):
         if type(node.parent) is Rule:
@@ -367,7 +369,7 @@ class CreateAnyCharRule:
     """
 
     def __init__(self):
-        self.rule_id = Identifier("AnyChar_generated")
+        self.rule_id = Identifier("AnyChar__GEN")
         self.created_rule = Rule(
             self.rule_id.copy(),
             Expression(Alt(Part(prime=AnyChar())))
@@ -457,6 +459,7 @@ class GenerateMetanames:
     def __init__(self):
         self.index = 1
         self.metanames = set()
+        self.id_names = []
 
     def visit_Part(self, node: Part):
         metaname = node.metaname
@@ -484,12 +487,15 @@ class GenerateMetanames:
                 return
 
             if '__GEN' in id.string:
+                varname = f'_{self.index}'
+                self.index += 1
+            else:
                 varname = id.string.lower()
                 if iskeyword(varname):
                     varname = '_' + varname
-            else:
-                varname = f'_{self.index}'
-                self.index += 1
+                if c := self.id_names.count(varname):
+                    varname = f'{varname}{c}'
+                self.id_names.append(varname)
         else:
             raise RuntimeError(f"unsupported node type: {node.prime}")
 
@@ -498,6 +504,18 @@ class GenerateMetanames:
     def visit_Alt(self, node: Alt):
         self.index = 1
         self.metanames.clear()
+        self.id_names.clear()
+
+
+class DetectLeftRec:
+    def visit_Rule(self, node: Rule):
+        expr = node.expression
+        if len(expr) == 0:
+            return
+
+        for alt in expr:
+            if len(alt) and alt.parts[0].prime == node.id:
+                node.leftrec = True
 
 
 class TreeModifier:

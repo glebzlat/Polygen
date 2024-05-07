@@ -156,6 +156,7 @@ class Rule(Node, ArgsRepr, Sized):
                  name: Identifier,
                  rhs: Expression,
                  directives: list[str] | None = None):
+        self.leftrec = False
         self.name = name
         self.rhs = rhs
         self._set_parent([self.name, self.rhs])
