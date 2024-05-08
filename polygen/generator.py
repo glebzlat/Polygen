@@ -13,15 +13,14 @@ from .node import Grammar
 from .tree_modifier import (
     ExpandClass,
     ReplaceRep,
-    ReplaceOneOrMore,
     CheckUndefRedef,
-    SimplifyNestedExps,
     ReplaceNestedExps,
     CreateAnyCharRule,
     FindEntryRule,
     IgnoreRules,
     GenerateMetanames,
-    TreeModifier
+    TreeModifier,
+    TreeModifierWarning
 )
 
 from .python_gen import PythonGenerator
@@ -51,14 +50,18 @@ class Generator:
         ]
 
         modifier = TreeModifier(write_rules)
-        success, errors, warnings = modifier.visit(grammar)
 
-        if warnings:
-            print(*warnings, sep='\n', file=errstream)
+        try:
+            modifier.visit(grammar)
 
-        if not success:
-            print(*errors, sep='\n', file=errstream)
-            return None
+        except TreeModifierWarning as warn:
+            warnings = warn.args
+            for w in warnings:
+                name = type(w).__name__
+                nodes = w.args
+                print(f"Warning {name}:")
+                for n in nodes:
+                    print(f"    {n}")
 
     def get_grammar(self, file, *, modified=False) -> Optional[Grammar]:
         reader = Reader(file)

@@ -42,10 +42,11 @@ class TestDescendants(unittest.TestCase):
         PA, PB, PC = Part(prime=A), Part(prime=B), Part(prime=C)
         ALT = Alt(PA, PB, PC)
         EXP = Expression(ALT)
-        RULE = Rule(Identifier("rule"), EXP)
+        ID = Identifier("rule")
+        RULE = Rule(ID, EXP)
         tree = Grammar(RULE)
 
-        clue = [tree, RULE, EXP, ALT, PA, A, PB, B, PC, C]
+        clue = [tree, RULE, ID, EXP, ALT, PA, A, PB, B, PC, C]
         self.assertEqual(list(tree.descendants), clue)
 
 

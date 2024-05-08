@@ -3,7 +3,6 @@ import operator
 from functools import reduce
 from itertools import repeat
 from typing import Iterable
-from enum import StrEnum
 from collections import defaultdict, Counter
 from keyword import iskeyword
 
@@ -29,31 +28,164 @@ from .node import (
 )
 
 
-class SemanticError(StrEnum):
-    INVALID_RANGE = "invalid-range"
-    INVALID_REPETITION = "invalid-rep"
-    UNDEF_RULES = "undef-rules"
-    REDEF_RULES = "redef-rules"
-    REDEF_ENTRY = "redef-entry"
-    ENTRY_NOT_DEFINED = "not-def-entry"
+class SemanticError(Exception):
+    """Base class for semantic errors raised by tree modifiers.
+
+    `SemanticError` instances normally should not be raised to the end user,
+    but collected by the `TreeModifier`. If at least one `SemanticError`
+    occured, `TreeModifier` will raise `TreeModifierError`.
+
+    SemanticError must define severity level:
+        low: Exception registered. Modifier, that has raised this exception,
+            is not discarded.
+        moderate: Exception registered and the modifier that raised it is
+            discarded.
+        critical: Exception halts traversal process and causes TreeModifier
+            to raise TreeModifierError immediately.
+
+    `SemanticError` instances may contain node (or nodes) that caused
+    the error, but does not give any text representation. This is the
+    formatter's responsibility.
+    """
+
+    severity = "critical"
 
 
-class SemanticWarning(StrEnum):
-    UNUSED_RULES = "unused-rules"
-    LOOKAHEAD_METANAME = "lookahead-metaname"
-    METANAME_REDEF = "redef-metaname"
+class InvalidRangeError(SemanticError):
+    """Malformed range quantifier.
+
+    Raised when the upper bound of a range is less than the lower bound:
+    `end < beg`.
+    """
+
+    severity = "low"
+
+    def __init__(self, node: Range):
+        self.node = node
+
+
+class InvalidRepetitionError(SemanticError):
+    """Malformed repetition particle.
+
+    Raised when the upper bound of a repetition is less than the lower bound:
+    `end < beg`.
+    """
+
+    severity = "low"
+
+    def __init__(self, node: Range):
+        self.node = node
+
+
+class UndefRulesError(SemanticError):
+    """Undefined rules error.
+
+    Raised, when an identifier in the right-hand side of a rule not found
+    in rule names set.
+
+    Args:
+        rules: A mapping from undefined identifier to the rule, where
+            it was found.
+    """
+
+    severity = "low"
+
+    def __init__(self, rules: dict[Identifier, Rule]):
+        self.rules = rules
+
+
+class RedefRulesError(SemanticError):
+    """Raised when the rule with the same id is defined more than once.
+
+    Args:
+        identifiers: A dictionary that maps an identifier to a sequence
+            of rules with this identifier.
+    """
+
+    severity = "low"
+
+    def __init__(self, rules: dict[Identifier, list[Rule]]):
+        self.rules = rules
+
+
+class RedefEntryError(SemanticError):
+    """Raised when one than one entry point is defined."""
+
+    severity = "moderate"
+
+
+class EntryNotDefinedError(SemanticError):
+    """Raised when no entry point defined."""
+
+    severity = "moderate"
+
+
+class MetanameRedefError(SemanticError):
+    """Raised when metaname is redefined.
+
+    Redefinition of the metaname will probably lead to compiler/interpreter
+    errors (redefined variable) or at least to malfunctioning parser.
+    """
+
+    severity = "low"
+
+
+class SemanticWarning(Warning):
+    """Base class for semantic warnings raised by tree modifiers.
+
+    If at least one semantic warning was raised during the tree traversal
+    process, it will be collected and cause the `TreeModifier` to raise
+    `TreeModifierWarning`.
+
+    `SemanticWarning` instances may contain node (or nodes) that caused
+    the error, but does not give any text representation. This is the
+    formatter's responsibility.
+    """
+
+    pass
+
+
+class UnusedRulesWarning(SemanticWarning):
+    pass
+
+
+class LookaheadMetanameWarning(SemanticWarning):
+    """Raised when a metaname is assigned to a lookahead particle.
+
+    Lookahead particles does not consume any input string, so their value
+    is not so useful in the semantic actions.
+    """
 
 
 class TreeModifierError(Exception):
-    def __init__(self, what: SemanticError, *nodes: Node):
-        self.what = what
-        self.nodes = nodes
+    """Exception that signals one or more semantic errors during tree traversal.
+
+    This exception is a container for underlying `SemanticError`-bases
+    instances. Raised exceptions are accessible through the standard
+    exception's `args` attribute.
+
+    If at least one `SemanticError` was raised, parser generation process
+    should be halted, as continuation will cause errors in the later stages
+    or will lead to non-working parser. If the semantic error is raised,
+    the tree is probably is in the incorrect state.
+    """
+
+    pass
 
 
 class TreeModifierWarning(Warning):
-    def __init__(self, what: SemanticWarning, *nodes: Node):
-        self.what = what
-        self.nodes = nodes
+    """Warning that signals one or more semantic warnings during traversal.
+
+    This warning is a container for underlying `SemanticWarning`-bases
+    instances. Raised warnings are accessible through the standard warnings's
+    `args` attribute.
+
+    Semantic warnins signals that there are mistakes in the grammar, which
+    may lead to malfunctioning parser, but it is possible to continue the
+    generation process.
+    """
+
+    pass
 
 
 class ExpandClass:
@@ -77,7 +209,7 @@ class ExpandClass:
             return {rng.beg}
 
         if rng.beg > rng.end:
-            raise TreeModifierError(SemanticError.INVALID_RANGE, rng)
+            raise InvalidRangeError(rng)
         return set(map(Char, range(rng.beg.code, rng.end.code + 1)))
 
     def visit_Class(self, node: Class):
@@ -108,7 +240,7 @@ class ReplaceRep:
         assert type(node.parent) is Part
 
         if node.end and node.beg > node.end:
-            raise TreeModifierError(SemanticError.INVALID_REPETITION, node)
+            raise InvalidRepetitionError(node)
 
         part: Part = node.parent
         prime = part.prime
@@ -201,13 +333,6 @@ class EliminateAnd:
 
 class CheckUndefRedef:
     """Check for undefined rules in expressions and for rules with same names.
-
-    If the rule is undefined (there is a rule identifier in expression, but
-    there is no rule with such id), TreeModifierError with UNDEF_RULES error
-    type will be raised. It will contain a sequence of `tuple[id, rule]`.
-
-    If the rule is redefined, then the TreeModifierError with REDEF_RULES
-    will be raised. It will contain all the duplicate rules.
     """
 
     def __init__(self):
@@ -233,15 +358,15 @@ class CheckUndefRedef:
 
     def visit_Grammar(self, node: Grammar):
         if diff := set(self.rhs_names) - self.rule_names_set:
-            undef_rules = ((i, self.rhs_names[i]) for i in diff)
-            raise TreeModifierError(SemanticError.UNDEF_RULES, *undef_rules)
+            undef_rules = {i: self.rhs_names[i] for i in diff}
+            raise UndefRulesError(undef_rules)
 
         if len(node.nodes) > len(node.rules):
             counter = Counter(r.id for r in node.nodes)
             duplicates = (n for n, i in counter.most_common() if i > 1)
-            dup_rules = (tuple(r for r in node.nodes if r.id == d)
-                         for d in duplicates)
-            raise TreeModifierError(SemanticError.REDEF_RULES, *dup_rules)
+            dup_rules = {d: [r for r in node.nodes if r.id == d]
+                         for d in duplicates}
+            raise RedefRulesError(dup_rules)
 
 
 class SimplifyNestedExps:
@@ -313,15 +438,6 @@ class ReplaceNestedExps:
     ```
     """
 
-    # For nested expression in grammar:
-    #   if expression already in created rules:
-    #      id = created rule id with expression
-    #   else:
-    #      parent_id = get parent rule's id
-    #      new_id = augment parent_id
-    #      create rule with new_id and expression
-    #      replace expression by new_id
-
     id_fmt = "{string}__GEN_{idx}"
 
     def __init__(self) -> None:
@@ -341,6 +457,16 @@ class ReplaceNestedExps:
         return Identifier(self.id_fmt.format(string=id.string, idx=idx))
 
     def visit_Expression(self, node: Expression):
+
+        # For nested expression in grammar:
+        #   if expression already in created rules:
+        #      replace expression by an id of the created rule
+        #   else:
+        #      parent_id = get parent rule's id
+        #      new_id = augment parent_id
+        #      create rule with new_id and expression
+        #      replace expression by new_id
+
         if type(node.parent) is Rule:
             return False
 
@@ -417,12 +543,12 @@ class FindEntryRule:
             if self.entry is not None:
                 if self.entry == node:
                     return
-                raise TreeModifierError(SemanticError.REDEF_ENTRY, node)
+                raise RedefEntryError(node)
             self.entry = node
 
     def visit_Grammar(self, node: Grammar):
         if self.entry is None:
-            raise TreeModifierError(SemanticError.ENTRY_NOT_DEFINED)
+            raise EntryNotDefinedError()
         node.entry = self.entry
 
 
@@ -476,8 +602,9 @@ class GenerateMetanames:
 
         if type(node.pred) in (Not, And):
             if metaname is not None and metaname != '_':
+                copy = node.copy()
                 node.metaname = '_'
-                raise TreeModifierWarning(SemanticWarning.LOOKAHEAD_METANAME)
+                raise LookaheadMetanameWarning(copy)
             node.metaname = '_'
             return
 
@@ -492,7 +619,7 @@ class GenerateMetanames:
                     return
 
                 if metaname in self.metanames:
-                    raise TreeModifierWarning(SemanticError.METANAME_REDEF)
+                    raise MetanameRedefError(node)
                 self.metanames.add(metaname)
                 return
 
@@ -561,10 +688,23 @@ class TreeModifier:
 
             try:
                 flags[i] = visit(node) or flags[i]
-            except TreeModifierError as exc:
+
+            except SemanticError as exc:
                 self.errors.append(exc)
+
+                if exc.severity == "critical":
+                    raise TreeModifierError(self.errors)
+                elif exc.severity == "moderate":
+                    flags[i] = None
+                elif exc.severity == "low":
+                    pass
+                else:
+                    raise RuntimeError(
+                        f"invalid severity value {exc.severity!r}")
+
                 flags[i] = None
-            except TreeModifierWarning as warn:
+
+            except SemanticWarning as warn:
                 self.warnings.append(warn)
 
     def visit(self, tree: Grammar):
@@ -587,5 +727,8 @@ class TreeModifier:
                 rules = [rule for i, rule in enumerate(rules) if flags[i]]
                 stage_done = not rules
 
-        success = not self.errors
-        return success, self.warnings, self.errors
+        if self.errors:
+            raise TreeModifierError(*self.errors)
+
+        if self.warnings:
+            raise TreeModifierWarning(*self.warnings)

@@ -21,6 +21,10 @@ from polygen.node import (
 )
 
 from polygen.tree_modifier import (
+    InvalidRangeError,
+    InvalidRepetitionError,
+    RedefRulesError,
+    UndefRulesError,
     SemanticError,
     TreeModifierError,
     ExpandClass,
@@ -109,12 +113,11 @@ class TestExpandClass(unittest.TestCase):
 
         node = tree.prime
 
-        with self.assertRaises(TreeModifierError) as raised_exc:
+        with self.assertRaises(InvalidRangeError) as raised_exc:
             rule.visit_Class(node)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, SemanticError.INVALID_RANGE)
-        self.assertEqual(exception.nodes, (rng,))
+        self.assertEqual(exception.node, rng)
 
 
 class TestReplaceRep(unittest.TestCase):
@@ -154,12 +157,14 @@ class TestReplaceRep(unittest.TestCase):
     def test_apply_repetition_invalid_end(self):
         E = Char('e')
         rule = ReplaceRep()
-        part = Part(prime=E, quant=Repetition(3, 2))
+        rep = Repetition(3, 2)
+        part = Part(prime=E, quant=rep)
         node = part.quant
-        with self.assertRaises(TreeModifierError) as context:
+        with self.assertRaises(InvalidRepetitionError) as context:
             rule.visit_Repetition(node)
-        self.assertEqual(context.exception.what,
-                         SemanticError.INVALID_REPETITION)
+
+        exception = context.exception
+        self.assertEqual(exception.node, rep)
 
 
 class TestReplaceZeroOrOne(unittest.TestCase):
@@ -260,12 +265,11 @@ class TestCheckUndefRedef(unittest.TestCase):
         rule.visit_Identifier(A)
         rule.visit_Identifier(B)
 
-        with self.assertRaises(TreeModifierError) as raised_exc:
+        with self.assertRaises(UndefRulesError) as raised_exc:
             rule.visit_Grammar(g)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, SemanticError.UNDEF_RULES)
-        self.assertEqual(exception.nodes, ((B, R),))
+        self.assertEqual(exception.rules, {B: R})
 
     def test_redef(self):
         A = Identifier('A')
@@ -282,11 +286,11 @@ class TestCheckUndefRedef(unittest.TestCase):
         rule.visit_Identifier(A1)
         rule.visit_Identifier(A2)
 
-        with self.assertRaises(TreeModifierError) as raised_exc:
+        with self.assertRaises(RedefRulesError) as raised_exc:
             rule.visit_Grammar(g)
 
         exception = raised_exc.exception
-        self.assertEqual(exception.what, SemanticError.REDEF_RULES)
+        self.assertEqual(exception.rules, {A1: [R1, R2]})
 
 
 class TestReplaceNestedExps(unittest.TestCase):

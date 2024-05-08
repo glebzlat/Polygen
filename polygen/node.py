@@ -38,9 +38,11 @@ class Node(Iterable):
     def __iter__(self) -> Iterator[Node]:
         ...
 
-    def copy(self) -> Node:
+    def copy(self, deep=False) -> Node:
         nodes = []
         for node in self:
+            if deep:
+                node = node.copy(deep=True)
             nodes.append(node)
 
         self_type = type(self)
@@ -72,7 +74,7 @@ class LeafNode(Node):
     def __iter__(self) -> Iterator[Node]:
         yield from tuple()
 
-    def copy(self) -> Node:
+    def copy(self, deep=False) -> Node:
         return type(self)()
 
 
@@ -222,7 +224,7 @@ class Identifier(LeafNode, ArgsRepr):
             return NotImplemented
         return self.string < other.string
 
-    def copy(self) -> Identifier:
+    def copy(self, deep=False) -> Identifier:
         return Identifier(self.string)
 
     def __hash__(self):
@@ -298,6 +300,13 @@ class Part(Node, AttributeHolder):
         self._quant = value
         if self._quant is not None:
             self._quant._parent = self
+
+    def copy(self, deep=False):
+        if deep:
+            kwargs = {k: v.copy() for k, v in self._get_kwargs()}
+        else:
+            kwargs = dict(self._get_kwargs())
+        return Part(**kwargs)
 
     def _get_kwargs(self):
         dct = {'metaname': self.metaname}
