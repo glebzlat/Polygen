@@ -4,7 +4,7 @@ from functools import reduce
 from itertools import repeat
 from typing import Iterable
 from enum import StrEnum
-from collections import defaultdict
+from collections import defaultdict, Counter
 from keyword import iskeyword
 
 from .node import (
@@ -201,37 +201,47 @@ class EliminateAnd:
 
 class CheckUndefRedef:
     """Check for undefined rules in expressions and for rules with same names.
+
+    If the rule is undefined (there is a rule identifier in expression, but
+    there is no rule with such id), TreeModifierError with UNDEF_RULES error
+    type will be raised. It will contain a sequence of `tuple[id, rule]`.
+
+    If the rule is redefined, then the TreeModifierError with REDEF_RULES
+    will be raised. It will contain all the duplicate rules.
     """
 
     def __init__(self):
-        self.rhs_names_set = set()
+        self.rhs_names = {}
         self.rule_names_set = set()
-        self.rule_names = []
+
+    def _get_parent_rule(self, node):
+        while type(node) is not Rule:
+            node = node.parent
+        return node
 
     def visit_Identifier(self, node: Identifier):
         if type(node.parent) is Rule:
-            self.rule_names.append(node)
             if node in self.rule_names_set:
                 return False
             self.rule_names_set.add(node)
         else:
-            if node in self.rhs_names_set:
+            if node in self.rhs_names:
                 return False
-            self.rhs_names_set.add(node)
+            self.rhs_names[node] = self._get_parent_rule(node)
 
-        return True
+        return False
 
-    def exit_Grammar(self, node: Grammar):
-        if diff := self.rhs_names_set - self.rule_names_set:
-            raise TreeModifierError(SemanticError.UNDEF_RULES, *sorted(diff))
+    def visit_Grammar(self, node: Grammar):
+        if diff := set(self.rhs_names) - self.rule_names_set:
+            undef_rules = ((i, self.rhs_names[i]) for i in diff)
+            raise TreeModifierError(SemanticError.UNDEF_RULES, *undef_rules)
 
-        if len(self.rule_names) > len(self.rule_names_set):
-            names_count = {
-                name: self.rule_names.count(name)
-                for name in self.rule_names}
-            duplicates = (
-                name for name, count in names_count.items() if count > 1)
-            raise TreeModifierError(SemanticError.REDEF_RULES, *duplicates)
+        if len(node.nodes) > len(node.rules):
+            counter = Counter(r.id for r in node.nodes)
+            duplicates = (n for n, i in counter.most_common() if i > 1)
+            dup_rules = (tuple(r for r in node.nodes if r.id == d)
+                         for d in duplicates)
+            raise TreeModifierError(SemanticError.REDEF_RULES, *dup_rules)
 
 
 class SimplifyNestedExps:

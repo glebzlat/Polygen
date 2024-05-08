@@ -252,8 +252,8 @@ class TestCheckUndefRedef(unittest.TestCase):
     def test_undef(self):
         A, B = Identifier('A'), Identifier('B')
         exp = Expression(Alt(Part(prime=B)))
-        rule = Rule(A, exp)
-        g = Grammar(rule)
+        R = Rule(A, exp)
+        g = Grammar(R)
 
         rule = CheckUndefRedef()
 
@@ -261,25 +261,29 @@ class TestCheckUndefRedef(unittest.TestCase):
         rule.visit_Identifier(B)
 
         with self.assertRaises(TreeModifierError) as raised_exc:
-            rule.exit_Grammar(g)
+            rule.visit_Grammar(g)
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, SemanticError.UNDEF_RULES)
-        self.assertEqual(exception.nodes, (B,))
+        self.assertEqual(exception.nodes, ((B, R),))
 
     def test_redef(self):
         A = Identifier('A')
         exp = Expression(Alt(Part(prime=Char('c'))))
-        R = Rule(A, exp)
-        g = Grammar(R)
+
+        A1 = A.copy()
+        A2 = A.copy()
+        R1 = Rule(A1, exp.copy())
+        R2 = Rule(A2, exp.copy())
+        g = Grammar(R1, R2)
 
         rule = CheckUndefRedef()
 
-        rule.visit_Identifier(A)
-        rule.visit_Identifier(A)
+        rule.visit_Identifier(A1)
+        rule.visit_Identifier(A2)
 
         with self.assertRaises(TreeModifierError) as raised_exc:
-            rule.exit_Grammar(g)
+            rule.visit_Grammar(g)
 
         exception = raised_exc.exception
         self.assertEqual(exception.what, SemanticError.REDEF_RULES)

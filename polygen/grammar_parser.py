@@ -56,11 +56,11 @@ class GrammarParser(Parser):
     def _Grammar(self) -> Optional[Grammar]:
         if self._Spacing():
             if d := self._Definition():
-                g = Grammar(d)
+                rules = [d]
                 while d := self._Definition():
-                    g.add(d)
+                    rules.append(d)
                 if self._EndOfFile():
-                    return g
+                    return Grammar(*rules)
         return None
 
     def _Definition(self) -> Optional[Rule]:

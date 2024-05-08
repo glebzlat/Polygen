@@ -15,8 +15,9 @@ def seq_cmp(seq1, seq2):
 
 
 class Node(Iterable):
-    def __init__(self):
+    def __init__(self, begin_pos: int = 0, end_pos: int = 0):
         self._parent = None
+        self._begin_pos, self._end_pos = begin_pos, end_pos
 
     @property
     def descendants(self) -> Iterator[Node]:
@@ -190,7 +191,7 @@ class Rule(Node, ArgsRepr, Sized):
         return f'Rule{directives}({self.name}, {self.rhs})'
 
     def __iter__(self):
-        yield self.rhs
+        yield from (self.name, self.rhs)
 
     def __len__(self):
         return len(self.rhs)
