@@ -7,8 +7,7 @@ from typing import Optional, TextIO
 
 from .__version__ import __version__
 
-from .reader import Reader
-from .grammar_parser import GrammarParser
+from .bootstrap.parser import Parser as GrammarParser
 from .node import Grammar
 from .tree_modifier import (
     ExpandClass,
@@ -66,8 +65,7 @@ class Generator:
                     print(f"    {n}")
 
     def get_grammar(self, file, *, modified=False) -> Optional[Grammar]:
-        reader = Reader(file)
-        parser = GrammarParser(reader)
+        parser = GrammarParser(file)
 
         grammar = parser.parse()
         if grammar is None:

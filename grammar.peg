@@ -4,7 +4,7 @@ Entity     <- Definition / MetaDef
 Definition <- Directive* Identifier LEFTARROW Expression         $def_action
             / MetaDef
 
-Directive  <- AT DirName Spacing
+Directive  <- AT DirName Spacing                                 $directive_action
 DirName    <- Identifier
 
 Expression <- Sequence seqs:(SLASH Sequence)*                    $expr_action
@@ -74,6 +74,10 @@ $def_action {
   return Rule(identifier, expression, directives=directive)
 }
 
+$directive_action {
+  return dirname.string
+}
+
 $expr_action {
   return Expression(sequence, *seqs)
 }
@@ -84,7 +88,7 @@ $sequence_action {
 }
 
 $prefix_action {
-  metaname = metaname if isnode(metaname) else None
+  metaname = metaname if isinstance(metaname, str) else None
   lookahead = lookahead if isnode(lookahead) else None
   prime, quant = suffix
   quant = quant if isnode(quant) else None
@@ -115,6 +119,8 @@ $ident_action {
 }
 
 $literal_action {
+  if len(chars) == 1:
+    return chars[0]
   return String(*chars)
 }
 

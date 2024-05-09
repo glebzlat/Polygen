@@ -105,10 +105,6 @@ class Grammar(Node, ArgsRepr, Sized):
     def _get_args(self):
         return self._nodes
 
-    def _get_kwargs(self):
-        return [('rules', self.rules.values()),
-                ('metarules', self.metarules.values())]
-
     def __eq__(self, other):
         if not isinstance(other, Grammar):
             return NotImplemented
@@ -192,8 +188,7 @@ class Rule(Node, ArgsRepr, Sized):
         return [self.name, self.rhs]
 
     def __str__(self):
-        directives_parts = (id.string for id in self.directives)
-        directives = ('[' + ', '.join(directives_parts) + ']'
+        directives = ('[' + ', '.join(self.directives) + ']'
                       if self.directives else '')
         return f'Rule{directives}({self.name}, {self.rhs})'
 
