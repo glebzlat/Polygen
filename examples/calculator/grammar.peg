@@ -1,0 +1,86 @@
+@entry
+Grammar      <- Expr EndOfFile           $grammar_action
+
+Expr         <- Term PLUS Expr           $sum_action
+              / Term MINUS Expr          $sub_action
+              / Term
+Term         <- Atom MUL Term            $mul_action
+              / Atom DIV Term            $div_action
+              / Atom
+              / OPEN Expr CLOSE
+
+Atom         <- Id                       $atom_id_action
+              / Number
+
+Id           <- IdStart IdCont* Spacing  $id_action
+IdStart      <- [a-zA-Z_]
+IdCont       <- [a-zA-Z0-9_]
+
+Number       <- Float / Int
+Int          <- chars:[0-9]+ Spacing           $int_action
+Float        <- integer:[0-9]* '.' frac:[0-9]+ Spacing  $float_action
+
+@ignore
+PLUS         <- '+' Spacing
+@ignore
+MINUS        <- '-' Spacing
+@ignore
+MUL          <- '*' Spacing
+@ignore
+DIV          <- '/' Spacing
+@ignore
+EQ           <- '=' Spacing
+@ignore
+OPEN         <- '(' Spacing
+@ignore
+CLOSE        <- ')' Spacing
+
+@ignore
+Spacing      <- (Space / EndOfLine)*
+Space        <- ' ' / '\t'
+EndOfLine    <- '\n'
+
+EndOfFile <- !.
+
+$grammar_action {
+  return expr
+}
+
+$sum_action {
+  return term + expr
+}
+
+$sub_action {
+  return term - expr
+}
+
+$mul_action {
+  return atom * term
+}
+
+$div_action {
+  return atom / term
+}
+
+$atom_id_action {
+  value = self.constants.get(id)
+  if value is None:
+      raise CalculatorError("undefined variable", id)
+  return value
+}
+
+$id_action {
+  return ''.join((idstart, *idcont))
+}
+
+$int_action {
+  string = ''.join(chars)
+  return int(string)
+}
+
+$float_action {
+  integer = ''.join(integer)
+  frac = ''.join(frac)
+  string = '.'.join((*integer, *frac))
+  return float(string)
+}
