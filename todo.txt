@@ -1,6 +1,46 @@
 # Additions
 
-Disallow metanames for lookahead particles.
+Add new node type: MetaRule. MetaRules are pieces of code, which will be
+inserted by the parser generator into the parsing functions. Metarules may
+be unnamed (when occured right after the Rule in the curly braces preceded by
+the dollar sign [1]) and named. Named rules are occured as standalone
+entities, which consist of the dollar sign, identifier and the code in the
+curly braces [2].
+    1. Rule <- Expr ${ ... }
+    2. $identifier { ... }
+If the rule is named, it may be referenced. In this case, the reference is
+placed after the rule:
+    Rule <- Expr $identifier
+So the type of metarule attribute of the Rule class is MetaRule | Identifier.
+
+Add new parsing rule _Entity
+    _Entity <- Definition / MetaDef
+Definition yields Rule, MetaDef yields MetaRule.
+
+Metarules are the part of the grammar, they may appear in the same place,
+as the general rules. Later, they must be eliminated by the tree modifier:
+metarule references will be replaced by the metarule definitions; unnamed
+metarule definitions will be assigned to Rule's metarule attributes.
+
+Note that metarules should be replaced in the grammar in-place, which may
+be a headache because of iterator's immutability.
+
+Add grammar preprocessor. Grammar preprocessor will extend directive language.
+It will make possible to write
+    @ignore {
+    Rule1 <- ...
+    ...
+    RuleN <- ...
+    }
+which will be substituted by:
+    @ignore
+    Rule1 <- ...
+    ...
+    @ignore
+    RuleN <- ...
+which itself will be parsed by the grammar parser.
+
+Add grammar preprocessor @include directive.
 
 How to add semantic actions? Or just generate a parsing tree and that's enough?
 
