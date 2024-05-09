@@ -107,13 +107,14 @@ class PythonGenerator:
 
         with self.indent():
             indent_lvl = len(self.indentation) // 4
-            retval = ', '.join(variables)
             if alt.metarule:
+                self.put(f'# {alt.metarule.id.string}')
                 self.put(
                     reindent(alt.metarule.expr, level=indent_lvl),
                     indent=0)
             else:
-                self.put(f'return {retval}')
+                retval = ', '.join(variables)
+                self.put(f'return {retval}' if retval else 'return True')
         self.put('self._reset(pos)')
 
     def gen_part(self, part, part_index, variables, newline):

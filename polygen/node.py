@@ -80,40 +80,19 @@ class LeafNode(Node):
 
 class Grammar(Node, ArgsRepr, Sized):
     def __init__(self, *rules: Rule | MetaRule):
-        self._nodes = []
-
-        self.rules = {}
-        self.metarules = {}
-        for r in rules:
-            if isinstance(r, Rule):
-                # This is a dirty hack to not to break the tree modification
-                # rules: do not add MetaRules to the node list
-                self._nodes.append(r)
-                self.rules[r.id] = r
-            elif isinstance(r, MetaRule):
-                self.metarules[r.id] = r
-            else:
-                raise TypeError(f"incorrect rule type {type(r)}")
-
+        self.nodes = list(rules)
         self._entry: Optional[Rule] = None
-        self._set_parent(self._nodes)
-        self._set_parent(self.metarules.values())
-
-    @property
-    def nodes(self):
-        return self._nodes
-
-    @nodes.setter
-    def nodes(self, value):
-        self._nodes = value
+        self._set_parent(self.nodes)
 
     def add(self, rule: Rule) -> bool:
-        if rule.id in self.rules:
+        if rule in self.nodes:
             return False
         self.nodes.append(rule)
-        self.rules[rule.name] = rule
         rule._parent = self
         return True
+
+    def remove_metarules(self):
+        self.nodes = list(filter(lambda i: type(i) is not MetaRule, self.nodes))
 
     @property
     def entry(self):
@@ -136,14 +115,13 @@ class Grammar(Node, ArgsRepr, Sized):
         return self.rules == other.rules
 
     def __iter__(self):
-        yield from self.rules.values()
-        yield from self.metarules.values()
+        yield from self.nodes
 
     def __len__(self):
-        return len(self.rules)
+        return len(self.nodes)
 
     def __str__(self):
-        return '\n'.join(map(str, self.rules.values()))
+        return '\n'.join(map(str, self.nodes))
 
     def __bool__(self):
         return True

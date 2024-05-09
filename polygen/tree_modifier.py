@@ -100,7 +100,7 @@ class RedefRulesError(SemanticError):
     """Raised when the rule with the same id is defined more than once.
 
     Args:
-        identifiers: A dictionary that maps an identifier to a sequence
+        rules: A dictionary that maps an identifier to a sequence
             of rules with this identifier.
     """
 
@@ -132,8 +132,34 @@ class MetanameRedefError(SemanticError):
     severity = "low"
 
 
-class UndefinedMetaRefsError(SemanticError):
+class UndefMetaRefsError(SemanticError):
+    """Undefined metarules error.
+
+    Raised when a metarule reference's id not found in metarules set.
+
+    Args:
+        alts: A mapping from undefined identifier to the alternative, where
+            it was found.
+    """
+
+    def __init__(self, rules: dict[Identifier, Alt]):
+        self.rules = rules
+
     severity = "moderate"
+
+
+class RedefMetaRulesError(SemanticError):
+    """Raised when the metarule with the same id is defined more than once.
+
+    Args:
+        rules: A dictionary that maps an identifier to a sequence
+            of rules with this identifier.
+    """
+
+    severity = "moderate"
+
+    def __init__(self, rules: dict[Identifier, MetaRule]):
+        self.rules = rules
 
 
 class SemanticWarning(Warning):
@@ -670,6 +696,7 @@ class SubstituteMetaRefs:
 
     def __init__(self):
         self.refs = defaultdict(list)
+        self.metarules = defaultdict(list)
         self.stage = 0
 
     def visit_MetaRef(self, node: MetaRef):
@@ -681,6 +708,7 @@ class SubstituteMetaRefs:
         if self.stage == 1:
             if type(node.parent) is Alt:
                 return False
+            self.metarules[node.id].append(node)
             alts = self.refs.pop(node.id, None)
             if alts is None:
                 raise UnusedMetaRuleWarning(node)
@@ -689,6 +717,12 @@ class SubstituteMetaRefs:
                 alt.metarule = node.copy()
         return True
 
+    def _check_redefined(self):
+        duplicates = {id: rules for id, rules in self.metarules.items()
+                      if len(rules) > 1}
+        if len(duplicates):
+            raise RedefMetaRulesError(duplicates)
+
     def visit_Grammar(self, node: Grammar):
         if self.stage == 0:
             self.stage = 1
@@ -696,8 +730,9 @@ class SubstituteMetaRefs:
         if self.stage == 1:
             self.stage = 2
             if self.refs:
-                raise UndefinedMetaRefsError(dict(self.refs))
-            node.metarules.clear()
+                raise UndefMetaRefsError(dict(self.refs))
+            self._check_redefined()
+            node.remove_metarules()
             return False
 
 

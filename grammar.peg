@@ -8,49 +8,55 @@ Directive  <- AT DirName Spacing
 DirName    <- Identifier
 
 Expression <- Sequence seqs:(SLASH Sequence)*                    $expr_action
-Sequence   <- p:Prefix* m:MetaRule?                              $sequence_action
-Prefix     <- MetaName? lookahead:(AND / NOT)? s:Suffix          $prefix_action
-Suffix     <- p:Primary q:(QUESTION / STAR / PLUS / Repetition)? $suffix_action
+Sequence   <- parts:Prefix* m:MetaRule?                          $sequence_action
+Prefix     <- MetaName? lookahead:(AND / NOT)? Suffix            $prefix_action
+Suffix     <- Primary (QUESTION / STAR / PLUS / Repetition)?
 Primary    <- Identifier !LEFTARROW
             / OPEN Expression CLOSE
             / Literal / Class / DOT
 MetaName   <- Identifier SEMI                                    $metaname_action
-MetaRule   <- '${' content:(![}] .)* '}' Spacing
-            / '$' Spacing Identifier !'{'
+MetaRule   <- '${' expr:(![}] .)* '}' Spacing                    $metarule_def_action
+            / '$' Spacing Identifier !'{'                        $metarule_ref_action
 
 MetaDef    <- '$' Spacing Identifier '{' expr:(![}] .)* '}' Spacing   $metadef_action
 
-Identifier <- IdentStart IdentCont* Spacing
+Identifier <- start:IdentStart cont:IdentCont* Spacing                $ident_action
 IdentStart <- [a-zA-Z_]
 IdentCont  <- IdentStart / [0-9]
 
-Literal    <- ['] seq:(!['] Char)* ['] Spacing
-            / ["] seq:(!["] Char)* ["] Spacing
-Class      <- '[' ranges:(!']' Range)* ']' Spacing
-Range      <- Char '-' Char
-            / Char
-Char       <- '\\' char:[nrt'"\[\]\\]
-            / '\\' char1:[0-2] char2:[0-7] char3:[0-7]
-            / '\\' char1:[0-7] char2:[0-7]?
-            / '\\u' HexDigit{4}
-            / !'\\' .
+Literal    <- ['] chars:(!['] Char)* ['] Spacing                 $literal_action
+            / ["] chars:(!["] Char)* ["] Spacing                 $literal_action
+Class      <- '[' ranges:(!']' Range)* ']' Spacing               $class_action
+Range      <- beg:Char '-' end:Char                              $range_2_action
+            / beg:Char                                           $range_1_action
+Char       <- '\\' char:[nrt'"\[\]\\]                            $esc_char_action
+            / '\\' char1:[0-2] char2:[0-7] char3:[0-7]           $oct_char_action_1
+            / '\\' char1:[0-7] char2:[0-7]?                      $oct_char_action_2
+            / '\\u' chars:HexDigit{4}                            $unicode_char_action
+            / !'\\' any:.                                        $any_char_action
 
 Repetition <- '{'
-              grp:(Number ',' Number / Number) '}' Spacing
-Number     <- chars:[0-9]+
+              grp:(Number ',' Number / Number) '}' Spacing       $rep_action
+Number     <- chars:[0-9]+                                       $number_action
 HexDigit   <- char:[0-9A-F]
 
+@ignore
 LEFTARROW  <- '<-' Spacing
+@ignore
 SLASH      <- '/' Spacing
-AND        <- '&' Spacing ${ And() }
-NOT        <- '!' Spacing
-QUESTION   <- '?' Spacing
-STAR       <- '*' Spacing
-PLUS       <- '+' Spacing
+AND        <- '&' Spacing  $and_action
+NOT        <- '!' Spacing  $not_action
+QUESTION   <- '?' Spacing  $optional_action
+STAR       <- '*' Spacing  $zero_or_more_action
+PLUS       <- '+' Spacing  $one_or_more_action
+@ignore
 OPEN       <- '(' Spacing
+@ignore
 CLOSE      <- ')' Spacing
-DOT        <- '.' Spacing
+DOT        <- '.' Spacing  $dot_action
+@ignore
 AT         <- '@' Spacing
+@ignore
 SEMI       <- ':' Spacing
 
 @ignore
@@ -60,35 +66,135 @@ Space      <- ' ' / '\t' / EndOfLine
 EndOfLine  <- '\r\n' / '\n' / '\r'
 EndOfFile  <- !.
 
-$sequence_action {
-  return Alt(Part(pred=p[0], prime=p[1], quant=p[2]),
-             metarule=(m if isinstance(m, str) else None))
-}
-
-$expr_action {
-  return Expression(sequence, *seqs)
+$grammar_action {
+  return Grammar(*entity)
 }
 
 $def_action {
   return Rule(identifier, expression, directives=directive)
 }
 
-$grammar_action {
-  return Grammar(*definition)
+$expr_action {
+  return Expression(sequence, *seqs)
+}
+
+$sequence_action {
+  m = m if isnode(m) else None
+  return Alt(*parts, metarule=m)
 }
 
 $prefix_action {
-  return (grp, *s) if isinstance(grp, Node) else (None, *s)
-}
-
-$suffix_action {
-  return (p, q) if isinstance(q, Node) else (p, None)
+  metaname = metaname if isnode(metaname) else None
+  lookahead = lookahead if isnode(lookahead) else None
+  prime, quant = suffix
+  quant = quant if isnode(quant) else None
+  return Part(pred=lookahead, prime=prime, quant=quant, metaname=metaname)
 }
 
 $metaname_action {
   return identifier.string
 }
 
+$metarule_def_action {
+  string = ''.join(expr)
+  return MetaRule(expr=string)
+}
+
+$metarule_ref_action {
+  return MetaRef(identifier)
+}
+
 $metadef_action {
-  return MetaDef(id=identifier, expr=expr)
+  string = ''.join(expr)
+  return MetaRule(id=identifier, expr=string)
+}
+
+$ident_action {
+  string = ''.join((start, *cont))
+  return Identifier(string)
+}
+
+$literal_action {
+  return String(*chars)
+}
+
+$class_action {
+  return Class(*ranges)
+}
+
+$range_2_action {
+  return Range(beg, end)
+}
+
+$range_1_action {
+  return Range(beg)
+}
+
+$esc_char_action {
+  # I cannot use curly brace inside the metarule due to the grammar bug
+  CHR_MAP = dict([
+      ('n', Char('\n')),
+      ('r', Char('\r')),
+      ('t', Char('\t')),
+      ('\'', Char('\'')),
+      ('\"', Char('\"')),
+      ('[', Char('[')),
+      (']', Char(']')),
+      ('\\', Char('\\'))
+  ])
+  return CHR_MAP[char]
+}
+
+$oct_char_action_1 {
+  string = ''.join((char1, char2, char3))
+  return Char(int(string, base=8))
+}
+
+$oct_char_action_2 {
+  char2 = char2 if isinstance(char2, str) else ''
+  string = ''.join((char1, char2))
+  return Char(int(string, base=8))
+}
+
+$unicode_char_action {
+  string = ''.join(chars)
+  return Char(int(string, base=16))
+}
+
+$any_char_action {
+  return Char(ord(any))
+}
+
+$rep_action {
+  beg, end = grp if isinstance(grp, tuple) else (grp, None)
+  return Repetition(beg, end)
+}
+
+$number_action {
+  string = ''.join(chars)
+  return int(string)
+}
+
+$and_action {
+  return And()
+}
+
+$not_action {
+  return Not()
+}
+
+$optional_action {
+  return ZeroOrOne()
+}
+
+$zero_or_more_action {
+  return ZeroOrMore()
+}
+
+$one_or_more_action {
+  return OneOrMore()
+}
+
+$dot_action {
+  return AnyChar()
 }
