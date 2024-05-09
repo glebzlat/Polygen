@@ -10,6 +10,8 @@ from .node import (
     Node,
     Grammar,
     Rule,
+    MetaRef,
+    MetaRule,
     Identifier,
     Expression,
     Alt,
@@ -130,6 +132,10 @@ class MetanameRedefError(SemanticError):
     severity = "low"
 
 
+class UndefinedMetaRefsError(SemanticError):
+    severity = "moderate"
+
+
 class SemanticWarning(Warning):
     """Base class for semantic warnings raised by tree modifiers.
 
@@ -155,6 +161,10 @@ class LookaheadMetanameWarning(SemanticWarning):
     Lookahead particles does not consume any input string, so their value
     is not so useful in the semantic actions.
     """
+
+
+class UnusedMetaRuleWarning(SemanticWarning):
+    pass
 
 
 class TreeModifierError(Exception):
@@ -341,6 +351,7 @@ class CheckUndefRedef:
 
     def _get_parent_rule(self, node):
         while type(node) is not Rule:
+            assert type(node) is not Grammar
             node = node.parent
         return node
 
@@ -349,6 +360,8 @@ class CheckUndefRedef:
             if node in self.rule_names_set:
                 return False
             self.rule_names_set.add(node)
+        elif type(node.parent) in (MetaRule, MetaRef):
+            return False
         else:
             if node in self.rhs_names:
                 return False
@@ -367,6 +380,8 @@ class CheckUndefRedef:
             dup_rules = {d: [r for r in node.nodes if r.id == d]
                          for d in duplicates}
             raise RedefRulesError(dup_rules)
+
+        return None
 
 
 class SimplifyNestedExps:
@@ -490,9 +505,8 @@ class ReplaceNestedExps:
         for rule in self.created_rules:
             result = node.add(rule)
             assert result
-        added = len(self.created_rules)
-        self.created_rules = []
-        return bool(added)
+        self.created_rules.clear()
+        return None
 
 
 class CreateAnyCharRule:
@@ -545,11 +559,13 @@ class FindEntryRule:
                     return
                 raise RedefEntryError(node)
             self.entry = node
+        return False
 
     def visit_Grammar(self, node: Grammar):
         if self.entry is None:
             raise EntryNotDefinedError()
         node.entry = self.entry
+        return None
 
 
 class IgnoreRules:
@@ -569,11 +585,13 @@ class IgnoreRules:
     def visit_Identifier(self, node: Identifier):
         part = node.parent
         self.parts[node].append(part)
+        return False
 
     def visit_Rule(self, node: Rule):
         if 'ignore' in node.directives:
             for part in self.parts[node.id]:
                 part.metaname = '_'
+        return False
 
 
 class GenerateMetanames:
@@ -606,7 +624,7 @@ class GenerateMetanames:
                 node.metaname = '_'
                 raise LookaheadMetanameWarning(copy)
             node.metaname = '_'
-            return
+            return False
 
         if type(node.prime) in (Char, String, AnyChar):
             varname = f'_{self.index}'
@@ -616,12 +634,12 @@ class GenerateMetanames:
 
             if metaname is not None:
                 if metaname == '_':
-                    return
+                    return False
 
                 if metaname in self.metanames:
                     raise MetanameRedefError(node)
                 self.metanames.add(metaname)
-                return
+                return False
 
             if '__GEN' in id.string:
                 varname = f'_{self.index}'
@@ -637,11 +655,50 @@ class GenerateMetanames:
             raise RuntimeError(f"unsupported node type: {node.prime}")
 
         node.metaname = varname
+        return False
 
     def visit_Alt(self, node: Alt):
         self.index = 1
         self.metanames.clear()
         self.id_names.clear()
+        return False
+
+
+class SubstituteMetaRefs:
+    """Finds and subsitutes MetaRefs by MetaRules.
+    """
+
+    def __init__(self):
+        self.refs = defaultdict(list)
+        self.stage = 0
+
+    def visit_MetaRef(self, node: MetaRef):
+        if self.stage == 0:
+            self.refs[node.id].append(node.parent)
+        return True
+
+    def visit_MetaRule(self, node: MetaRule):
+        if self.stage == 1:
+            if type(node.parent) is Alt:
+                return False
+            alts = self.refs.pop(node.id, None)
+            if alts is None:
+                raise UnusedMetaRuleWarning(node)
+            alt: Alt
+            for alt in alts:
+                alt.metarule = node.copy()
+        return True
+
+    def visit_Grammar(self, node: Grammar):
+        if self.stage == 0:
+            self.stage = 1
+            return True
+        if self.stage == 1:
+            self.stage = 2
+            if self.refs:
+                raise UndefinedMetaRefsError(dict(self.refs))
+            node.metarules.clear()
+            return False
 
 
 class DetectLeftRec:
@@ -667,6 +724,13 @@ class TreeModifier:
     next stage. Stages are needed because of some rules require the tree
     being in some condition, created by another rules. So some rules should
     be run before another.
+
+    If the modifier raises an exception with the severity greater than 'low',
+    then it will be discarded for the rest of the traversal process.
+
+    Modifier's `visit_*` methods should return True, if the modifier wants
+    to be called in the next tree traversal, False, if not and None if modifier
+    wants to be discarded without an error in the current traversal.
     """
 
     def __init__(self, stages: Iterable[Iterable[object]]):
@@ -682,12 +746,15 @@ class TreeModifier:
         method_name = f"visit_{node_type_name}"
 
         for i, rule in enumerate(rules):
+            if flags[i] is None:
+                continue
+
             visit = getattr(rule, method_name, None)
             if not visit:
                 continue
 
             try:
-                flags[i] = visit(node) or flags[i]
+                flags[i] = visit(node)
 
             except SemanticError as exc:
                 self.errors.append(exc)
@@ -702,21 +769,27 @@ class TreeModifier:
                     raise RuntimeError(
                         f"invalid severity value {exc.severity!r}")
 
-                flags[i] = None
-
             except SemanticWarning as warn:
                 self.warnings.append(warn)
 
     def visit(self, tree: Grammar):
         if not self.stages:
-            return True, self.warnings, self.errors
+            return
 
-        stage_done = False
-        while not stage_done:
-            for stage in self.stages:
+        stages_flags = tuple([True for _ in s] for s in self.stages)
+        done_stages = [False for _ in self.stages]
 
-                rules = list(stage)
-                flags: list[bool | None] = [False for _ in rules]
+        max_iterations = sum(len(s) for s in self.stages) * 2
+
+        for _ in range(max_iterations):
+            for i, (stage, flags) in enumerate(zip(self.stages, stages_flags)):
+                rules = [rule for i, rule in enumerate(stage) if flags[i]]
+                if not rules:
+                    done_stages[i] = True
+
+                for i in range(len(flags)):
+                    if flags[i] is not None:
+                        flags[i] = False
 
                 self._visit(tree, rules, flags)
 
@@ -724,8 +797,14 @@ class TreeModifier:
                     if not flags[i]:
                         continue
 
-                rules = [rule for i, rule in enumerate(rules) if flags[i]]
-                stage_done = not rules
+            if all(done_stages):
+                break
+
+        else:
+            msg = "max iterations count exceeded"
+            stages_flags_dump = [list(zip(s, f)) for s, f
+                                 in zip(self.stages, stages_flags)]
+            raise RuntimeError(msg, stages_flags_dump)
 
         if self.errors:
             raise TreeModifierError(*self.errors)

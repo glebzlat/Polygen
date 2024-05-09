@@ -19,6 +19,7 @@ from .tree_modifier import (
     FindEntryRule,
     IgnoreRules,
     GenerateMetanames,
+    SubstituteMetaRefs,
     TreeModifier,
     TreeModifierWarning
 )
@@ -37,15 +38,16 @@ class Generator:
 
     def _modify(self, grammar: Grammar, errstream) -> None:
         write_rules = [
+            [SubstituteMetaRefs()],
             [CreateAnyCharRule()],
             [
                 ExpandClass(),
                 ReplaceRep(),
             ],
-            [CheckUndefRedef()],
             [FindEntryRule(), IgnoreRules()],
             # [SimplifyNestedExps()],
             [ReplaceNestedExps()],
+            # [CheckUndefRedef()],
             [GenerateMetanames()],
         ]
 

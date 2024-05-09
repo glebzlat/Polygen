@@ -79,11 +79,33 @@ class LeafNode(Node):
 
 
 class Grammar(Node, ArgsRepr, Sized):
-    def __init__(self, *rules: Rule):
-        self.nodes = list(rules)
-        self.rules = {rule.name: rule for rule in rules}
+    def __init__(self, *rules: Rule | MetaRule):
+        self._nodes = []
+
+        self.rules = {}
+        self.metarules = {}
+        for r in rules:
+            if isinstance(r, Rule):
+                # This is a dirty hack to not to break the tree modification
+                # rules: do not add MetaRules to the node list
+                self._nodes.append(r)
+                self.rules[r.id] = r
+            elif isinstance(r, MetaRule):
+                self.metarules[r.id] = r
+            else:
+                raise TypeError(f"incorrect rule type {type(r)}")
+
         self._entry: Optional[Rule] = None
-        self._set_parent(self.nodes)
+        self._set_parent(self._nodes)
+        self._set_parent(self.metarules.values())
+
+    @property
+    def nodes(self):
+        return self._nodes
+
+    @nodes.setter
+    def nodes(self, value):
+        self._nodes = value
 
     def add(self, rule: Rule) -> bool:
         if rule.id in self.rules:
@@ -102,7 +124,11 @@ class Grammar(Node, ArgsRepr, Sized):
         self._entry = value
 
     def _get_args(self):
-        return self.nodes
+        return self._nodes
+
+    def _get_kwargs(self):
+        return [('rules', self.rules.values()),
+                ('metarules', self.metarules.values())]
 
     def __eq__(self, other):
         if not isinstance(other, Grammar):
@@ -111,6 +137,7 @@ class Grammar(Node, ArgsRepr, Sized):
 
     def __iter__(self):
         yield from self.rules.values()
+        yield from self.metarules.values()
 
     def __len__(self):
         return len(self.rules)
@@ -207,6 +234,70 @@ class Rule(Node, ArgsRepr, Sized):
         return True
 
 
+class MetaRef(LeafNode, ArgsRepr):
+    def __init__(self, id: Identifier):
+        self.id = id
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, value):
+        self._id = value
+        self._id._parent = self
+
+    def _get_args(self):
+        return [self.id]
+
+    def _get_kwargs(self):
+        return [('id', self.id)]
+
+    def __eq__(self, other):
+        if not isinstance(other, MetaRef):
+            return NotImplemented
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
+
+class MetaRule(Node, ArgsRepr):
+    def __init__(self, expr: str, id: Optional[Identifier] = None):
+        self.id = id
+        self.expr = expr
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, value):
+        self._id = value
+        if self._id is not None:
+            self._id._parent = self
+
+    def copy(self, deep=False):
+        return MetaRule(id=self.id, expr=self.expr)
+
+    def _get_args(self):
+        return [self.id, self.expr]
+
+    def _get_kwargs(self):
+        return [('id', self.id), ('expr', self.expr)]
+
+    def __iter__(self):
+        if self.id is not None:
+            yield self.id
+        else:
+            yield from ()
+
+    def __eq__(self, other):
+        if not isinstance(other, MetaRule):
+            return NotImplemented
+        return (self.id, self.expr) == (other.id, other.expr)
+
+
 class Identifier(LeafNode, ArgsRepr):
     def __init__(self, string: str):
         self.string = string
@@ -232,13 +323,28 @@ class Identifier(LeafNode, ArgsRepr):
 
 
 class Alt(Node, ArgsRepr, Sized):
-    def __init__(self, *parts: Node, metarule: Optional[str] = None):
+    def __init__(self,
+                 *parts: Node,
+                 metarule: Optional[MetaRef | MetaRule] = None):
         self.metarule = metarule
         self.parts = list(parts)
         self._set_parent(self.parts)
 
+    @property
+    def metarule(self):
+        return self._metarule
+
+    @metarule.setter
+    def metarule(self, value):
+        self._metarule = value
+        if self._metarule is not None:
+            self._metarule._parent = self
+
     def _get_args(self):
         return self.parts
+
+    def _get_kwargs(self):
+        return [('metarule', self._metarule), ('parts', self.parts)]
 
     def __eq__(self, other):
         if not isinstance(other, Alt):
@@ -247,6 +353,8 @@ class Alt(Node, ArgsRepr, Sized):
 
     def __iter__(self):
         yield from self.parts
+        if self._metarule is not None:
+            yield self._metarule
 
     def __len__(self):
         return len(self.parts)

@@ -25,6 +25,29 @@ def wrap_string(s: str):
     return '"' + s + '"'
 
 
+_LEADING_SPACE_RE = re.compile(r'^\s*')
+
+
+def reindent(string: str,
+             level: int,
+             indent='    ') -> str:
+    lines = [line for line in string.split('\n') if line.strip()]
+    new_indent = indent * level
+    base_indent = new_indent
+
+    for line in lines:
+        if m := _LEADING_SPACE_RE.match(line):
+            if len(m.group()) < len(base_indent):
+                base_indent = m.group()
+
+    for i, line in enumerate(lines):
+        if line.startswith(base_indent):
+            line = line[len(base_indent):]
+        lines[i] = new_indent + line
+
+    return '\n'.join(lines)
+
+
 class GeneratorError(Exception):
     pass
 
@@ -78,23 +101,19 @@ class PythonGenerator:
         self.put('if (', newline=put_newline)
         variables = []
         with self.indent():
-            for i, part in enumerate(alt):
+            for i, part in enumerate(alt.parts):
                 self.gen_part(part, i, variables, put_newline)
         self.put('):', indent=put_newline)
 
         with self.indent():
+            indent_lvl = len(self.indentation) // 4
             retval = ', '.join(variables)
             if alt.metarule:
-                metarule = wrap_string(alt.metarule)
-                kwargs = (f'{name}={name}' for name in variables
-                          if not self.isindexedvar(name))
-                kwargs = ', '.join(kwargs)
-                if kwargs:
-                    self.put(f'return self._action({metarule}, {retval}, {kwargs})')
-                else:
-                    self.put(f'return self._action({metarule}, {retval})')
+                self.put(
+                    reindent(alt.metarule.expr, level=indent_lvl),
+                    indent=0)
             else:
-                self.put(f'return ({retval})')
+                self.put(f'return {retval}')
         self.put('self._reset(pos)')
 
     def gen_part(self, part, part_index, variables, newline):

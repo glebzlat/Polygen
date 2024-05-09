@@ -1,45 +1,48 @@
-# This is the PEG grammar syntax taken from "Parsing Expression Grammars:
-# A Recognition-Based Syntastic Foundation" by Bryan Ford with some extensions.
-
 @entry
-Grammar    <- Spacing defs=Definition+ EndOfFile              % grammar_action
-Definition <- dirs=Directive* Identifier LEFTARROW Expression % def_action
+Grammar    <- Spacing Entity+ EndOfFile                          $grammar_action
+Entity     <- Definition / MetaDef
+Definition <- Directive* Identifier LEFTARROW Expression         $def_action
+            / MetaDef
 
-Directive  <- AT DirName Spacing                              % directive_action
+Directive  <- AT DirName Spacing
 DirName    <- Identifier
 
-Expression <- Sequence (SLASH Sequence)*
-Sequence   <- Prefix* MetaRule?                               % alt_action
-Prefix     <- grp=(MetaName / AND / NOT)? Suffix
-Suffix     <- Primary (QUESTION / STAR / PLUS / Repetition)?  % part_action
+Expression <- Sequence seqs:(SLASH Sequence)*                    $expr_action
+Sequence   <- p:Prefix* m:MetaRule?                              $sequence_action
+Prefix     <- MetaName? lookahead:(AND / NOT)? s:Suffix          $prefix_action
+Suffix     <- p:Primary q:(QUESTION / STAR / PLUS / Repetition)? $suffix_action
 Primary    <- Identifier !LEFTARROW
             / OPEN Expression CLOSE
-            / Literal / Class / grp=DOT
-MetaName   <- Identifier EQUAL
-MetaRule   <- PERCENT Identifier
+            / Literal / Class / DOT
+MetaName   <- Identifier SEMI                                    $metaname_action
+MetaRule   <- '${' content:(![}] .)* '}' Spacing
+            / '$' Spacing Identifier !'{'
+
+MetaDef    <- '$' Spacing Identifier '{' expr:(![}] .)* '}' Spacing   $metadef_action
 
 Identifier <- IdentStart IdentCont* Spacing
 IdentStart <- [a-zA-Z_]
 IdentCont  <- IdentStart / [0-9]
 
-Literal    <- ['] seq=(!['] Char)* ['] Spacing                % literal_action
-            / ["] seq=(!["] Char)* ["] Spacing                % literal_action
-Class      <- '[' (!']' Range)* ']' Spacing                   % class_action
-Range      <- Char '-' Char                                   % range_action
-            / Char                                            % range_action
-Char       <- '\\' char=[nrt'"\[\]\\]                         % esc_char_action
-            / '\\' char1=[0-2] char2=[0-7] char3=[0-7]        % oct_char_action
-            / '\\' char1=[0-7] char2=[0-7]?                   % oct_char_action
-            / '\\u' HexDigit{4}                               % uchar_action
-            / !'\\' char=.                                    % any_char_action
+Literal    <- ['] seq:(!['] Char)* ['] Spacing
+            / ["] seq:(!["] Char)* ["] Spacing
+Class      <- '[' ranges:(!']' Range)* ']' Spacing
+Range      <- Char '-' Char
+            / Char
+Char       <- '\\' char:[nrt'"\[\]\\]
+            / '\\' char1:[0-2] char2:[0-7] char3:[0-7]
+            / '\\' char1:[0-7] char2:[0-7]?
+            / '\\u' HexDigit{4}
+            / !'\\' .
 
-Repetition <- '{' grp=(Number ',' Number / Number) '}' Spacing % rep_action
-Number     <- chars=[0-9]+                                    % number
-HexDigit   <- char=[0-9A-F]                                   % hex_digit
+Repetition <- '{'
+              grp:(Number ',' Number / Number) '}' Spacing
+Number     <- chars:[0-9]+
+HexDigit   <- char:[0-9A-F]
 
 LEFTARROW  <- '<-' Spacing
 SLASH      <- '/' Spacing
-AND        <- '&' Spacing
+AND        <- '&' Spacing ${ And() }
 NOT        <- '!' Spacing
 QUESTION   <- '?' Spacing
 STAR       <- '*' Spacing
@@ -48,8 +51,7 @@ OPEN       <- '(' Spacing
 CLOSE      <- ')' Spacing
 DOT        <- '.' Spacing
 AT         <- '@' Spacing
-EQUAL      <- '=' Spacing
-PERCENT    <- '%' Spacing
+SEMI       <- ':' Spacing
 
 @ignore
 Spacing    <- (Space / Comment)*
@@ -57,3 +59,36 @@ Comment    <- '#' (!EndOfLine .)* EndOfLine
 Space      <- ' ' / '\t' / EndOfLine
 EndOfLine  <- '\r\n' / '\n' / '\r'
 EndOfFile  <- !.
+
+$sequence_action {
+  return Alt(Part(pred=p[0], prime=p[1], quant=p[2]),
+             metarule=(m if isinstance(m, str) else None))
+}
+
+$expr_action {
+  return Expression(sequence, *seqs)
+}
+
+$def_action {
+  return Rule(identifier, expression, directives=directive)
+}
+
+$grammar_action {
+  return Grammar(*definition)
+}
+
+$prefix_action {
+  return (grp, *s) if isinstance(grp, Node) else (None, *s)
+}
+
+$suffix_action {
+  return (p, q) if isinstance(q, Node) else (p, None)
+}
+
+$metaname_action {
+  return identifier.string
+}
+
+$metadef_action {
+  return MetaDef(id=identifier, expr=expr)
+}

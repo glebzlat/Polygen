@@ -6,6 +6,8 @@ from .node import (
     Grammar,
     Expression,
     Rule,
+    MetaRef,
+    MetaRule,
     Identifier,
     Range,
     Alt,
@@ -55,15 +57,26 @@ class GrammarParser(Parser):
 
     def _Grammar(self) -> Optional[Grammar]:
         if self._Spacing():
-            if d := self._Definition():
+            if d := self._Entity():
                 rules = [d]
-                while d := self._Definition():
+                while d := self._Entity():
                     rules.append(d)
                 if self._EndOfFile():
                     return Grammar(*rules)
         return None
 
+    def _Entity(self):
+        # breakpoint()
+        pos = self._mark()
+        if d := self._Definition():
+            return d
+        if m := self._MetaDef():
+            return m
+        self._reset(pos)
+        return None
+
     def _Definition(self) -> Optional[Rule]:
+        pos = self._mark()
         directives = []
         while d := self._Directive():
             directives.append(d)
@@ -72,6 +85,7 @@ class GrammarParser(Parser):
             if self._LEFTARROW():
                 if e := self._Expression():
                     return Rule(i, e, directives=directives)
+        self._reset(pos)
         return None
 
     def _Directive(self) -> Optional[str]:
@@ -105,7 +119,7 @@ class GrammarParser(Parser):
         meta, p = None, None
         if meta := self._MetaName():
             pass
-        elif p := self._AND():
+        if p := self._AND():
             pass
         elif p := self._NOT():
             pass
@@ -136,16 +150,47 @@ class GrammarParser(Parser):
     def _MetaName(self) -> Optional[str]:
         pos = self._mark()
         if i := self._Identifier():
-            if self._EQUAL():
+            if self._SEMI():
                 return i.string
         self._reset(pos)
         return None
 
-    def _MetaRule(self) -> Optional[str]:
+    def _MetaRule(self) -> Optional[MetaRef | MetaRule]:
         pos = self._mark()
-        if self._PERCENT():
-            if i := self._Identifier():
-                return i.string
+        if self._expect('$'):
+            pos1 = self._mark()
+            if self._expect('{'):
+                chars = []
+                while (c := self._peek_char()) and c != '}':
+                    chars.append(c)
+                    self._get_char()
+                if self._expect('}'):
+                    if self._Spacing():
+                        return MetaRule(''.join(chars))
+                self._reset(pos1)
+            if self._Spacing():
+                if i := self._Identifier():
+                    if self._peek_char() == '{':
+                        self._reset(pos)
+                        return None
+                    return MetaRef(i)
+        self._reset(pos)
+        return None
+
+    def _MetaDef(self) -> Optional[MetaRule]:
+        pos = self._mark()
+        if self._expect('$'):
+            if self._Spacing():
+                if i := self._Identifier():
+                    if self._expect('{'):
+                        chars = []
+                        while (c := self._peek_char()) and c != '}':
+                            chars.append(c)
+                            self._get_char()
+                        if self._expect('}'):
+                            if self._Spacing():
+                                return MetaRule(
+                                    id=i, expr=''.join(chars))
         self._reset(pos)
         return None
 
@@ -390,17 +435,9 @@ class GrammarParser(Parser):
         self._reset(pos)
         return None
 
-    def _EQUAL(self) -> Optional[str]:
+    def _SEMI(self) -> Optional[str]:
         pos = self._mark()
-        if s := self._expect('='):
-            if self._Spacing():
-                return s
-        self._reset(pos)
-        return None
-
-    def _PERCENT(self) -> Optional[str]:
-        pos = self._mark()
-        if s := self._expect('%'):
+        if s := self._expect(':'):
             if self._Spacing():
                 return s
         self._reset(pos)
