@@ -2,7 +2,7 @@ import re
 
 from contextlib import contextmanager
 
-from .node import (
+from polygen.grammar.node import (
     Grammar,
     Rule,
     Identifier,
@@ -82,11 +82,11 @@ class PythonGenerator:
             self.put(indent=False)
 
         self.put('@memoize')
-        self.put(f'def _{rule.name.string}(self):')
+        self.put(f'def _{rule.id.string}(self):')
 
         with self.indent():
             self.put('pos = self._mark()')
-            for i, alt in enumerate(rule.rhs):
+            for i, alt in enumerate(rule.expr):
                 self.gen_alt(alt, rule, i)
             self.put('return None')
 
@@ -121,9 +121,9 @@ class PythonGenerator:
         parts = []
 
         cond = ''
-        if type(part.pred) is Not:
+        if type(part.lookahead) is Not:
             parts += 'self._lookahead', False
-        elif type(part.pred) is And:
+        elif type(part.lookahead) is And:
             parts += 'self._lookahead', True
         else:
             cond = 'is not None'

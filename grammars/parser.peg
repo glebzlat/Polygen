@@ -92,7 +92,7 @@ $prefix_action {
   lookahead = lookahead if isnode(lookahead) else None
   prime, quant = suffix
   quant = quant if isnode(quant) else None
-  return Part(pred=lookahead, prime=prime, quant=quant, metaname=metaname)
+  return Part(lookahead=lookahead, prime=prime, quant=quant, metaname=metaname)
 }
 
 $metaname_action {

@@ -5,11 +5,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, TextIO
 
-from .__version__ import __version__
-
-from .bootstrap.parser import Parser as GrammarParser
-from .node import Grammar
-from .tree_modifier import (
+from polygen.__version__ import __version__
+from polygen.parsing import Parser as GrammarParser
+from polygen.grammar.node import Grammar
+from polygen.grammar.tree_modifier import (
     ExpandClass,
     ReplaceRep,
     CheckUndefRedef,
@@ -23,7 +22,7 @@ from .tree_modifier import (
     TreeModifierWarning
 )
 
-from .python_gen import PythonGenerator
+from polygen.backend.python import PythonGenerator
 from .preprocessor import Preprocessor
 
 
@@ -46,7 +45,7 @@ class Generator:
             [FindEntryRule(), IgnoreRules()],
             # [SimplifyNestedExps()],
             [ReplaceNestedExps()],
-            # [CheckUndefRedef()],
+            [CheckUndefRedef()],
             [GenerateMetanames()],
         ]
 
@@ -89,7 +88,7 @@ class Generator:
 
         directives = {
             "body": stream,
-            "entry": grammar.entry.name.string,
+            "entry": grammar.entry.id.string,
             "version": __version__,
             "datetime": datetime.today().strftime(self.datefmt)
         }

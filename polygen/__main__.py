@@ -28,7 +28,7 @@ generate_cmd.set_defaults(fn=generate_cmd_action)
 
 def dump_cmd_action(gen: Generator, ns: Namespace):
     grammar = gen.get_grammar(ns.grammar, modified=ns.modified)
-    json.dump(grammar.dump(), ns.output, indent=4)
+    json.dump(grammar.to_dict(), ns.output, indent=4)
 
 
 dump_cmd = subparsers.add_parser(

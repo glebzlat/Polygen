@@ -75,7 +75,7 @@ class InvalidRepetitionError(SemanticError):
 
     severity = "low"
 
-    def __init__(self, node: Range):
+    def __init__(self, node: Repetition):
         self.node = node
 
 
@@ -248,15 +248,15 @@ class ExpandClass:
             raise InvalidRangeError(rng)
         return set(map(Char, range(rng.beg.code, rng.end.code + 1)))
 
-    def visit_Class(self, node: Class):
-        assert type(node.parent) is Part
+    def visit_Class(self, node: Class, parents):
+        assert type(parents[-1]) is Part
 
         chars: set[Char] = reduce(
             operator.or_,
             (self._expand_range(rng) for rng in node),
             set())
         exp = Expression(*(Alt(Part(prime=c)) for c in sorted(chars)))
-        node.parent.prime = exp
+        parents[-1].prime = exp
 
         return True
 
@@ -272,13 +272,13 @@ class ReplaceRep:
     ```
     """
 
-    def visit_Repetition(self, node: Repetition):
-        assert type(node.parent) is Part
+    def visit_Repetition(self, node: Repetition, parents):
+        assert type(parents[-1]) is Part
 
         if node.end and node.beg > node.end:
             raise InvalidRepetitionError(node)
 
-        part: Part = node.parent
+        part: Part = parents[-1]
         prime = part.prime
         parts = [Part(prime=p) for p in repeat(prime, node.beg)]
 
@@ -308,10 +308,10 @@ class ReplaceZeroOrOne:
     ```
     """
 
-    def visit_ZeroOrOne(self, node: ZeroOrOne):
-        assert type(node.parent) is Part
+    def visit_ZeroOrOne(self, node: ZeroOrOne, parents):
+        assert type(parents[-1]) is Part
 
-        part: Part = node.parent
+        part: Part = parents[-1]
         part.quant = None
         part.prime = Expression(
             Alt(
@@ -331,10 +331,10 @@ class ReplaceOneOrMore:
     ```
     """
 
-    def visit_OneOrMore(self, node: OneOrMore):
-        assert type(node.parent) is Part
+    def visit_OneOrMore(self, node: OneOrMore, parents):
+        assert type(parents[-1]) is Part
 
-        part: Part = node.parent
+        part: Part = parents[-1]
         part.prime = Expression(
             Alt(
                 Part(prime=part.prime),
@@ -345,26 +345,26 @@ class ReplaceOneOrMore:
         return True
 
 
-class EliminateAnd:
-    """Replace AND(E) by NOT(NOT(E))
-
-    ```
-    Part(pred=Predicate.NOT, prime=E) ->
-        Part(pred=Predicate.NOT, prime=Part(pred=Predicate.NOT, prime=E))
-    ```
-    """
-
-    def visit_And(self, node: And):
-        assert type(node.parent) is Part
-
-        part: Part = node.parent
-        nested = Expression(
-            Alt(
-                Part(pred=Not(), prime=part.prime)))
-        part.prime = nested
-        part.pred = Not()
-
-        return True
+# class EliminateAnd:
+#     """Replace AND(E) by NOT(NOT(E))
+#
+#     ```
+#     Part(pred=Predicate.NOT, prime=E) ->
+#         Part(pred=Predicate.NOT, prime=Part(pred=Predicate.NOT, prime=E))
+#     ```
+#     """
+#
+#     def visit_And(self, node: And, parents):
+#         assert type(parents[-1]) is Part
+#
+#         part: Part = parents[-1]
+#         nested = Expression(
+#             Alt(
+#                 Part(pred=Not(), prime=part.prime)))
+#         part.prime = nested
+#         part.lookahead = Not()
+#
+#         return True
 
 
 class CheckUndefRedef:
@@ -375,91 +375,90 @@ class CheckUndefRedef:
         self.rhs_names = {}
         self.rule_names_set = set()
 
-    def _get_parent_rule(self, node):
-        while type(node) is not Rule:
-            assert type(node) is not Grammar
-            node = node.parent
-        return node
+    def _get_parent_rule(self, parents):
+        idx = -2
+        while type(parents[idx]) is not Rule:
+            idx -= 1
+        return parents[idx]
 
-    def visit_Identifier(self, node: Identifier):
-        if type(node.parent) is Rule:
+    def visit_Identifier(self, node: Identifier, parents):
+        if type(parents[-1]) is Rule:
             if node in self.rule_names_set:
                 return False
             self.rule_names_set.add(node)
-        elif type(node.parent) in (MetaRule, MetaRef):
+        elif type(parents[-1]) in (MetaRule, MetaRef):
             return False
         else:
             if node in self.rhs_names:
                 return False
-            self.rhs_names[node] = self._get_parent_rule(node)
+            self.rhs_names[node] = self._get_parent_rule(parents)
 
         return False
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, parents):
         if diff := set(self.rhs_names) - self.rule_names_set:
             undef_rules = {i: self.rhs_names[i] for i in diff}
             raise UndefRulesError(undef_rules)
 
-        if len(node.nodes) > len(node.rules):
-            counter = Counter(r.id for r in node.nodes)
-            duplicates = (n for n, i in counter.most_common() if i > 1)
-            dup_rules = {d: [r for r in node.nodes if r.id == d]
-                         for d in duplicates}
+        counter = Counter(r.id for r in node.nodes)
+        assert all(r is not None for r in counter)
+        duplicates = (n for n, i in counter.most_common() if i > 1)
+        dup_rules = {d: [r for r in node.nodes if r.id == d]
+                     for d in duplicates}
+        if dup_rules:
             raise RedefRulesError(dup_rules)
 
         return None
 
 
-class SimplifyNestedExps:
-    """Move nested expressions to their parent expressions in some cases.
-
-    If an expression is occured inside the other expression, like so:
-
-    ```
-    Rule(A, Expression(Expression(e1, e2)))
-    ```
-
-    It is not needed to create an artificial rule for it:
-
-    ```
-    Rule(A, Expression(Ag))
-    Rule(Ag, Expression(e1, e2))
-    ```
-
-    Instead, it is possible to move nested expression up to higher level:
-
-    ```
-    Rule(A, Expression(e1, e2))
-    ```
-    """
-
-    def visit_Expression(self, node: Expression):
-        if type(node.parent) is not Part:
-            return False
-
-        part: Part = node.parent
-        if part.pred or part.quant:
-            return False
-
-        assert type(part.parent) is Alt
-        alt = part.parent
-        if len(alt) > 1:
-            return False
-
-        assert type(alt.parent) is Expression
-        exp: Expression = alt.parent
-
-        if len(exp) > 1:
-            return False
-        # if type(exp.parent) is not Rule:
-        #     return False
-
-        exp.alts.clear()
-        exp.alts += node.alts
-        for alt in node.alts:
-            alt._parent = exp
-
-        return True
+# class SimplifyNestedExps:
+#     """Move nested expressions to their parent expressions in some cases.
+#
+#     If an expression is occured inside the other expression, like so:
+#
+#     ```
+#     Rule(A, Expression(Expression(e1, e2)))
+#     ```
+#
+#     It is not needed to create an artificial rule for it:
+#
+#     ```
+#     Rule(A, Expression(Ag))
+#     Rule(Ag, Expression(e1, e2))
+#     ```
+#
+#     Instead, it is possible to move nested expression up to higher level:
+#
+#     ```
+#     Rule(A, Expression(e1, e2))
+#     ```
+#     """
+#
+#     def visit_Expression(self, node: Expression, parents):
+#         if type(parents[-1]) is not Part:
+#             return False
+#
+#         part: Part = parents[-1]
+#         if part.lookahead or part.quant:
+#             return False
+#
+#         assert type(part.parent) is Alt
+#         alt = part.parent
+#         if len(alt) > 1:
+#             return False
+#
+#         assert type(alt.parent) is Expression
+#         exp: Expression = alt.parent
+#
+#         if len(exp) > 1:
+#             return False
+#
+#         exp.alts.clear()
+#         exp.alts += node.alts
+#         for alt in node.alts:
+#             alt._parent = exp
+#
+#         return True
 
 
 class ReplaceNestedExps:
@@ -485,19 +484,18 @@ class ReplaceNestedExps:
         self.created_rules: list[Rule] = []
         self.id_count: dict[Identifier, int] = {}
 
-    def _get_rule_id(self, node: Node) -> Identifier:
-        n = node
-        while type(n) is not Rule:
-            assert n.parent is not None
-            n = n.parent
-        return n.id
+    def _get_rule_id(self, parents) -> Identifier:
+        idx = -2
+        while type(parents[idx]) is not Rule:
+            idx -= 1
+        return parents[idx].id
 
     def _create_id(self, id: Identifier) -> Identifier:
         idx = self.id_count.setdefault(id, 0) + 1
         self.id_count[id] = idx
         return Identifier(self.id_fmt.format(string=id.string, idx=idx))
 
-    def visit_Expression(self, node: Expression):
+    def visit_Expression(self, node: Expression, parents):
 
         # For nested expression in grammar:
         #   if expression already in created rules:
@@ -508,18 +506,18 @@ class ReplaceNestedExps:
         #      create rule with new_id and expression
         #      replace expression by new_id
 
-        if type(node.parent) is Rule:
+        if type(parents[-1]) is Rule:
             return False
 
-        assert type(node.parent) is Part
-        part = node.parent
+        assert type(parents[-1]) is Part
+        part = parents[-1]
 
         for r in self.created_rules:
-            if node == r.rhs:
-                part.prime = r.name
+            if node == r.expr:
+                part.prime = r.id
                 return True
 
-        rule_id = self._get_rule_id(node)
+        rule_id = self._get_rule_id(parents)
         new_id = self._create_id(rule_id)
         new_rule = Rule(new_id, node)
         part.prime = new_id
@@ -527,7 +525,7 @@ class ReplaceNestedExps:
         self.created_rules.append(new_rule)
         return True
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, parents):
         for rule in self.created_rules:
             result = node.add(rule)
             assert result
@@ -551,23 +549,17 @@ class CreateAnyCharRule:
             Expression(Alt(Part(prime=AnyChar())))
         )
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, parents):
         node.add(self.created_rule)
         return False
 
-    def visit_AnyChar(self, node: AnyChar):
-        assert node.parent is not None and type(node.parent) is Part
-        part = node.parent
+    def visit_AnyChar(self, node: AnyChar, parents):
+        assert parents[-1] is not None and type(parents[-1]) is Part
+        part = parents[-1]
 
-        assert part.parent is not None
-        node1 = part.parent
-        assert node1.parent is not None
-        node2 = node1.parent
-        assert node2.parent is not None
-        node3 = node2.parent
-
-        if type(node3) is Rule and node3.id == self.rule_id:
-            # created rule
+        # if it is a newly created rule
+        parent = parents[-4]
+        if type(parent) is Rule and parent.id == self.rule_id:
             return False
 
         part.prime = self.rule_id.copy()
@@ -578,7 +570,7 @@ class FindEntryRule:
     def __init__(self) -> None:
         self.entry: Rule | None = None
 
-    def visit_Rule(self, node: Rule):
+    def visit_Rule(self, node: Rule, parents):
         if 'entry' in node.directives:
             if self.entry is not None:
                 if self.entry == node:
@@ -587,7 +579,7 @@ class FindEntryRule:
             self.entry = node
         return False
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, parents):
         if self.entry is None:
             raise EntryNotDefinedError()
         node.entry = self.entry
@@ -608,12 +600,12 @@ class IgnoreRules:
     def __init__(self):
         self.parts = defaultdict(list)
 
-    def visit_Identifier(self, node: Identifier):
-        part = node.parent
+    def visit_Identifier(self, node: Identifier, parents):
+        part = parents[-1]
         self.parts[node].append(part)
         return False
 
-    def visit_Rule(self, node: Rule):
+    def visit_Rule(self, node: Rule, parents):
         if 'ignore' in node.directives:
             for part in self.parts[node.id]:
                 part.metaname = '_'
@@ -641,10 +633,10 @@ class GenerateMetanames:
         self.metanames = set()
         self.id_names = []
 
-    def visit_Part(self, node: Part):
+    def visit_Part(self, node: Part, parents):
         metaname = node.metaname
 
-        if type(node.pred) in (Not, And):
+        if type(node.lookahead) in (Not, And):
             if metaname is not None and metaname != '_':
                 copy = node.copy()
                 node.metaname = '_'
@@ -683,7 +675,7 @@ class GenerateMetanames:
         node.metaname = varname
         return False
 
-    def visit_Alt(self, node: Alt):
+    def visit_Alt(self, node: Alt, parents):
         self.index = 1
         self.metanames.clear()
         self.id_names.clear()
@@ -699,14 +691,14 @@ class SubstituteMetaRefs:
         self.metarules = defaultdict(list)
         self.stage = 0
 
-    def visit_MetaRef(self, node: MetaRef):
+    def visit_MetaRef(self, node: MetaRef, parents):
         if self.stage == 0:
-            self.refs[node.id].append(node.parent)
+            self.refs[node.id].append(parents[-1])
         return True
 
-    def visit_MetaRule(self, node: MetaRule):
+    def visit_MetaRule(self, node: MetaRule, parents):
         if self.stage == 1:
-            if type(node.parent) is Alt:
+            if type(parents[-1]) is Alt:
                 return False
             self.metarules[node.id].append(node)
             alts = self.refs.pop(node.id, None)
@@ -723,7 +715,7 @@ class SubstituteMetaRefs:
         if len(duplicates):
             raise RedefMetaRulesError(duplicates)
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, parents):
         if self.stage == 0:
             self.stage = 1
             return True
@@ -736,15 +728,15 @@ class SubstituteMetaRefs:
             return False
 
 
-class DetectLeftRec:
-    def visit_Rule(self, node: Rule):
-        expr = node.expression
-        if len(expr) == 0:
-            return
-
-        for alt in expr:
-            if len(alt) and alt.parts[0].prime == node.id:
-                node.leftrec = True
+# class DetectLeftRec:
+#     def visit_Rule(self, node: Rule, parents):
+#         expr = node.expression
+#         if len(expr) == 0:
+#             return
+#
+#         for alt in expr:
+#             if len(alt) and alt.parts[0].prime == node.id:
+#                 node.leftrec = True
 
 
 class TreeModifier:
@@ -770,16 +762,22 @@ class TreeModifier:
 
     def __init__(self, stages: Iterable[Iterable[object]]):
         self.stages = stages
-        self.errors: list[TreeModifierError] = []
-        self.warnings: list[TreeModifierWarning] = []
+        self.errors: list[SemanticError] = []
+        self.warnings: list[SemanticWarning] = []
 
-    def _visit(self, node: Node, rules: list[object], flags: list[bool | None]):
+    def _visit(self,
+               node: Node,
+               nodes: list[Node],
+               rules: list[object],
+               flags: list[bool | None]):
+        nodes.append(node)
         for child in node:
-            self._visit(child, rules, flags)
+            self._visit(child, nodes, rules, flags)
 
         node_type_name = type(node).__name__
         method_name = f"visit_{node_type_name}"
 
+        nodes.pop()
         for i, rule in enumerate(rules):
             if flags[i] is None:
                 continue
@@ -789,7 +787,7 @@ class TreeModifier:
                 continue
 
             try:
-                flags[i] = visit(node)
+                flags[i] = visit(node, nodes)
 
             except SemanticError as exc:
                 self.errors.append(exc)
@@ -811,6 +809,7 @@ class TreeModifier:
         if not self.stages:
             return
 
+        stages_flags: tuple[list[bool | None], ...]
         stages_flags = tuple([True for _ in s] for s in self.stages)
         done_stages = [False for _ in self.stages]
 
@@ -826,7 +825,8 @@ class TreeModifier:
                     if flags[i] is not None:
                         flags[i] = False
 
-                self._visit(tree, rules, flags)
+                nodes = []
+                self._visit(tree, nodes, rules, flags)
 
                 for i, rule in enumerate(rules):
                     if not flags[i]:

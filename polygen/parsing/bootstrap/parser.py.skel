@@ -9,7 +9,7 @@ import io
 
 from typing import Optional
 
-from polygen.node import (
+from polygen.grammar.node import (
     Node,
     Grammar,
     Expression,

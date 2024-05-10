@@ -1,38 +1,27 @@
+# NOTE: __future__.annotations can cause problems with dataclasses_json
 from __future__ import annotations
+
 import string
-import re
 
 from typing import Optional, Any, Iterator
+from dataclasses import dataclass, field
 from collections.abc import Iterable, Sized
 from abc import abstractmethod
-from itertools import zip_longest, chain
+from itertools import chain
 
-from .attrholder import AttributeHolder, ArgsRepr
+from dataclasses_json import DataClassJsonMixin
+
+from polygen.attrholder import AttributeHolder, ArgsRepr
+from .utility import isiterable, wrap_string
 
 
-def seq_cmp(seq1, seq2):
-    return all(i == j for i, j in zip_longest(seq1, seq2))
-
-
-class Node(Iterable):
-    def __init__(self, begin_pos: int = 0, end_pos: int = 0):
-        self._parent = None
-        self._begin_pos, self._end_pos = begin_pos, end_pos
-
+@dataclass
+class Node(Iterable, DataClassJsonMixin):
     @property
     def descendants(self) -> Iterator[Node]:
         yield self
         for e in self:
             yield from e.descendants
-
-    @property
-    def parent(self) -> Optional[Node]:
-        return self._parent
-
-    def _set_parent(self, nodes: Iterable[Optional[Node]]) -> None:
-        for node in nodes:
-            if node is not None:
-                node._parent = self
 
     @abstractmethod
     def __iter__(self) -> Iterator[Node]:
@@ -48,22 +37,8 @@ class Node(Iterable):
         self_type = type(self)
         return self_type(*nodes)
 
-    def dump(self) -> dict:
-        """Create a dictinary from the Node.
-
-        Created dictionary has `_node_type` item, which is a name
-        of the corresponding node. It can be used to create nodes
-        from the dictionary.
-        """
-        name = type(self).__name__
-        dct = {'_node_type': name}
-        for k, v in self._get_kwargs():
-            if isinstance(v, Node):
-                v = v.dump()
-            elif isiterable(v):
-                v = [(i.dump() if isinstance(i, Node) else i) for i in v]
-            dct[k] = v
-        return dct
+    def __bool__(self):
+        return True
 
 
 class LeafNode(Node):
@@ -78,32 +53,26 @@ class LeafNode(Node):
         return type(self)()
 
 
+@dataclass
 class Grammar(Node, ArgsRepr, Sized):
-    def __init__(self, *rules: Rule | MetaRule):
+    nodes: list[Rule | MetaRule]
+    entry: Optional[Rule] = None
+
+    def __init__(self, *rules):
         self.nodes = list(rules)
-        self._entry: Optional[Rule] = None
-        self._set_parent(self.nodes)
+        self.entry = None
 
     def add(self, rule: Rule) -> bool:
         if rule in self.nodes:
             return False
         self.nodes.append(rule)
-        rule._parent = self
         return True
 
     def remove_metarules(self):
         self.nodes = list(filter(lambda i: type(i) is not MetaRule, self.nodes))
 
-    @property
-    def entry(self):
-        return self._entry
-
-    @entry.setter
-    def entry(self, value):
-        self._entry = value
-
     def _get_args(self):
-        return self._nodes
+        return self.nodes
 
     def __eq__(self, other):
         if not isinstance(other, Grammar):
@@ -119,14 +88,13 @@ class Grammar(Node, ArgsRepr, Sized):
     def __str__(self):
         return '\n'.join(map(str, self.nodes))
 
-    def __bool__(self):
-        return True
 
-
+@dataclass
 class Expression(Node, ArgsRepr, Sized):
-    def __init__(self, *alts: Alt):
+    alts: list[Alt]
+
+    def __init__(self, *alts):
         self.alts = list(alts)
-        self._set_parent(self.alts)
 
     def _get_args(self):
         return self.alts
@@ -151,74 +119,40 @@ class Expression(Node, ArgsRepr, Sized):
         alts = ', '.join(map(str, self.alts))
         return f"Expression({alts})"
 
-    def __bool__(self):
-        return True
 
-
+@dataclass
 class Rule(Node, ArgsRepr, Sized):
-    def __init__(self,
-                 name: Identifier,
-                 rhs: Expression,
-                 directives: list[str] | None = None):
-        self.leftrec = False
-        self.name = name
-        self.rhs = rhs
-        self._set_parent([self.name, self.rhs])
-        self.directives = directives or []
-
-    @property
-    def id(self) -> Identifier:
-        return self.name
-
-    @id.setter
-    def id(self, value) -> None:
-        self.name = value
-        self.name._parent = self
-
-    @property
-    def expression(self) -> Expression:
-        return self.rhs
-
-    @expression.setter
-    def expression(self, value) -> None:
-        self.rhs = value
-        value._parent = self
+    id: Identifier
+    expr: Expression
+    directives: list[str] = field(default_factory=list)
+    leftrec: bool = False
 
     def _get_args(self):
-        return [self.name, self.rhs]
+        return [self.id, self.expr]
 
     def __str__(self):
         directives = ('[' + ', '.join(self.directives) + ']'
                       if self.directives else '')
-        return f'Rule{directives}({self.name}, {self.rhs})'
+        return f'Rule{directives}({self.id}, {self.rhs})'
 
     def __iter__(self):
-        yield from (self.name, self.rhs)
+        yield from (self.id, self.expr)
 
     def __len__(self):
-        return len(self.rhs)
+        return len(self.expr)
 
     def __eq__(self, other):
         if not isinstance(other, Rule):
             return NotImplemented
-        return (self.name, self.rhs) == (other.name, other.rhs)
+        return (self.id, self.expr) == (other.id, other.expr)
 
-    def __bool__(self):
-        return True
+    def __hash__(self):
+        return hash(self.id)
 
 
+@dataclass
 class MetaRef(LeafNode, ArgsRepr):
-    def __init__(self, id: Identifier):
-        self.id = id
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, value):
-        self._id = value
-        self._id._parent = self
+    id: Identifier
 
     def _get_args(self):
         return [self.id]
@@ -235,20 +169,10 @@ class MetaRef(LeafNode, ArgsRepr):
         return hash(self.id)
 
 
+@dataclass
 class MetaRule(Node, ArgsRepr):
-    def __init__(self, expr: str, id: Optional[Identifier] = None):
-        self.id = id
-        self.expr = expr
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, value):
-        self._id = value
-        if self._id is not None:
-            self._id._parent = self
+    expr: str
+    id: Optional[Identifier] = None
 
     def copy(self, deep=False):
         return MetaRule(id=self.id, expr=self.expr)
@@ -271,9 +195,9 @@ class MetaRule(Node, ArgsRepr):
         return (self.id, self.expr) == (other.id, other.expr)
 
 
+@dataclass
 class Identifier(LeafNode, ArgsRepr):
-    def __init__(self, string: str):
-        self.string = string
+    string: str
 
     def _get_args(self):
         return [self.string]
@@ -295,39 +219,30 @@ class Identifier(LeafNode, ArgsRepr):
         return hash(self.string)
 
 
+@dataclass
 class Alt(Node, ArgsRepr, Sized):
-    def __init__(self,
-                 *parts: Node,
-                 metarule: Optional[MetaRef | MetaRule] = None):
+    parts: Node
+    metarule: Optional[MetaRef | MetaRule] = None
+
+    def __init__(self, *parts: Node, metarule=None):
         self.metarule = metarule
         self.parts = list(parts)
-        self._set_parent(self.parts)
-
-    @property
-    def metarule(self):
-        return self._metarule
-
-    @metarule.setter
-    def metarule(self, value):
-        self._metarule = value
-        if self._metarule is not None:
-            self._metarule._parent = self
 
     def _get_args(self):
         return self.parts
 
     def _get_kwargs(self):
-        return [('metarule', self._metarule), ('parts', self.parts)]
+        return [('metarule', self.metarule), ('parts', self.parts)]
 
     def __eq__(self, other):
         if not isinstance(other, Alt):
             return NotImplemented
-        return self.parts == other.parts
+        return (self.metarule, self.parts) == (other.metarule, other.parts)
 
     def __iter__(self):
         yield from self.parts
-        if self._metarule is not None:
-            yield self._metarule
+        if self.metarule is not None:
+            yield self.metarule
 
     def __len__(self):
         return len(self.parts)
@@ -337,50 +252,13 @@ class Alt(Node, ArgsRepr, Sized):
             raise TypeError
         return Alt(*chain(iter(self.parts), iter(other.parts)))
 
-    def __bool__(self):
-        return True
 
-
+@dataclass
 class Part(Node, AttributeHolder):
-    def __init__(self, *,
-                 prime,
-                 pred: Optional[And | Not] = None,
-                 quant: Optional[QuantifierType | Repetition] = None,
-                 metaname: Optional[str] = None):
-        self.pred = pred
-        self.prime = prime
-        self.quant = quant
-        self.metaname = metaname
-
-    @property
-    def pred(self) -> Optional[PredicateType]:
-        return self._pred
-
-    @pred.setter
-    def pred(self, value) -> None:
-        self._pred = value
-        if self._pred is not None:
-            self._pred._parent = self
-
-    @property
-    def prime(self):
-        return self._prime
-
-    @prime.setter
-    def prime(self, value) -> None:
-        self._prime = value
-        if self._prime is not None:
-            self._prime._parent = self
-
-    @property
-    def quant(self) -> Optional[QuantifierType | Repetition]:
-        return self._quant
-
-    @quant.setter
-    def quant(self, value) -> None:
-        self._quant = value
-        if self._quant is not None:
-            self._quant._parent = self
+    prime: Node
+    lookahead: Optional[And | Not] = None
+    quant: Optional[ZeroOrOne | ZeroOrMore | OneOrMore | Repetition] = None
+    metaname: Optional[str] = None
 
     def copy(self, deep=False):
         if deep:
@@ -391,8 +269,8 @@ class Part(Node, AttributeHolder):
 
     def _get_kwargs(self):
         dct = {'metaname': self.metaname}
-        if self.pred:
-            dct['pred'] = self.pred
+        if self.lookahead:
+            dct['lookahead'] = self.lookahead
         dct['prime'] = self.prime
         if self.quant:
             dct['quant'] = self.quant
@@ -401,36 +279,28 @@ class Part(Node, AttributeHolder):
     def __eq__(self, other):
         if not isinstance(other, Part):
             return NotImplemented
-        return ((self.pred, self.prime, self.quant) ==
-                (other.pred, other.prime, other.quant))
+        return ((self.lookahead, self.prime, self.quant, self.metaname) ==
+                (other.lookahead, other.prime, other.quant, other.metaname))
 
     def __iter__(self):
-        if self.pred:
-            yield self.pred
+        if self.lookahead:
+            yield self.lookahead
         yield self.prime
         if self.quant:
             yield self.quant
 
 
+@dataclass
 class AnyChar(LeafNode, AttributeHolder):
     def __eq__(self, other):
         return True if isinstance(other, AnyChar) else NotImplemented
 
 
-def isiterable(obj: Any) -> bool:
-    """Check if an object is iterable, but not string."""
-    if isinstance(obj, str):
-        return False
-    try:
-        iter(obj)
-        return True
-    except TypeError:
-        return False
-
-
+@dataclass
 class String(Node, ArgsRepr):
+    chars: list[Char]
+
     def __init__(self, *chars: Char):
-        self.chars: list[Char]
         self.contents = chars  # type: ignore[assignment]
 
     @property
@@ -446,8 +316,6 @@ class String(Node, ArgsRepr):
         else:
             raise TypeError(
                 f"expected Iterable[Char] | Char, got {type(value)}")
-        for c in self.chars:
-            c._parent = self
 
     def _get_args(self):
         return self.chars
@@ -463,22 +331,17 @@ class String(Node, ArgsRepr):
     def __iter__(self) -> Iterator[Char]:
         yield from self.chars
 
-    _UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
-
     def __str__(self):
         string = ''.join(map(lambda c: str(c)[1:-1], self.chars))
-        if self._UNESCAPED_DOUBLE_QUOTE_RE.match(string):
-            string = string.replace('"', '\\"')
-        return '"' + string + '"'
-
-    def __bool__(self):
-        return True
+        return wrap_string(string)
 
 
+@dataclass
 class Class(Node, ArgsRepr, Sized):
+    ranges: list[Range]
+
     def __init__(self, *ranges: Range):
         self.ranges = list(ranges)
-        self._set_parent(self.ranges)
 
     def _get_args(self):
         return self.ranges
@@ -494,33 +357,11 @@ class Class(Node, ArgsRepr, Sized):
     def __iter__(self):
         yield from self.ranges
 
-    def __bool__(self):
-        return True
 
-
+@dataclass
 class Range(Node, ArgsRepr):
-    def __init__(self, beg: Char, end: Optional[Char] = None):
-        self.beg = beg
-        self.end = end
-
-    @property
-    def beg(self) -> Char:
-        return self._beg
-
-    @beg.setter
-    def beg(self, value) -> None:
-        self._beg = value
-        self._beg._parent = self
-
-    @property
-    def end(self) -> Optional[Char]:
-        return self._end
-
-    @end.setter
-    def end(self, value) -> None:
-        self._end = value
-        if self._end is not None:
-            self._end._parent = self
+    beg: Char
+    end: Optional[Char] = None
 
     def _get_args(self):
         args = [self.beg, self.end] if self.end else [self.beg]
@@ -540,7 +381,7 @@ class Range(Node, ArgsRepr):
             yield self.end
 
 
-class Predicate(LeafNode):
+class Lookahead(LeafNode):
     def _get_kwargs(self):
         return ()
 
@@ -558,11 +399,11 @@ class Predicate(LeafNode):
         return type(self).__name__
 
 
-class And(Predicate):
+class And(Lookahead):
     pass
 
 
-class Not(Predicate):
+class Not(Lookahead):
     pass
 
 
@@ -600,10 +441,10 @@ PredicateType = And | Not
 QuantifierType = ZeroOrOne | ZeroOrMore | OneOrMore
 
 
+@dataclass
 class Repetition(LeafNode, ArgsRepr):
-    def __init__(self, beg: int, end: Optional[int] = None):
-        self.beg = beg
-        self.end = end
+    beg: int
+    end: Optional[int] = None
 
     def _get_args(self):
         if self.end:
@@ -617,12 +458,12 @@ class Repetition(LeafNode, ArgsRepr):
         return (self.beg, self.end) == (other.beg, other.end)
 
 
+@dataclass
 class Char(LeafNode, ArgsRepr):
+    code: int
+
     def __init__(self, code: int | str):
-        if isinstance(code, str):
-            self.code = ord(code)
-        else:
-            self.code = code
+        self.code = ord(code) if isinstance(code, str) else code
 
     def _get_args(self):
         assert isinstance(self.code, int), "char code is integer"
@@ -644,9 +485,6 @@ class Char(LeafNode, ArgsRepr):
         if not isinstance(other, Char):
             return NotImplemented
         return self.code > other.code
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     def __le__(self, other):
         return self.__eq__(other) or self.__lt(other)
@@ -680,21 +518,3 @@ class GrammarVisitor:
         """Called if no explicit visitor function exists for a node."""
         for value in node:
             self.visit(value, *args, **kwargs)
-
-
-def common_prefix(lhs: Node, rhs: Node) -> list[Node]:
-    parts = []
-    for a, b in zip(lhs, rhs):
-        if a != b:
-            break
-        parts.append(a)
-    return parts
-
-
-def has_prefix(prefix: list[Node], node: Grammar | Expression) -> bool:
-    if len(node) < len(prefix):
-        return False
-    for a, b in zip(prefix, node):
-        if a != b:
-            return False
-    return True
