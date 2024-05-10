@@ -40,18 +40,16 @@ def isnode(obj):
 def memoize(fn):
     def wrapper(self, *args):
         pos = self._mark()
-        memo = self._memos.get(pos)
+        key = (fn, args, pos)
+        memo = self._memos.get(key)
         if memo is None:
-            memo = self._memos[pos] = {}
-        key = (fn, args)
-        if key in memo:
-            res, endpos = memo[key]
-            self._reset(endpos)
-        else:
-            res = fn(self, *args)
+            result = fn(self, *args)
             endpos = self._mark()
-            memo[key] = res, endpos
-        return res
+            self._memos[key] = result, endpos
+        else:
+            result, endpos = memo
+            self._reset(endpos)
+        return result
 
     return wrapper
 
