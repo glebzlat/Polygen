@@ -4,19 +4,19 @@ from __future__ import annotations
 import string
 
 from typing import Optional, Any, Iterator
-from dataclasses import dataclass, field
 from collections.abc import Iterable, Sized
 from abc import abstractmethod
 from itertools import chain
-
-from dataclasses_json import DataClassJsonMixin
 
 from polygen.attrholder import AttributeHolder, ArgsRepr
 from .utility import isiterable, wrap_string
 
 
-@dataclass
-class Node(Iterable, DataClassJsonMixin):
+class Node(Iterable):
+    def __init__(self, begin_pos: int = 0, end_pos: int = 0):
+        self.begin_pos = begin_pos
+        self.end_pos = end_pos
+
     @property
     def descendants(self) -> Iterator[Node]:
         yield self
@@ -37,6 +37,17 @@ class Node(Iterable, DataClassJsonMixin):
         self_type = type(self)
         return self_type(*nodes)
 
+    def to_dict(self):
+        type_name = type(self).__name__
+        dct = {'type': type_name}
+        for k, v in self._get_kwargs():
+            if isinstance(v, Node):
+                v = v.to_dict()
+            elif isiterable(v):
+                v = [(i.to_dict() if isinstance(i, Node) else i) for i in v]
+            dct[k] = v
+        return dct
+
     def __bool__(self):
         return True
 
@@ -53,14 +64,14 @@ class LeafNode(Node):
         return type(self)()
 
 
-@dataclass
 class Grammar(Node, ArgsRepr, Sized):
     nodes: list[Rule | MetaRule]
-    entry: Optional[Rule] = None
+    entry: Optional[Rule]
 
-    def __init__(self, *rules):
+    def __init__(self, *rules, begin_pos=0, end_pos=0):
         self.nodes = list(rules)
         self.entry = None
+        super().__init__(begin_pos, end_pos)
 
     def add(self, rule: Rule) -> bool:
         if rule in self.nodes:
@@ -89,12 +100,12 @@ class Grammar(Node, ArgsRepr, Sized):
         return '\n'.join(map(str, self.nodes))
 
 
-@dataclass
 class Expression(Node, ArgsRepr, Sized):
     alts: list[Alt]
 
-    def __init__(self, *alts):
+    def __init__(self, *alts, begin_pos=0, end_pos=0):
         self.alts = list(alts)
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return self.alts
@@ -120,12 +131,19 @@ class Expression(Node, ArgsRepr, Sized):
         return f"Expression({alts})"
 
 
-@dataclass
 class Rule(Node, ArgsRepr, Sized):
     id: Identifier
     expr: Expression
-    directives: list[str] = field(default_factory=list)
-    leftrec: bool = False
+    directives: list[str]
+    leftrec: bool
+
+    def __init__(self, id, expr, directives=[],
+                 leftrec=False, begin_pos=0, end_pos=0):
+        self.id = id
+        self.expr = expr
+        self.directives = directives
+        self.leftrec = leftrec
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return [self.id, self.expr]
@@ -150,9 +168,12 @@ class Rule(Node, ArgsRepr, Sized):
         return hash(self.id)
 
 
-@dataclass
 class MetaRef(LeafNode, ArgsRepr):
     id: Identifier
+
+    def __init__(self, id, begin_pos=0, end_pos=0):
+        self.id = id
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return [self.id]
@@ -169,10 +190,14 @@ class MetaRef(LeafNode, ArgsRepr):
         return hash(self.id)
 
 
-@dataclass
 class MetaRule(Node, ArgsRepr):
     expr: str
-    id: Optional[Identifier] = None
+    id: Optional[Identifier]
+
+    def __init__(self, expr, id=None, begin_pos=0, end_pos=0):
+        self.expr = expr
+        self.id = id
+        super().__init__(begin_pos, end_pos)
 
     def copy(self, deep=False):
         return MetaRule(id=self.id, expr=self.expr)
@@ -195,9 +220,12 @@ class MetaRule(Node, ArgsRepr):
         return (self.id, self.expr) == (other.id, other.expr)
 
 
-@dataclass
 class Identifier(LeafNode, ArgsRepr):
     string: str
+
+    def __init__(self, string, begin_pos=0, end_pos=0):
+        self.string = string
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return [self.string]
@@ -219,14 +247,14 @@ class Identifier(LeafNode, ArgsRepr):
         return hash(self.string)
 
 
-@dataclass
 class Alt(Node, ArgsRepr, Sized):
     parts: Node
-    metarule: Optional[MetaRef | MetaRule] = None
+    metarule: Optional[MetaRef | MetaRule]
 
-    def __init__(self, *parts: Node, metarule=None):
+    def __init__(self, *parts: Node, metarule=None, begin_pos=0, end_pos=0):
         self.metarule = metarule
         self.parts = list(parts)
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return self.parts
@@ -253,12 +281,19 @@ class Alt(Node, ArgsRepr, Sized):
         return Alt(*chain(iter(self.parts), iter(other.parts)))
 
 
-@dataclass
 class Part(Node, AttributeHolder):
+    lookahead: Optional[And | Not]
     prime: Node
-    lookahead: Optional[And | Not] = None
-    quant: Optional[ZeroOrOne | ZeroOrMore | OneOrMore | Repetition] = None
-    metaname: Optional[str] = None
+    quant: Optional[ZeroOrOne | ZeroOrMore | OneOrMore | Repetition]
+    metaname: Optional[str]
+
+    def __init__(self, prime, *, lookahead=None, quant=None,
+                 metaname=None, begin_pos=0, end_pos=0):
+        self.lookahead = lookahead
+        self.prime = prime
+        self.quant = quant
+        self.metaname = metaname
+        super().__init__(begin_pos, end_pos)
 
     def copy(self, deep=False):
         if deep:
@@ -290,18 +325,17 @@ class Part(Node, AttributeHolder):
             yield self.quant
 
 
-@dataclass
 class AnyChar(LeafNode, AttributeHolder):
     def __eq__(self, other):
         return True if isinstance(other, AnyChar) else NotImplemented
 
 
-@dataclass
 class String(Node, ArgsRepr):
     chars: list[Char]
 
-    def __init__(self, *chars: Char):
+    def __init__(self, *chars: Char, begin_pos=0, end_pos=0):
         self.contents = chars  # type: ignore[assignment]
+        super().__init__(begin_pos, end_pos)
 
     @property
     def contents(self) -> list[Char]:
@@ -336,12 +370,12 @@ class String(Node, ArgsRepr):
         return wrap_string(string)
 
 
-@dataclass
 class Class(Node, ArgsRepr, Sized):
     ranges: list[Range]
 
-    def __init__(self, *ranges: Range):
+    def __init__(self, *ranges: Range, begin_pos=0, end_pos=0):
         self.ranges = list(ranges)
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         return self.ranges
@@ -358,10 +392,14 @@ class Class(Node, ArgsRepr, Sized):
         yield from self.ranges
 
 
-@dataclass
 class Range(Node, ArgsRepr):
     beg: Char
-    end: Optional[Char] = None
+    end: Optional[Char]
+
+    def __init__(self, beg, end=None, begin_pos=0, end_pos=0):
+        self.beg = beg
+        self.end = end
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         args = [self.beg, self.end] if self.end else [self.beg]
@@ -441,10 +479,14 @@ PredicateType = And | Not
 QuantifierType = ZeroOrOne | ZeroOrMore | OneOrMore
 
 
-@dataclass
 class Repetition(LeafNode, ArgsRepr):
     beg: int
-    end: Optional[int] = None
+    end: Optional[int]
+
+    def __init__(self, beg, end=None, begin_pos=0, end_pos=0):
+        self.beg = beg
+        self.end = end
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         if self.end:
@@ -458,12 +500,12 @@ class Repetition(LeafNode, ArgsRepr):
         return (self.beg, self.end) == (other.beg, other.end)
 
 
-@dataclass
 class Char(LeafNode, ArgsRepr):
     code: int
 
-    def __init__(self, code: int | str):
+    def __init__(self, code: int | str, begin_pos=0, end_pos=0):
         self.code = ord(code) if isinstance(code, str) else code
+        super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
         assert isinstance(self.code, int), "char code is integer"

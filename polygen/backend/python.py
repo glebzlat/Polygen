@@ -85,7 +85,7 @@ class PythonGenerator:
         self.put(f'def _{rule.id.string}(self):')
 
         with self.indent():
-            self.put('pos = self._mark()')
+            self.put('_begin_pos = self._mark()')
             for i, alt in enumerate(rule.expr):
                 self.gen_alt(alt, rule, i)
             self.put('return None')
@@ -115,7 +115,7 @@ class PythonGenerator:
             else:
                 retval = ', '.join(variables)
                 self.put(f'return {retval}' if retval else 'return True')
-        self.put('self._reset(pos)')
+        self.put('self._reset(_begin_pos)')
 
     def gen_part(self, part, part_index, variables, newline):
         parts = []
