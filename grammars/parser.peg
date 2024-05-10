@@ -15,7 +15,7 @@ Primary     <- Identifier !LEFTARROW
              / OPEN Expression CLOSE
              / Literal / Class / DOT
 MetaName    <- Identifier SEMI                                    $metaname_action
-MetaRule    <- '${' expr:(![}] .)* '}' Spacing                    $metarule_def_action
+MetaRule    <- '${' expr:(NestedBody / !'}' .)* '}' Spacing       $metarule_def_action
              / '$' Spacing Identifier !'{'                        $metarule_ref_action
 
 MetaDef     <- '$' Spacing Identifier expr:MetaDefBody            $metadef_action

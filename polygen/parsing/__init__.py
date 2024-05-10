@@ -1,3 +1,4 @@
-__all__ = ['Parser']
+__all__ = ['Parser', 'Reader']
 
 from .bootstrap.parser import Parser
+from .reader import Reader

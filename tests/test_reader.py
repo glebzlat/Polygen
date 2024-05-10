@@ -2,7 +2,7 @@ from io import StringIO
 
 import unittest
 
-from polygen.reader import Reader
+from polygen.parsing import Reader
 
 
 class ReaderTest(unittest.TestCase):
@@ -10,7 +10,7 @@ class ReaderTest(unittest.TestCase):
         s = "hello world"
         r = Reader(s)
 
-        clue = s + '\0'
+        clue = s
         self.assertFalse(r.eof)
         self.assertEqual(list(clue), list(r))
         self.assertEqual(r.name, "<unicode string>")
@@ -21,7 +21,7 @@ class ReaderTest(unittest.TestCase):
         stream = StringIO(s)
         r = Reader(stream)
 
-        clue = s + '\0'
+        clue = s
         self.assertFalse(r.eof)
         self.assertEqual(list(clue), list(r))
         self.assertEqual(r.name, "<file>")

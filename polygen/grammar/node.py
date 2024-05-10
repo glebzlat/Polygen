@@ -88,7 +88,12 @@ class Grammar(Node, ArgsRepr, Sized):
     def __eq__(self, other):
         if not isinstance(other, Grammar):
             return NotImplemented
-        return self.rules == other.rules
+        if len(self.nodes) != len(other.nodes):
+            return False
+        for rule in self.nodes:
+            if rule not in other.nodes:
+                return False
+        return True
 
     def __iter__(self):
         yield from self.nodes
@@ -151,7 +156,7 @@ class Rule(Node, ArgsRepr, Sized):
     def __str__(self):
         directives = ('[' + ', '.join(self.directives) + ']'
                       if self.directives else '')
-        return f'Rule{directives}({self.id}, {self.rhs})'
+        return f'Rule{directives}({self.id}, {self.expr})'
 
     def __iter__(self):
         yield from (self.id, self.expr)
@@ -190,7 +195,7 @@ class MetaRef(LeafNode, ArgsRepr):
         return hash(self.id)
 
 
-class MetaRule(Node, ArgsRepr):
+class MetaRule(Node, AttributeHolder):
     expr: str
     id: Optional[Identifier]
 
@@ -201,9 +206,6 @@ class MetaRule(Node, ArgsRepr):
 
     def copy(self, deep=False):
         return MetaRule(id=self.id, expr=self.expr)
-
-    def _get_args(self):
-        return [self.id, self.expr]
 
     def _get_kwargs(self):
         return [('id', self.id), ('expr', self.expr)]
@@ -261,6 +263,11 @@ class Alt(Node, ArgsRepr, Sized):
 
     def _get_kwargs(self):
         return [('metarule', self.metarule), ('parts', self.parts)]
+
+    def __str__(self):
+        metarule = f'[{self.metarule}]' if self.metarule is not None else ''
+        parts = ', '.join(map(repr, self.parts))
+        return f'Alt{metarule}({parts})'
 
     def __eq__(self, other):
         if not isinstance(other, Alt):

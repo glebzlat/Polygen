@@ -1,53 +1,153 @@
 import unittest
 
-from polygen.parser import Parser
-from polygen.reader import Reader
+from polygen.parsing import Parser
+from polygen.grammar.node import (
+    Node,
+    Grammar,
+    Expression,
+    Rule,
+    MetaRef,
+    MetaRule,
+    Identifier,
+    Range,
+    Alt,
+    Part,
+    AnyChar,
+    String,
+    Class,
+    Not,
+    And,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
+    Repetition,
+    Char
+)
 
 
-class TestParser(unittest.TestCase):
-    def test_peek(self):
-        s = "123456"
-        r = Reader(s)
-        p = Parser(r)
+class ParserTestMetaclass(type):
+    def __init__(cls, name, bases, body):
+        if name == 'ParserTest':
+            return
 
-        self.assertEqual(p._peek_char(), '1')
-        self.assertEqual(p._peek_char(), '1')
-        self.assertEqual(p._mark(), 0)
+        def test_successes(self):
+            for input, clue in self.successes:
+                parser = Parser(input)
+                result = parser.parse()
+                print(repr(result))
+                self.assertEqual(result, clue)
 
-    def test_get(self):
-        s = "123456"
-        r = Reader(s)
-        p = Parser(r)
+        def test_failures(self):
+            for input in self.failures:
+                parser = Parser(input)
+                result = parser.parse()
+                self.assertIsNone(result)
 
-        self.assertEqual(p._get_char(), '1')
-        self.assertEqual(p._get_char(), '2')
-        self.assertEqual(p._mark(), 2)
+        if getattr(cls, 'successes', None):
+            setattr(cls, 'test_successes', test_successes)
+        if getattr(cls, 'failures', None):
+            setattr(cls, 'test_failures', test_failures)
 
-    def test_reset(self):
-        s = "123456"
-        r = Reader(s)
-        p = Parser(r)
 
-        pos = p._mark()
-        for _ in range(3):
-            p._get_char()
+bases = (unittest.TestCase,)
+ParserTest = ParserTestMetaclass('ParserTest', bases, {})
 
-        self.assertEqual(p._mark(), 3)
-        self.assertEqual(p._peek_char(), '4')
 
-        p._reset(pos)
-        self.assertEqual(p._mark(), 0)
-        self.assertEqual(p._peek_char(), '1')
+class TestSimpleRule(ParserTest):
+    successes = [
+        ("Id <- ", Grammar(Rule(Identifier('Id'), Expression(Alt())))),
+        ("Id <- Id", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Id'))))))),
+        ("Id <- Expr", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr'))))))),
+        ("Id1 <- Id2 <-", Grammar(
+            Rule(Identifier('Id1'), Expression(Alt())),
+            Rule(Identifier('Id2'), Expression(Alt())))),
+        ("Id\t\n\t\r<-      \n\rExpr\t\r", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr'))))))),
+        ("Id <- (Expr)", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Expression(Alt(
+                              Part(metaname=None,
+                                   prime=Identifier('Expr')))))))))),
+    ]
 
-    def test_expect(self):
-        s = "123456"
-        r = Reader(s)
-        p = Parser(r)
+    failures = [
+        "",
+        "Id <- <-",
+        "<- Expr",
+        "Id < - Expr",
+        "Id Expr",
+        "(Id) <- Expr",
+        "Id <- Expr)",
+        "Id <- (Expr",
+        "3d <- Expr",
+        "Id <- 23expr"
+    ]
 
-        self.assertEqual(p._expect('1'), '1')
-        self.assertEqual(p._expect('2'), '2')
-        self.assertEqual(p._expect('3'), '3')
-        self.assertEqual(p._mark(), 3)
 
-        self.assertIsNone(p._expect('5'))
-        self.assertEqual(p._mark(), 3)
+class TestRuleMetaRef(ParserTest):
+    metaref = MetaRef(Identifier('rulename'))
+    successes = [
+        ("Id <- Expr $rulename", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')),
+                     metarule=metaref))))),
+        ("Id <- Expr $\t\nrulename", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')),
+                     metarule=metaref)))))
+    ]
+
+    failures = [
+        "Id <- Expr $",
+        "Id <- Expr $ Foo <- Bar"
+    ]
+
+
+class TestRuleMetaRule(ParserTest):
+    metarule1 = MetaRule(id=None, expr="hello world")
+    metarule2 = MetaRule(id=None, expr="{{{properly nested}}}")
+    metarule3 = MetaRule(id=None, expr="\n\t\r hello world\n\r ")
+
+    successes = [
+        ("Id <- Expr ${hello world}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')),
+                     metarule=metarule1))))),
+        ("Id <- Expr ${{{{properly nested}}}}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')),
+                     metarule=metarule2))))),
+        ("Id <- Expr ${\n\t\r hello world\n\r }", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')),
+                     metarule=metarule3))))),
+        ("Id <- Expr $rulename {hello world}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('Expr'))))),
+            MetaRule(id=Identifier('rulename'), expr='hello world')))
+    ]
+
+    failures = [
+        "Id <- Expr ${invalid}}",
+        "Id <- Expr ${{invalid}",
+        "Id <- Expr $ {invalid}"
+        "Id <- Expr ${",
+        "Id <- Expr }",
+    ]
