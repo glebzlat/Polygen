@@ -631,7 +631,7 @@ class GenerateMetanames:
     def __init__(self):
         self.index = 1
         self.metanames = set()
-        self.id_names = []
+        self.id_names = Counter()
 
     def visit_Part(self, node: Part, parents):
         metaname = node.metaname
@@ -644,35 +644,42 @@ class GenerateMetanames:
             node.metaname = '_'
             return False
 
+        if metaname is not None:
+            if metaname == '_':
+                return False
+
+            if metaname in self.metanames:
+                raise MetanameRedefError(node)
+            return False
+
         if type(node.prime) in (Char, String, AnyChar):
-            varname = f'_{self.index}'
+            metaname = f'_{self.index}'
             self.index += 1
+
         elif type(node.prime) is Identifier:
             id = node.prime
 
-            if metaname is not None:
-                if metaname == '_':
-                    return False
-
-                if metaname in self.metanames:
-                    raise MetanameRedefError(node)
-                self.metanames.add(metaname)
-                return False
-
             if '__GEN' in id.string:
-                varname = f'_{self.index}'
+                metaname = f'_{self.index}'
                 self.index += 1
+
             else:
-                varname = id.string.lower()
-                if iskeyword(varname):
-                    varname = '_' + varname
-                if c := self.id_names.count(varname):
-                    varname = f'{varname}{c}'
-                self.id_names.append(varname)
+                metaname = id.string.lower()
+                if iskeyword(metaname):
+                    metaname = '_' + metaname
+
+                idx = self.id_names[metaname]
+                self.id_names[metaname] += 1
+                if idx:
+                    metaname = f'{metaname}{idx}'
+
         else:
             raise RuntimeError(f"unsupported node type: {node.prime}")
 
-        node.metaname = varname
+        if metaname in self.metanames:
+            raise MetanameRedefError(node)
+        node.metaname = metaname
+        self.metanames.add(metaname)
         return False
 
     def visit_Alt(self, node: Alt, parents):
