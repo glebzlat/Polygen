@@ -1,4 +1,3 @@
-# NOTE: __future__.annotations can cause problems with dataclasses_json
 from __future__ import annotations
 
 import string
@@ -37,10 +36,12 @@ class Node(Iterable):
         self_type = type(self)
         return self_type(*nodes)
 
-    def to_dict(self):
+    def to_dict(self, positions=True):
         type_name = type(self).__name__
         dct = {'type': type_name}
         for k, v in self._get_kwargs():
+            if not positions and k in ('begin_pos', 'end_pos'):
+                continue
             if isinstance(v, Node):
                 v = v.to_dict()
             elif isiterable(v):
@@ -518,7 +519,8 @@ class Char(LeafNode, ArgsRepr):
         assert isinstance(self.code, int), "char code is integer"
         if (c := chr(self.code)) and c in string.printable:
             return [c]
-        return [self.code]
+        code = hex(self.code)[2:].rjust(4, '0')
+        return [f'\\u{code}']
 
     def __eq__(self, other):
         if not isinstance(other, Char):
@@ -544,7 +546,8 @@ class Char(LeafNode, ArgsRepr):
     def __str__(self):
         if (c := chr(self.code)) and c in string.printable:
             return repr(c)
-        return '\\u' + hex(self.code)[2:].rjust(4, '0')
+        code = hex(self.code)[2:].rjust(4, '0')
+        return f'\\u{code}'
 
     def __hash__(self):
         return hash(self.code)

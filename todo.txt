@@ -1,84 +1,42 @@
 # Additions
 
-AHH WRITE UNIT TESTS FOR THIS ALL i beg you
+Well, what will happen, if I make all the nodes just dictionaries? And test
+parsers using files: file with the input grammar and file with resulting
+nodes in json?
 
-BUG: grammar does not allow curly braces inside the metarule body.
+Replace True value in the generated parser by an empty tuple (). This will
+make resulting raw tree more consistent.
 
-Add grammar preprocessor. Grammar preprocessor will extend directive language.
-It will make possible to write
-    @ignore {
-    Rule1 <- ...
-    ...
-    RuleN <- ...
-    }
-which will be substituted by:
-    @ignore
-    Rule1 <- ...
-    ...
-    @ignore
-    RuleN <- ...
-which itself will be parsed by the grammar parser.
+Write tests
 
-Add grammar preprocessor @include directive.
+    - [x] Reader
+    - [x] Parser
+    - [ ] Nodes
+    - [ ] Tree modifier
+    - [ ] Preprocessor
+    - [ ] Generated parsers
 
-How to add semantic actions? Or just generate a parsing tree and that's enough?
 
-Add TreeModifier tests.
+Grammar preprocessor
 
-Add the whole grammar tests - compare generated AST with the saved.
+    Add grammar preprocessor to extend directive language:
 
-Add modified AST tests - compare modified AST with the saved.
+        - Curly braces to apply directive to a group of rules
 
-Add start, end indexes to generated nodes.
+          E.g.:
 
-Develop a config protocol.
+          ```
+          @ignore {
+          Rule1 <- ...
+          ...
+          RuleN <- ...
+          }
+          ```
 
-Add generated parser tests. Parser without semantic actions should return
-True, if the grammar is parsed and False otherwise. This test should generate
-a temporary parser, evaluate it and test it against test grammar files.
+        - @include directive to split the grammar into pieces
 
-# Proposals
 
-Apply another mechanism of node filtering for semantic rules. Instead of
-keeping a `node_type` variable, which may be a single type or a sequence
-of types, define methods with the name `visit_*`, where `*` designates
-node's type name. Like so: `visit_Expression`.
+Configurations
 
-Allow post-visit actions.
-
-Add the config. Which format to use?
-
-Add parser syntastic error reporting (use "Exception Handling for Error
-Reporting in Parsing Expression Grammars" research paper).
-
-Add the parser generator. All the project should be split into parts:
-- Front-end -- parser, creates the tree, checks for syntax errors,
-- Middleware -- converter, applies rules to the tree, checks for semantic
-  errors, and
-- Back-end -- parser generator.
-
-Front-end does not and should not know about the semantic rules, applied by
-the Middleware -- its responsibility is to generate the AST.
-
-Middleware, I think, will consist mainly of RuleRewriter.
-
-Back-end must implement a set of basic features (ordered choice, zero-or-more,
-not predicate, etc.) and it may implement additional features (like one-or-more,
-and predicate, etc.). In case if it implements additional features, it may
-instruct the Middleware to not eliminate them from the tree.
-
-Back-end may be implemented in _any_ language (at the cost of writing and
-debugging time, of course). That is, the tree should have an ability to be
-represented in some fancy and easy parseable way (e.g., it should be
-convertible to JSON). For the same reason, configs and other ways for the
-system parts (and the end-user) to interact should be convertible to another
-parseable (and human-readable) format.
-
-BTW, user should have an ability to write his own Middleware rules and attach
-them, even if he writes them in another language.
-
-Add semantic actions. How?
-
-Semantic actions and the grammar should be distinct. No curly braces with
-pieces of code in the grammar file -- semantic actions in generated parsers
-should be attached at the end -- this is responsibility of the Back-end.
+    Create a mechanism to control the generator: choose which tree modifiers
+    to apply, add custom modifiers, add code preprocessor directives

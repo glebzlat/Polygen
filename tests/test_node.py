@@ -1,93 +1,108 @@
 import unittest
 
-from polygen.node import (
+from collections import Counter
+
+from polygen.grammar.node import (
+    Node,
     Grammar,
-    Rule,
     Expression,
+    Rule,
+    MetaRef,
+    MetaRule,
     Identifier,
+    Range,
     Alt,
     Part,
+    AnyChar,
     String,
-    Char,
-    GrammarVisitor,
-    common_prefix,
-    has_prefix
+    Class,
+    Not,
+    And,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
+    Repetition,
+    Char
 )
 
 
-class TestDescendants(unittest.TestCase):
-    def test_char(self):
-        tree = Char('a')
+class NodeReprTestMetaclass(type):
+    def __init__(cls, name, bases, body):
+        if name == 'NodeReprTest':
+            return
 
-        clue = [tree]
-        self.assertEqual(list(tree.descendants), clue)
+        cases: list[tuple[Node, str, str, dict]] = getattr(cls, 'cases')
 
-    def test_literal(self):
-        A, B, C = Char('a'), Char('b'), Char('c')
-        tree = String(A, B, C)
+        node_types = Counter()
+        for i, (node, r_clue, s_clue, dct_clue) in enumerate(cases):
 
-        clue = [tree, A, B, C]
-        self.assertEqual(list(tree.descendants), clue)
+            def test_repr(self):
+                dct_repr = node.to_dict()
+                self.assertEqual(dct_repr, dct_clue)
 
-    def test_alt(self):
-        A, B, C = Char('a'), Char('b'), Char('c')
-        PA, PB, PC = Part(prime=A), Part(prime=B), Part(prime=C)
-        tree = Alt(PA, PB, PC)
+                r = repr(node)
+                self.assertEqual(r, r_clue)
 
-        clue = [tree, PA, A, PB, B, PC, C]
-        self.assertEqual(list(tree.descendants), clue)
+                s = str(node)
+                self.assertEqual(s, s_clue)
 
-    def test_grammar(self):
-        A, B, C = Char('a'), Char('b'), Char('c')
-        PA, PB, PC = Part(prime=A), Part(prime=B), Part(prime=C)
-        ALT = Alt(PA, PB, PC)
-        EXP = Expression(ALT)
-        ID = Identifier("rule")
-        RULE = Rule(ID, EXP)
-        tree = Grammar(RULE)
+            node_type = type(node)
+            node_name = node_type.__name__
 
-        clue = [tree, RULE, ID, EXP, ALT, PA, A, PB, B, PC, C]
-        self.assertEqual(list(tree.descendants), clue)
+            if node_type in node_types:
+                count = node_types[node_type]
+                method_name = f'test_{node_name}_{count}'
+            else:
+                method_name = f'test_{node_name}'
+
+            setattr(cls, method_name, test_repr)
+            node_types[node_type] += 1
 
 
-class MiscTest(unittest.TestCase):
-    def test_common_prefix(self):
-        A, B, C, D = Char('a'), Char('b'), Char('c'), Char('d')
-        lhs = String(A, B, C)
-        rhs = String(A, B, D)
-
-        clue = [A, B]
-        result = common_prefix(lhs, rhs)
-        self.assertEqual(result, clue)
-
-    def test_has_prefix(self):
-        A, B, C = Char('a'), Char('b'), Char('c')
-        lit = String(A, B, C)
-
-        self.assertTrue(has_prefix([], lit))
-        self.assertTrue(has_prefix([A], lit))
-        self.assertTrue(has_prefix([A, B], lit))
-        self.assertFalse(has_prefix([B], lit))
+bases = (unittest.TestCase,)
+NodeReprTest = NodeReprTestMetaclass('NodeReprTest', bases, {})
 
 
-class TestVisitor(unittest.TestCase):
-    def test_collect_chars(self):
+class TestCharRepr(NodeReprTest):
 
-        class Visitor(GrammarVisitor):
-            def visit_Char(self, node: Char, charlist: list[Char]):
-                charlist.append(node)
+    cases = [
+        (Char('a'),
+         "Char('a')",
+         "'a'",
+         {'type': 'Char', 'code': 97, 'begin_pos': 0, 'end_pos': 0}),
+        (Char(0x03c0),
+         "Char('\\\\u03c0')",
+         "\\u03c0",
+         {'type': 'Char', 'code': 0x03c0, 'begin_pos': 0, 'end_pos': 0})
+    ]
 
-        J, O, Y = Char('j'), Char('o'), Char('y')
-        PJ, PO, PY = (Expression(Alt(Part(prime=c))) for c in (J, O, Y))
 
-        def rule(name, exp):
-            return Rule(Identifier(name), Expression(exp))
+class TestStringRepr(NodeReprTest):
 
-        grammar = Grammar(rule('j', PJ), rule('o', PO), rule('y', PY))
-        visitor = Visitor()
-        clue = [J, O, Y]
-        result = []
-        visitor.visit(grammar, result)
+    cases = [
+        (String(Char('a'), Char('b'), Char('c')),
+         "String(Char('a'), Char('b'), Char('c'))",
+         '"abc"',
+         {'type': 'String',
+          'chars': [{'begin_pos': 0, 'code': 97, 'end_pos': 0, 'type': 'Char'},
+                    {'begin_pos': 0, 'code': 98, 'end_pos': 0, 'type': 'Char'},
+                    {'begin_pos': 0, 'code': 99, 'end_pos': 0, 'type': 'Char'}],
+          'begin_pos': 0,
+          'end_pos': 0})
+    ]
 
-        self.assertEqual(result, clue)
 
+class TestRepetitionRepr(NodeReprTest):
+
+    cases = [
+        (Repetition(1, 2),
+         "Repetition(1, 2)",
+         "Repetition(1, 2)",
+         {'type': 'Repetition', 'beg': 1, 'end': 2,
+          'begin_pos': 0, 'end_pos': 0}),
+        (Repetition(1),
+         "Repetition(1)",
+         "Repetition(1)",
+         {'type': 'Repetition', 'beg': 1, 'end': None,
+          'begin_pos': 0, 'end_pos': 0})
+    ]
