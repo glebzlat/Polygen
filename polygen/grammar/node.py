@@ -252,10 +252,17 @@ class Identifier(LeafNode, ArgsRepr):
 class Alt(Node, ArgsRepr, Sized):
     parts: Node
     metarule: Optional[MetaRef | MetaRule]
+    leftrec: Optional[tuple[Node, set[Node]]]
 
-    def __init__(self, *parts: Node, metarule=None, begin_pos=0, end_pos=0):
+    def __init__(self,
+                 *parts: Node,
+                 metarule=None,
+                 begin_pos=0,
+                 end_pos=0,
+                 leftrec=None):
         self.metarule = metarule
         self.parts = list(parts)
+        self.leftrec = leftrec
         super().__init__(begin_pos, end_pos)
 
     def _get_args(self):
