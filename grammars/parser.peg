@@ -40,7 +40,7 @@ Char        <- '\\' char:[nrt'"\[\]\\]                            $esc_char_acti
 Repetition  <- '{'
                grp:(Number _:',' Number / Number) '}' Spacing     $rep_action
 Number      <- chars:[0-9]+                                       $number_action
-HexDigit    <- char:[0-9A-F]
+HexDigit    <- char:[a-fA-F0-9]
 
 @ignore
 LEFTARROW   <- '<-' Spacing

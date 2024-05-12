@@ -242,14 +242,6 @@ class TestCharString(ParserTest):
         ("Id <- '\\73'", Grammar(
             Rule(Identifier('Id'),
                  Expression(Alt(Part(metaname=None, prime=Char(0o73))))))),
-        ("Id <- '\\u03C0'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
-
-        # TODO: allow lowercase hex digits
-        # ("Id <- '\\u03c0'", Grammar(
-        #     Rule(Identifier('Id'),
-        #          Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
     ]
 
     failures = [
@@ -257,7 +249,32 @@ class TestCharString(ParserTest):
         'Id <- "',
         "Id <- '\\a'",
         "Id <- '\\b'",
-        "Id <- '\\u03c0'"
+    ]
+
+
+class TestUnicodeChar(ParserTest):
+    successes = [
+        ("Id <- '\\u03C0'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
+        ("Id <- '\\u03c0'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
+        ("Id <- '\\uabcd'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0xabcd))))))),
+        ("Id <- '\\ufeed'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0xfeed))))))),
+        ("Id <- '\\uFEED'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0xFEED))))))),
+    ]
+
+    failures = [
+        "Id <- '\\u03c'",
+        "Id <- '\\u 03c0'",
+        "Id <- '\\u12g3'"
     ]
 
 
