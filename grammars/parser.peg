@@ -38,7 +38,7 @@ Char        <- '\\' char:[nrt'"\[\]\\]                            $esc_char_acti
              / !'\\' any:.                                        $any_char_action
 
 Repetition  <- '{'
-               grp:(Number ',' Number / Number) '}' Spacing       $rep_action
+               grp:(Number _:',' Number / Number) '}' Spacing     $rep_action
 Number      <- chars:[0-9]+                                       $number_action
 HexDigit    <- char:[0-9A-F]
 

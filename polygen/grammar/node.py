@@ -142,11 +142,11 @@ class Rule(Node, ArgsRepr, Sized):
     directives: list[str]
     leftrec: bool
 
-    def __init__(self, id, expr, directives=[],
+    def __init__(self, id, expr, directives=None,
                  leftrec=False, begin_pos=0, end_pos=0):
         self.id = id
         self.expr = expr
-        self.directives = directives
+        self.directives = [] if directives is None else directives
         self.leftrec = leftrec
         super().__init__(begin_pos, end_pos)
 

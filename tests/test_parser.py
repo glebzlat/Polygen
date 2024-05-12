@@ -2,7 +2,6 @@ import unittest
 
 from polygen.parsing import Parser
 from polygen.grammar.node import (
-    Node,
     Grammar,
     Expression,
     Rule,
@@ -34,7 +33,7 @@ class ParserTestMetaclass(type):
             for input, clue in self.successes:
                 parser = Parser(input)
                 result = parser.parse()
-                print(repr(result))
+                # print(repr(result))
                 self.assertEqual(result, clue)
 
         def test_failures(self):
@@ -150,4 +149,358 @@ class TestRuleMetaRule(ParserTest):
         "Id <- Expr $ {invalid}"
         "Id <- Expr ${",
         "Id <- Expr }",
+    ]
+
+
+class TestRuleDirective(ParserTest):
+
+    # TODO: add Rule directives into comparison
+    successes = [
+        ("@directive\nId <- Expr", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')))),
+                 directives=["directive"]))),
+        ("@ a @b Id <- Expr", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Identifier('Expr')))),
+                 directives=["a", "b"])))
+    ]
+
+    failures = [
+        "@ Id <- Expr",
+        "@Id <- Expr"
+    ]
+
+
+class TestMetaDef(ParserTest):
+    successes = [
+        ("$metadef {hello world}", Grammar(
+            MetaRule(id=Identifier('metadef'), expr='hello world'))),
+        ("$ metadef{hello world}", Grammar(
+            MetaRule(id=Identifier('metadef'), expr='hello world'))),
+    ]
+
+    failures = [
+        "metadef {hello world}",
+        "${hello world}"
+    ]
+
+
+class TestCharString(ParserTest):
+    successes = [
+        ("Id <- 'c'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('c'))))))),
+        ("Id <- 'str'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=String(Char('s'), Char('t'), Char('r')))))))),
+        ('Id <- "c"', Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('c'))))))),
+        ('Id <- "str"', Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=String(Char('s'), Char('t'), Char('r')))))))),
+        ("Id <- '\\''", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\''))))))),
+        ('Id <- "\\""', Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('"'))))))),
+        ("Id <- '\\n'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\n'))))))),
+
+        # XXX: maybe this is incorrect
+        ("Id <- '\n'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\n'))))))),
+
+        ("Id <- '\\r'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\r'))))))),
+        ("Id <- '\\t'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\t'))))))),
+        ("Id <- '\\['", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('['))))))),
+        ("Id <- '\\]'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(']'))))))),
+        ("Id <- '\\\\'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char('\\'))))))),
+        ("Id <- '\\141'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0o141))))))),
+        ("Id <- '\\73'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0o73))))))),
+        ("Id <- '\\u03C0'", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
+
+        # TODO: allow lowercase hex digits
+        # ("Id <- '\\u03c0'", Grammar(
+        #     Rule(Identifier('Id'),
+        #          Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
+    ]
+
+    failures = [
+        "Id <- '",
+        'Id <- "',
+        "Id <- '\\a'",
+        "Id <- '\\b'",
+        "Id <- '\\u03c0'"
+    ]
+
+
+class TestRepetition(ParserTest):
+    successes = [
+        ("Id <- E{1}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=Repetition(1))))))),
+        ("Id <- E{123}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=Repetition(123))))))),
+        ("Id <- E{1,2}", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=Repetition(1, 2)))))))
+    ]
+
+    failures = [
+        "Id <- E{}",
+        "Id <- E{1,}",
+        "Id <- E{a}",
+        "Id <- E{,2}",
+        "Id <- E{,}"
+    ]
+
+
+class TestAnyChar(ParserTest):
+    successes = [
+        ("Id <- .", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=AnyChar())))))),
+        ("Id <- ...", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=AnyChar()),
+                     Part(metaname=None,
+                          prime=AnyChar()),
+                     Part(metaname=None,
+                          prime=AnyChar()))))))
+    ]
+
+
+class TestZeroOrOne(ParserTest):
+    successes = [
+        ("Id <- E?", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=ZeroOrOne())))))),
+        ("Id <- .?", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=AnyChar(),
+                          quant=ZeroOrOne()))))))
+    ]
+
+    failures = [
+        "Id <- ?"
+    ]
+
+
+class TestZeroOrMore(ParserTest):
+    successes = [
+        ("Id <- E*", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=ZeroOrMore())))))),
+        ("Id <- .*", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=AnyChar(),
+                          quant=ZeroOrMore()))))))
+    ]
+
+    failures = [
+        "Id <- *"
+    ]
+
+
+class TestOneOrMore(ParserTest):
+    successes = [
+        ("Id <- E+", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Identifier('E'),
+                          quant=OneOrMore())))))),
+        ("Id <- .+", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=AnyChar(),
+                          quant=OneOrMore()))))))
+    ]
+
+    failures = [
+        "Id <- +"
+    ]
+
+
+class TestAnd(ParserTest):
+    successes = [
+        ("Id <- &E", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=And(),
+                          prime=Identifier('E'))))))),
+        ("Id <- &E?", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=And(),
+                          prime=Identifier('E'),
+                          quant=ZeroOrOne())))))),
+        ("Id <- &A B", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=And(),
+                          prime=Identifier('A')),
+                     Part(metaname=None,
+                          prime=Identifier('B'))))))),
+    ]
+
+    failures = [
+        "Id <- &&E",
+        "Id <- &",
+        "Id <- &?",
+        "Id <- &*",
+        "Id <- &+"
+    ]
+
+
+class TestNot(ParserTest):
+    successes = [
+        ("Id <- !E", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=Not(),
+                          prime=Identifier('E'))))))),
+        ("Id <- !E?", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=Not(),
+                          prime=Identifier('E'),
+                          quant=ZeroOrOne())))))),
+        ("Id <- !A B", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          lookahead=Not(),
+                          prime=Identifier('A')),
+                     Part(metaname=None,
+                          prime=Identifier('B'))))))),
+    ]
+
+    failures = [
+        "Id <- !!E",
+        "Id <- !",
+        "Id <- !?",
+        "Id <- !*",
+        "Id <- !+"
+    ]
+
+
+class TestClass(ParserTest):
+    successes = [
+        ("Id <- []", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(Part(metaname=None, prime=Class())))))),
+        ("Id <- [a]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Class(Range(Char('a'))))))))),
+        ("Id <- [\\]]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Class(Range(Char(']'))))))))),
+        ("Id <- [\\[]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Class(Range(Char('['))))))))),
+        ("Id <- [-]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None, prime=Class(Range(Char('-'))))))))),
+        ("Id <- [abc]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(
+                              Range(Char('a')),
+                              Range(Char('b')),
+                              Range(Char('c'))))))))),
+        ("Id <- [a-c]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(Range(Char('a'), Char('c'))))))))),
+        ("Id <- [---]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(Range(Char('-'), Char('-'))))))))),
+        ("Id <- [a-z0-9]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(
+                              Range(Char('a'), Char('z')),
+                              Range(Char('0'), Char('9'))))))))),
+        ("Id <- [a-z-]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(
+                              Range(Char('a'), Char('z')),
+                              Range(Char('-'))))))))),
+        ("Id <- [-a-z-]", Grammar(
+            Rule(Identifier('Id'),
+                 Expression(Alt(
+                     Part(metaname=None,
+                          prime=Class(
+                              Range(Char('-')),
+                              Range(Char('a'), Char('z')),
+                              Range(Char('-'))))))))),
     ]
