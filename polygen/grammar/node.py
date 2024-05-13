@@ -12,9 +12,8 @@ from .utility import isiterable, wrap_string
 
 
 class Node(Iterable):
-    def __init__(self, begin_pos: int = 0, end_pos: int = 0):
+    def __init__(self, begin_pos: int = 0):
         self.begin_pos = begin_pos
-        self.end_pos = end_pos
 
     @property
     def descendants(self) -> Iterator[Node]:
@@ -40,7 +39,7 @@ class Node(Iterable):
         type_name = type(self).__name__
         dct = {'type': type_name}
         for k, v in self._get_kwargs():
-            if not positions and k in ('begin_pos', 'end_pos'):
+            if not positions and k in ('begin_pos'):
                 continue
             if isinstance(v, Node):
                 v = v.to_dict()
@@ -69,10 +68,10 @@ class Grammar(Node, ArgsRepr, Sized):
     nodes: list[Rule | MetaRule]
     entry: Optional[Rule]
 
-    def __init__(self, *rules, begin_pos=0, end_pos=0):
+    def __init__(self, *rules, begin_pos=0):
         self.nodes = list(rules)
         self.entry = None
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def add(self, rule: Rule) -> bool:
         if rule in self.nodes:
@@ -109,9 +108,9 @@ class Grammar(Node, ArgsRepr, Sized):
 class Expression(Node, ArgsRepr, Sized):
     alts: list[Alt]
 
-    def __init__(self, *alts, begin_pos=0, end_pos=0):
+    def __init__(self, *alts, begin_pos=0):
         self.alts = list(alts)
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return self.alts
@@ -144,12 +143,12 @@ class Rule(Node, ArgsRepr, Sized):
     leftrec: bool
 
     def __init__(self, id, expr, directives=None,
-                 leftrec=False, begin_pos=0, end_pos=0):
+                 leftrec=False, begin_pos=0):
         self.id = id
         self.expr = expr
         self.directives = [] if directives is None else directives
         self.leftrec = leftrec
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return [self.id, self.expr]
@@ -177,9 +176,9 @@ class Rule(Node, ArgsRepr, Sized):
 class MetaRef(LeafNode, ArgsRepr):
     id: Identifier
 
-    def __init__(self, id, begin_pos=0, end_pos=0):
+    def __init__(self, id, begin_pos=0):
         self.id = id
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return [self.id]
@@ -200,10 +199,10 @@ class MetaRule(Node, AttributeHolder):
     expr: str
     id: Optional[Identifier]
 
-    def __init__(self, expr, id=None, begin_pos=0, end_pos=0):
+    def __init__(self, expr, id=None, begin_pos=0):
         self.expr = expr
         self.id = id
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def copy(self, deep=False):
         return MetaRule(id=self.id, expr=self.expr)
@@ -226,9 +225,9 @@ class MetaRule(Node, AttributeHolder):
 class Identifier(LeafNode, ArgsRepr):
     string: str
 
-    def __init__(self, string, begin_pos=0, end_pos=0):
+    def __init__(self, string, begin_pos=0):
         self.string = string
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return [self.string]
@@ -254,10 +253,10 @@ class Alt(Node, ArgsRepr, Sized):
     parts: Node
     metarule: Optional[MetaRef | MetaRule]
 
-    def __init__(self, *parts: Node, metarule=None, begin_pos=0, end_pos=0):
+    def __init__(self, *parts: Node, metarule=None, begin_pos=0):
         self.metarule = metarule
         self.parts = list(parts)
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return self.parts
@@ -267,7 +266,7 @@ class Alt(Node, ArgsRepr, Sized):
 
     def __str__(self):
         metarule = f'[{self.metarule}]' if self.metarule is not None else ''
-        parts = ', '.join(map(repr, self.parts))
+        parts = ', '.join(map(str, self.parts))
         return f'Alt{metarule}({parts})'
 
     def __eq__(self, other):
@@ -296,12 +295,12 @@ class Part(Node, AttributeHolder):
     metaname: Optional[str]
 
     def __init__(self, prime, *, lookahead=None, quant=None,
-                 metaname=None, begin_pos=0, end_pos=0):
+                 metaname=None, begin_pos=0):
         self.lookahead = lookahead
         self.prime = prime
         self.quant = quant
         self.metaname = metaname
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def copy(self, deep=False):
         if deep:
@@ -311,13 +310,8 @@ class Part(Node, AttributeHolder):
         return Part(**kwargs)
 
     def _get_kwargs(self):
-        dct = {'metaname': self.metaname}
-        if self.lookahead:
-            dct['lookahead'] = self.lookahead
-        dct['prime'] = self.prime
-        if self.quant:
-            dct['quant'] = self.quant
-        return list(dct.items())
+        keys = ['metaname', 'lookahead', 'prime', 'quant']
+        return [(k, self.__dict__[k]) for k in keys]
 
     def __eq__(self, other):
         if not isinstance(other, Part):
@@ -333,7 +327,10 @@ class Part(Node, AttributeHolder):
             yield self.quant
 
 
-class AnyChar(LeafNode, AttributeHolder):
+class AnyChar(LeafNode, ArgsRepr):
+    def __str__(self):
+        return type(self).__name__
+
     def __eq__(self, other):
         return True if isinstance(other, AnyChar) else NotImplemented
 
@@ -341,9 +338,9 @@ class AnyChar(LeafNode, AttributeHolder):
 class String(Node, ArgsRepr):
     chars: list[Char]
 
-    def __init__(self, *chars: Char, begin_pos=0, end_pos=0):
+    def __init__(self, *chars: Char, begin_pos=0):
         self.contents = chars  # type: ignore[assignment]
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     @property
     def contents(self) -> list[Char]:
@@ -381,9 +378,9 @@ class String(Node, ArgsRepr):
 class Class(Node, ArgsRepr, Sized):
     ranges: list[Range]
 
-    def __init__(self, *ranges: Range, begin_pos=0, end_pos=0):
+    def __init__(self, *ranges: Range, begin_pos=0):
         self.ranges = list(ranges)
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         return self.ranges
@@ -404,17 +401,18 @@ class Range(Node, ArgsRepr):
     beg: Char
     end: Optional[Char]
 
-    def __init__(self, beg, end=None, begin_pos=0, end_pos=0):
+    def __init__(self, beg, end=None, begin_pos=0):
         self.beg = beg
         self.end = end
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
-        args = [self.beg, self.end] if self.end else [self.beg]
-        return [str(a) for a in args]
+        return [self.beg, self.end] if self.end else [self.beg]
 
     def _get_kwargs(self):
-        return (('beg', self.beg), ('end', self.end))
+        return (('beg', self.beg),
+                ('end', self.end),
+                ('begin_pos', self.begin_pos))
 
     def __eq__(self, other):
         if not isinstance(other, Range):
@@ -429,7 +427,7 @@ class Range(Node, ArgsRepr):
 
 class Lookahead(LeafNode):
     def _get_kwargs(self):
-        return ()
+        return [('begin_pos', self.begin_pos)]
 
     def __eq__(self, other):
         return type(other) is type(self)
@@ -455,7 +453,7 @@ class Not(Lookahead):
 
 class Quantifier(LeafNode):
     def _get_kwargs(self):
-        return ()
+        return [('begin_pos', self.begin_pos)]
 
     def __eq__(self, other):
         return type(other) is type(self)
@@ -491,10 +489,10 @@ class Repetition(LeafNode, ArgsRepr):
     beg: int
     end: Optional[int]
 
-    def __init__(self, beg, end=None, begin_pos=0, end_pos=0):
+    def __init__(self, beg, end=None, begin_pos=0):
         self.beg = beg
         self.end = end
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
     def _get_args(self):
         if self.end:
@@ -511,16 +509,16 @@ class Repetition(LeafNode, ArgsRepr):
 class Char(LeafNode, ArgsRepr):
     code: int
 
-    def __init__(self, code: int | str, begin_pos=0, end_pos=0):
+    def __init__(self, code: int | str, begin_pos=0):
         self.code = ord(code) if isinstance(code, str) else code
-        super().__init__(begin_pos, end_pos)
+        super().__init__(begin_pos)
 
-    def _get_args(self):
-        assert isinstance(self.code, int), "char code is integer"
+    @property
+    def _chr(self):
         if (c := chr(self.code)) and c in string.printable:
-            return [c]
+            return c
         code = hex(self.code)[2:].rjust(4, '0')
-        return [f'\\u{code}']
+        return f'\\u{code}'
 
     def __eq__(self, other):
         if not isinstance(other, Char):
@@ -543,11 +541,11 @@ class Char(LeafNode, ArgsRepr):
     def __ge__(self, other):
         return self.__eq__(other) or self.__gt__(other)
 
+    def __repr__(self):
+        return f'Char({wrap_string(self._chr)})'
+
     def __str__(self):
-        if (c := chr(self.code)) and c in string.printable:
-            return repr(c)
-        code = hex(self.code)[2:].rjust(4, '0')
-        return f'\\u{code}'
+        return repr(self._chr)
 
     def __hash__(self):
         return hash(self.code)

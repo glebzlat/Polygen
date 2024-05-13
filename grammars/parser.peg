@@ -69,12 +69,12 @@ EndOfLine   <- '\r\n' / '\n' / '\r'
 EndOfFile   <- !.
 
 $grammar_action {
-  return Grammar(*entity, begin_pos=_begin_pos, end_pos=self._mark())
+  return Grammar(*entity, begin_pos=_begin_pos)
 }
 
 $def_action {
   return Rule(identifier, expression, directives=directive,
-              begin_pos=_begin_pos, end_pos=self._mark())
+              begin_pos=_begin_pos)
 }
 
 $directive_action {
@@ -82,12 +82,12 @@ $directive_action {
 }
 
 $expr_action {
-  return Expression(sequence, *seqs, begin_pos=_begin_pos, end_pos=self._mark())
+  return Expression(sequence, *seqs, begin_pos=_begin_pos)
 }
 
 $sequence_action {
   m = m if isnode(m) else None
-  return Alt(*parts, metarule=m, begin_pos=_begin_pos, end_pos=self._mark())
+  return Alt(*parts, metarule=m, begin_pos=_begin_pos)
 }
 
 $prefix_action {
@@ -96,7 +96,7 @@ $prefix_action {
   prime, quant = suffix
   quant = quant if isnode(quant) else None
   return Part(lookahead=lookahead, prime=prime, quant=quant, metaname=metaname,
-              begin_pos=_begin_pos, end_pos=self._mark())
+              begin_pos=_begin_pos)
 }
 
 $metaname_action {
@@ -105,16 +105,16 @@ $metaname_action {
 
 $metarule_def_action {
   string = ''.join(expr)
-  return MetaRule(expr=string, begin_pos=_begin_pos, end_pos=self._mark())
+  return MetaRule(expr=string, begin_pos=_begin_pos)
 }
 
 $metarule_ref_action {
-  return MetaRef(identifier, begin_pos=_begin_pos, end_pos=self._mark())
+  return MetaRef(identifier, begin_pos=_begin_pos)
 }
 
 $metadef_action {
   return MetaRule(id=identifier, expr=expr,
-                  begin_pos=_begin_pos, end_pos=self._mark())
+                  begin_pos=_begin_pos)
 }
 
 $metadef_body_action {
@@ -128,25 +128,25 @@ $nested_body_action {
 
 $ident_action {
   string = ''.join((start, *cont))
-  return Identifier(string, begin_pos=_begin_pos, end_pos=self._mark())
+  return Identifier(string, begin_pos=_begin_pos)
 }
 
 $literal_action {
   if len(chars) == 1:
     return chars[0]
-  return String(*chars, begin_pos=_begin_pos, end_pos=self._mark())
+  return String(*chars, begin_pos=_begin_pos)
 }
 
 $class_action {
-  return Class(*ranges, begin_pos=_begin_pos, end_pos=self._mark())
+  return Class(*ranges, begin_pos=_begin_pos)
 }
 
 $range_2_action {
-  return Range(beg, end, begin_pos=_begin_pos, end_pos=self._mark())
+  return Range(beg, end, begin_pos=_begin_pos)
 }
 
 $range_1_action {
-  return Range(beg, begin_pos=_begin_pos, end_pos=self._mark())
+  return Range(beg, begin_pos=_begin_pos)
 }
 
 $esc_char_action {
@@ -169,27 +169,27 @@ $esc_char_action {
 
 $oct_char_action_1 {
   string = ''.join((char1, char2, char3))
-  return Char(int(string, base=8), begin_pos=_begin_pos, end_pos=self._mark())
+  return Char(int(string, base=8), begin_pos=_begin_pos)
 }
 
 $oct_char_action_2 {
   char2 = char2 if isinstance(char2, str) else ''
   string = ''.join((char1, char2))
-  return Char(int(string, base=8), begin_pos=_begin_pos, end_pos=self._mark())
+  return Char(int(string, base=8), begin_pos=_begin_pos)
 }
 
 $unicode_char_action {
   string = ''.join(chars)
-  return Char(int(string, base=16), begin_pos=_begin_pos, end_pos=self._mark())
+  return Char(int(string, base=16), begin_pos=_begin_pos)
 }
 
 $any_char_action {
-  return Char(ord(any), begin_pos=_begin_pos, end_pos=self._mark())
+  return Char(ord(any), begin_pos=_begin_pos)
 }
 
 $rep_action {
   beg, end = grp if isinstance(grp, tuple) else (grp, None)
-  return Repetition(beg, end, begin_pos=_begin_pos, end_pos=self._mark())
+  return Repetition(beg, end, begin_pos=_begin_pos)
 }
 
 $number_action {
@@ -198,25 +198,25 @@ $number_action {
 }
 
 $and_action {
-  return And(begin_pos=_begin_pos, end_pos=self._mark())
+  return And(begin_pos=_begin_pos)
 }
 
 $not_action {
-  return Not(begin_pos=_begin_pos, end_pos=self._mark())
+  return Not(begin_pos=_begin_pos)
 }
 
 $optional_action {
-  return ZeroOrOne(begin_pos=_begin_pos, end_pos=self._mark())
+  return ZeroOrOne(begin_pos=_begin_pos)
 }
 
 $zero_or_more_action {
-  return ZeroOrMore(begin_pos=_begin_pos, end_pos=self._mark())
+  return ZeroOrMore(begin_pos=_begin_pos)
 }
 
 $one_or_more_action {
-  return OneOrMore(begin_pos=_begin_pos, end_pos=self._mark())
+  return OneOrMore(begin_pos=_begin_pos)
 }
 
 $dot_action {
-  return AnyChar(begin_pos=_begin_pos, end_pos=self._mark())
+  return AnyChar(begin_pos=_begin_pos)
 }
