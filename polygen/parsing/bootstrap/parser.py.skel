@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from functools import wraps
 
 from polygen.parsing.reader import Reader
 from polygen.grammar.node import (
@@ -37,6 +38,8 @@ def isnode(obj):
 
 
 def memoize(fn):
+
+    @wraps(fn)
     def wrapper(self, *args):
         pos = self._mark()
         key = (fn, args, pos)
@@ -53,9 +56,72 @@ def memoize(fn):
     return wrapper
 
 
+def memoize_lr(fn):
+
+    @wraps(fn)
+    def wrapper(self, *args):
+        pos = self._mark()
+        key = (fn, args, pos)
+        memo = self._memos.get(key)
+
+        # if not growing a seed parse, return memo
+        lr = self._leftrec
+        if lr is not None:
+
+            # do not evaluate rule that is not involved in the leftrec
+            if fn not in {lr.head} | lr.involved_set:
+                memo = None, pos
+
+            # involved rules are evaluated only once
+            # during a seed-growing iteration
+            elif fn in lr.eval_set:
+                lr.eval_set.remove(fn)
+                result = fn(self, *args)
+                endpos = self._mark()
+                memo = result, endpos
+
+        if memo is None:
+            # prime a cache with a failure
+            self._memos[key] = lastres, lastpos = None, pos
+
+            # loop until no longer parse is obtained
+            while True:
+                self._reset(pos)
+                result = fn(self, *args)
+                endpos = self._mark()
+                if endpos <= lastpos:
+                    break
+                self._memos[key] = lastres, lastpos = result, endpos
+
+            result = lastres
+            self._reset(lastpos)
+
+        else:
+            result, endpos = memo
+            self._reset(endpos)
+
+        return result
+
+    return wrapper
+
+
+class LR:
+    def __init__(self, head, involved_set):
+        self.head = head.__wrapped__
+        self.involved_set = set(fn.__wrapped__ for fn in involved_set)
+        self.eval_set = set(fn.__wrapped__ for fn in involved_set)
+
+    def __repr__(self):
+        return f"LR(head={self.head}, involved_set={self.involved_set})"
+
+    def __str__(self):
+        return self.__repr__()
+
+
 class Parser:
     def __init__(self, stream, actions=None):
         self._memos = {}
+        self._leftrec = None
         self.reader = Reader(stream)
         self.chars: list[str] = []
         self.actions = actions

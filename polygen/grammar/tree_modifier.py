@@ -736,15 +736,49 @@ class SubstituteMetaRefs:
             return False
 
 
-# class DetectLeftRec:
-#     def visit_Rule(self, node: Rule, parents):
-#         expr = node.expression
-#         if len(expr) == 0:
-#             return
-#
-#         for alt in expr:
-#             if len(alt) and alt.parts[0].prime == node.id:
-#                 node.leftrec = True
+class DetectLeftRec:
+    """Finds left-recursive alternatives and marks them as left-recursive.
+
+    Iterates over alternatives in the expression and checks, if this
+    alternative is left-recursive.
+
+    Applied initially, this modifier creates a set of rules and adds a rule
+    to it. I'll talk about rules here, but actually I mean Part nodes,
+    containing Identifiers, unless otherwise specified.
+
+    Then it iterates over alternatives in the rule node and checks, if the
+    alternative has the rule as the first non-lookahead element. It will
+    omit nodes, that have ZeroOrOne or ZeroOrMore quantifiers and assume
+    that lookahead nodes are always true. If such rule found, then
+    it is added to a set of rules. If the first element is not a rule,
+    then this alternative is discarded.
+
+    If at some step the algorithm finds that the current found rule is
+    already added to a set, then it have found the left-recursive rule set.
+
+    There should be a set for each alternative in the initial rule. If
+    the alternative is discarded, corresponding set will also be discarded.
+
+    If a left-recursive sequence of alternatives is found, then modifier
+    will create a tuple[Head, set[Rule]], where Head is the first added
+    alternative, and store it in each alternative for later processing.
+
+    In order to do this, it gets the first
+    particle, containing the rule identifier (if there is so, more about
+    this later), checks if it is 
+
+    """
+
+    # Alternative
+
+    def visit_Rule(self, node: Rule, parents):
+        expr = node.expression
+        if len(expr) == 0:
+            return
+
+        for alt in expr:
+            if len(alt) and alt.parts[0].prime == node.id:
+                node.leftrec = True
 
 
 class TreeModifier:
