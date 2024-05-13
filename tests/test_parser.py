@@ -33,7 +33,6 @@ class ParserTestMetaclass(type):
             for input, clue in self.successes:
                 parser = Parser(input)
                 result = parser.parse()
-                # print(repr(result))
                 self.assertEqual(result, clue)
 
         def test_failures(self):
