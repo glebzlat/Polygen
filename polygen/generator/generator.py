@@ -12,6 +12,7 @@ from polygen.grammar.tree_modifier import (
     ExpandClass,
     ReplaceRep,
     CheckUndefRedef,
+    SimplifyNestedExps,
     ReplaceNestedExps,
     CreateAnyCharRule,
     FindEntryRule,
@@ -43,8 +44,7 @@ class Generator:
                 ReplaceRep(),
             ],
             [FindEntryRule(), IgnoreRules()],
-            # [SimplifyNestedExps()],
-            [ReplaceNestedExps()],
+            [SimplifyNestedExps(), ReplaceNestedExps()],
             [CheckUndefRedef()],
             [GenerateMetanames()],
         ]

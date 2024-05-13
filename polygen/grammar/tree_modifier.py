@@ -1,7 +1,7 @@
 import operator
 
 from functools import reduce
-from itertools import repeat
+from itertools import repeat, compress
 from typing import Iterable
 from collections import defaultdict, Counter
 from keyword import iskeyword
@@ -411,54 +411,55 @@ class CheckUndefRedef:
         return None
 
 
-# class SimplifyNestedExps:
-#     """Move nested expressions to their parent expressions in some cases.
-#
-#     If an expression is occured inside the other expression, like so:
-#
-#     ```
-#     Rule(A, Expression(Expression(e1, e2)))
-#     ```
-#
-#     It is not needed to create an artificial rule for it:
-#
-#     ```
-#     Rule(A, Expression(Ag))
-#     Rule(Ag, Expression(e1, e2))
-#     ```
-#
-#     Instead, it is possible to move nested expression up to higher level:
-#
-#     ```
-#     Rule(A, Expression(e1, e2))
-#     ```
-#     """
-#
-#     def visit_Expression(self, node: Expression, parents):
-#         if type(parents[-1]) is not Part:
-#             return False
-#
-#         part: Part = parents[-1]
-#         if part.lookahead or part.quant:
-#             return False
-#
-#         assert type(part.parent) is Alt
-#         alt = part.parent
-#         if len(alt) > 1:
-#             return False
-#
-#         assert type(alt.parent) is Expression
-#         exp: Expression = alt.parent
-#
-#         if len(exp) > 1:
-#             return False
-#
-#         exp.alts.clear()
-#         exp.alts += node.alts
-#         for alt in node.alts:
-#             alt._parent = exp
-#
-#         return True
+class SimplifyNestedExps:
+    """Move nested expressions to their parent expressions in some cases.
+
+    If an expression is occured inside the other expression, like so:
+
+    ```
+    Rule(A, Expression(Expression(e1, e2)))
+    ```
+
+    It is not needed to create an artificial rule for it:
+
+    ```
+    Rule(A, Expression(Ag))
+    Rule(Ag, Expression(e1, e2))
+    ```
+
+    Instead, it is possible to move nested expression up to higher level:
+
+    ```
+    Rule(A, Expression(e1, e2))
+    ```
+    """
+
+    def visit_Expression(self, node: Expression, parents):
+        if type(parents[-1]) is not Part:
+            return False
+
+        part: Part = parents[-1]
+        if part.lookahead or part.quant:
+            return False
+
+        parent = parents[-2]
+        assert type(parent) is Alt
+        if len(parent) > 1:
+            return False
+
+        parent = parents[-3]
+        assert type(parent) is Expression
+        exp: Expression = parent
+
+        if len(exp) > 1:
+            return False
+
+        exp.alts.clear()
+        exp.alts += node.alts
+        for alt in node.alts:
+            alt._parent = exp
+
+        return True
 
 
 class ReplaceNestedExps:
@@ -824,7 +825,7 @@ class TreeModifier:
 
         for _ in range(max_iterations):
             for i, (stage, flags) in enumerate(zip(self.stages, stages_flags)):
-                rules = [rule for i, rule in enumerate(stage) if flags[i]]
+                rules = list(compress(stage, flags))
                 if not rules:
                     done_stages[i] = True
 
