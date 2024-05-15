@@ -19,6 +19,7 @@ from polygen.grammar.tree_modifier import (
     IgnoreRules,
     GenerateMetanames,
     SubstituteMetaRefs,
+    DetectLeftRec,
     TreeModifier,
     TreeModifierWarning
 )
@@ -47,6 +48,7 @@ class Generator:
             [SimplifyNestedExps(), ReplaceNestedExps()],
             [CheckUndefRedef()],
             [GenerateMetanames()],
+            [DetectLeftRec()]
         ]
 
         modifier = TreeModifier(write_rules)

@@ -249,10 +249,26 @@ class Identifier(LeafNode, ArgsRepr):
         return hash(self.string)
 
 
+class LR:
+    def __init__(self,
+                 head: Optional[Identifier] = None,
+                 involved_set: set[Identifier] = None):
+        self.head = head
+        self.involved_set = involved_set
+        if self.involved_set is None:
+            self.involved_set = set()
+
+    def __repr__(self):
+        return f"LR(head={self.head}, involved_set={self.involved_set})"
+
+    def __str__(self):
+        return self.__repr__()
+
+
 class Alt(Node, ArgsRepr, Sized):
     parts: Node
     metarule: Optional[MetaRef | MetaRule]
-    leftrec: Optional[tuple[Node, set[Node]]]
+    leftrec: Optional[LR]
 
     def __init__(self, *parts: Node, metarule=None, begin_pos=0, leftrec=None):
         self.metarule = metarule

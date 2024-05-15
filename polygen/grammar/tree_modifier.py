@@ -2,8 +2,8 @@ import operator
 
 from functools import reduce
 from itertools import repeat, compress
-from typing import Iterable
-from collections import defaultdict, Counter
+from typing import Iterable, Optional
+from collections import defaultdict, Counter, namedtuple
 from keyword import iskeyword
 
 from .node import (
@@ -14,6 +14,7 @@ from .node import (
     MetaRule,
     Identifier,
     Expression,
+    LR,
     Alt,
     Part,
     Class,
@@ -737,48 +738,84 @@ class SubstituteMetaRefs:
 
 
 class DetectLeftRec:
-    """Finds left-recursive alternatives and marks them as left-recursive.
 
-    Iterates over alternatives in the expression and checks, if this
-    alternative is left-recursive.
+    Branch = namedtuple('Branch', ('parent', 'id', 'index', 'first'))
 
-    Applied initially, this modifier creates a set of rules and adds a rule
-    to it. I'll talk about rules here, but actually I mean Part nodes,
-    containing Identifiers, unless otherwise specified.
+    def __init__(self):
+        Branch = self.Branch
+        self.branches: dict[Identifier, set[Branch]] = {}
+        self.alts: dict[Branch, Alt] = {}
+        self.rules: dict[Identifier, Rule] = {}
 
-    Then it iterates over alternatives in the rule node and checks, if the
-    alternative has the rule as the first non-lookahead element. It will
-    omit nodes, that have ZeroOrOne or ZeroOrMore quantifiers and assume
-    that lookahead nodes are always true. If such rule found, then
-    it is added to a set of rules. If the first element is not a rule,
-    then this alternative is discarded.
+    def _collect_branches(self,
+                          rule_id: Identifier,
+                          expr: Expression) -> set[Branch]:
+        Branch = self.Branch
+        branches = set()
+        alts = {}
+        for i, alt in enumerate(expr):
+            id, first = None, None
 
-    If at some step the algorithm finds that the current found rule is
-    already added to a set, then it have found the left-recursive rule set.
+            for node in alt:
+                # do nothing with lookahead and ZeroOrOne/ZeroOrMore
+                # quantifiers for now
+                if type(node.prime) is Identifier:
+                    if first is None:
+                        first = True
+                    id = node.prime
+                else:
+                    if first is None:
+                        first = False
+                    continue
 
-    There should be a set for each alternative in the initial rule. If
-    the alternative is discarded, corresponding set will also be discarded.
+                branch = Branch(parent=rule_id, id=id, index=i, first=first)
+                branches.add(branch)
+                alts[branch] = alt
 
-    If a left-recursive sequence of alternatives is found, then modifier
-    will create a tuple[Head, set[Rule]], where Head is the first added
-    alternative, and store it in each alternative for later processing.
+                if first is True:
+                    first = False
 
-    In order to do this, it gets the first
-    particle, containing the rule identifier (if there is so, more about
-    this later), checks if it is 
-
-    """
-
-    # Alternative
+        return branches, alts
 
     def visit_Rule(self, node: Rule, parents):
-        expr = node.expression
-        if len(expr) == 0:
-            return
+        branches, alts = self._collect_branches(node.id, node.expr)
+        self.branches[node.id] = branches
+        self.alts.update(alts)
+        self.rules[node.id] = node
+        return True
 
-        for alt in expr:
-            if len(alt) and alt.parts[0].prime == node.id:
-                node.leftrec = True
+    def _find_leftrecs(self,
+                       entry: Identifier,
+                       path: list[Branch],
+                       leftrecs: set[tuple]):
+        branches = self.branches[entry]
+        for b in branches:
+            if b in path:
+                index = path.index(b)
+                leftrecs.add(tuple(path[index:]))
+                return
+            path.append(b)
+            self._find_leftrecs(b.id, path, leftrecs)
+            path.pop()
+
+    def visit_Grammar(self, node, parents):
+        leftrecs = set()
+        # breakpoint()
+        self._find_leftrecs(node.entry.id, [], leftrecs)
+        from pprint import pprint
+        pprint(self.branches, sort_dicts=False)
+        pprint(leftrecs, sort_dicts=False)
+        pprint(self.alts)
+
+        for leftrec in leftrecs:
+            head, *involved = leftrec
+            self.rules[head.parent].leftrec = True
+            involved_set = {head.parent}
+            for i in (head, *involved):
+                self.rules[i.parent].leftrec = True
+                involved_set.add(i.parent)
+                self.alts[i].leftrec = LR(head=head.parent,
+                                          involved_set=involved_set)
 
 
 class TreeModifier:

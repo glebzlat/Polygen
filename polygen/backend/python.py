@@ -81,13 +81,27 @@ class PythonGenerator:
         if rule_index != 0:
             self.put(indent=False)
 
-        self.put('@memoize')
+        self.put('@memoize_lr' if rule.leftrec else '@memoize')
         self.put(f'def _{rule.id.string}(self):')
 
         with self.indent():
             self.put('_begin_pos = self._mark()')
+
             for i, alt in enumerate(rule.expr):
-                self.gen_alt(alt, rule, i)
+                print(rule.id, rule.leftrec, alt.leftrec)
+
+                if alt.leftrec and alt.leftrec.head == rule.id:
+                    lr = alt.leftrec
+                    involved_set = lr.involved_set | {lr.head}
+                    parts = (f'self._{inv.string}' for inv in involved_set)
+                    involved = ', '.join(parts)
+                    self.put(f'with self._setup_lr({involved}):')
+                    with self.indent():
+                        self.gen_alt(alt, rule, i)
+
+                else:
+                    self.gen_alt(alt, rule, i)
+
             self.put('return None')
 
     _INDEXED_VAR_RE = re.compile(r'_\d+')
