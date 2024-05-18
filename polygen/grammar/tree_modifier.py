@@ -757,6 +757,9 @@ class DetectLeftRec:
             id, first = None, None
 
             for node in alt:
+                if type(node) is not Part:
+                    continue
+
                 # do nothing with lookahead and ZeroOrOne/ZeroOrMore
                 # quantifiers for now
                 if type(node.prime) is Identifier:
@@ -800,12 +803,7 @@ class DetectLeftRec:
 
     def visit_Grammar(self, node, parents):
         leftrecs = set()
-        # breakpoint()
         self._find_leftrecs(node.entry.id, [], leftrecs)
-        from pprint import pprint
-        pprint(self.branches, sort_dicts=False)
-        pprint(leftrecs, sort_dicts=False)
-        pprint(self.alts)
 
         for leftrec in leftrecs:
             head, *involved = leftrec
