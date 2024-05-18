@@ -1,7 +1,6 @@
 import sys
 
 from io import StringIO
-from pathlib import Path
 from datetime import datetime
 from typing import Optional, TextIO
 
@@ -25,7 +24,7 @@ from polygen.grammar.tree_modifier import (
 )
 
 from polygen.backend.python import PythonGenerator
-from .preprocessor import Preprocessor
+from .preprocessor import FilePreprocessor
 
 
 class GeneratorError(Exception):
@@ -77,10 +76,7 @@ class Generator:
 
         return grammar
 
-    def generate(self,
-                 grammar_file: str | TextIO,
-                 skeleton: str | Path,
-                 output: str | Path):
+    def generate(self, grammar_file: str | TextIO, files):
         grammar = self.get_grammar(grammar_file, modified=True)
 
         stream = StringIO()
@@ -89,11 +85,11 @@ class Generator:
         stream.seek(0)
 
         directives = {
-            "body": stream,
+            "body": stream.read(),
             "entry": grammar.entry.id.string,
             "version": __version__,
             "datetime": datetime.today().strftime(self.datefmt)
         }
 
-        proc = Preprocessor(directives)
-        proc.process(skeleton, output)
+        proc = FilePreprocessor(directives)
+        proc.process(files)

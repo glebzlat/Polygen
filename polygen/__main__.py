@@ -1,8 +1,8 @@
-import os
 import sys
 import json
 
 from argparse import ArgumentParser, FileType, Namespace
+from itertools import zip_longest
 
 from .generator import Generator
 
@@ -14,15 +14,18 @@ subparsers = argparser.add_subparsers(help="commands", required=True)
 
 
 def generate_cmd_action(gen: Generator, ns: Namespace):
-    gen.generate(ns.grammar, ns.skeleton, ns.output)
+    output = ((None if i == '_' else i) for i in ns.output)
+    files = list(zip_longest(ns.input, output))
+    print(files)
+    gen.generate(ns.grammar, files)
 
 
 generate_cmd = subparsers.add_parser(
     "generate", help="generate parser from the grammar")
-generate_cmd.add_argument(
-    "--skeleton", "-s", type=str, required=True, help="skeletons directory")
-generate_cmd.add_argument(
-    "--output", "-o", type=str, help="output directory", default=os.getcwd())
+generate_cmd.add_argument("--input", "-i", type=str, required=True, nargs='+',
+                          help="list of input files")
+generate_cmd.add_argument("--output", "-o", type=str, nargs='*',
+                          help="list of output files")
 generate_cmd.set_defaults(fn=generate_cmd_action)
 
 

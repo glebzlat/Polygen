@@ -30,8 +30,8 @@ function run_generate {
     local parser_grammar=grammars/parser.peg
 
     python -m polygen "${parser_grammar}" \
-      generate -s "${bootstrap_dir}" \
-      -o "${bootstrap_dir}"
+      generate -i "${bootstrap_dir}/parser.py.skel" \
+      -o "${bootstrap_dir}/parser.py"
 
     exit $?
   fi

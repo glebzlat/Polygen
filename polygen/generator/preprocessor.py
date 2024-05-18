@@ -2,7 +2,7 @@ import re
 import sys
 
 from io import StringIO
-from typing import TextIO, Iterable, overload
+from typing import TextIO, Iterable, Optional, overload
 from pathlib import Path
 
 
@@ -11,43 +11,36 @@ class PreprocessorError(Exception):
 
 
 class Preprocessor:
-    """Creates a source code from the skeleton file, substituting directives.
+    r"""Processes data from input stream and writes to output stream.
 
-    Directives are words, wrapped by two percent symbols '%' like so:
-    "%% directive %%". Preprocessor will match directive and replace it,
-    preserving the prefix for _each_ line in the substitution, and also
-    preserving the postfix at the end of the substitution.
+    Preprocessor's work is to process directives in the input data. When
+    it finds a directive, it searches it in its directives dictionary and,
+    if such directive found, replaces it with its substitution, otherwise
+    raises an error.
 
-    Preserving prefix means that if the directive is, e.g. indented or
-    commented, then each line of the substituting text will also be
-    indented or commented with the same symbols.
+    Directives are words, enclosed in two percent symbols '%':
 
-    But postfix is preserved once and placed at the end of the substituting
-    text, not at the end of each line.
+        %% directive %%
 
-    Suppose that there is a directive `my_directive` with the replacement
-    `Hello\nWorld`. Then the following line in the skeleton file:
+    Directive name may consist of any word characters (that are matched
+    by `\w` regex).
 
-    ```
-    ### %% my_directive %% !
-    ```
+    Preprocessor preserves the prefix, the part of the string from the
+    last newline character to the first percent symbol, for each line
+    of the substitution. Also it preserves the original postfix, the part
+    of the string from the last percent symbol up to the first newline,
+    but places it only at the end of the substitution.
 
-    will be transformed to:
-
-    ```
-    ### Hello
-    ### World !
-    ```
-
-    Lines that do not contain valid directives, will be written without
-    changes.
+    Lines that don't contain directives are written without changes.
     """
 
     _DIRECTIVE_RE = re.compile(r'(.*)(?<!\\)%% *(\w+) *%%(.*)\Z',
                                flags=re.DOTALL)
     _NEWLINE_RE = re.compile(r'\A\n\r?\Z')
 
-    def __init__(self, directives: dict[str, str | TextIO]):
+    ENCODING = 'utf-8'
+
+    def __init__(self, directives: dict[str, str]):
         """Initialize Preprocessor.
 
         Arguments:
@@ -68,54 +61,6 @@ class Preprocessor:
             else:
                 ostream.write(prefix + line)
         ostream.write(postfix)
-
-    def _process_filename(self, filename: str):
-        parts = filename.split('.')
-        if parts[-1] == 'skel':
-            del parts[-1]
-        return '.'.join(parts)
-
-    @overload
-    def process(self, files: str | Path, output_dir: str | Path) -> None:
-        ...
-
-    @overload
-    def process(self,
-                files: Iterable[str | Path],
-                output_dir: str | Path) -> None:
-        ...
-
-    def process(self, files, output_dir):
-        """Process skeleton files and create source files.
-
-        If `files` argument is a path to a directory, then finds skeleton
-        files in it; if it is an iterable, then iterates through it.
-
-        Note that if the directory with skeleton files is given, then
-        only files with `.skel` extension will be processed.
-
-        Args:
-            files: A directory or an iterable with skeleton files.
-            output_dir: An output directory.
-
-        Raises:
-            PreprocessorError
-        """
-        if isinstance(output_dir, str):
-            output_dir = Path(output_dir)
-
-        if isinstance(files, str):
-            files = Path(files)
-        if isinstance(files, Path):
-            files = files.glob('*.skel')
-
-        for file in files:
-            file = file if isinstance(file, str) else Path(file)
-
-            new_file = output_dir / self._process_filename(file.name)
-            with (open(file, 'r', encoding='utf-8') as fin,
-                  open(new_file, 'w', encoding='utf-8') as fout):
-                self.process_stream(fin, fout)
 
     def process_stream(self,
                        istream: str | TextIO,
@@ -140,3 +85,47 @@ class Preprocessor:
                 self._insert(content, ostream, prefix, postfix)
             else:
                 ostream.write(line)
+
+
+class FilePreprocessor(Preprocessor):
+    """Creates source code files, replacing directives in skeleton files."""
+
+    @overload
+    def process(self, files: dict[Path | str, Optional[Path | str]]):
+        ...
+
+    @overload
+    def process(self, files: Iterable[tuple[Path | str, Optional[Path | str]]]):
+        ...
+
+    def process(self, files):
+        """Create source files from skeleton files.
+
+        Args:
+            files: A sequence of tuple[InputFile, OutputFile],
+                where the OutputFile will be created from the corresponding
+                InputFile. If OutputFile is None, then the path for newly
+                created file will be taken from InputFile. In this case the
+                filename will be created from InputFile's filename with the
+                '.skel' part removed (if it is appeared and appeared at the
+                end of the filename).
+        """
+
+        for input_file, output_file in files:
+            input_file = Path(input_file)
+
+            if output_file is None:
+                output_path = input_file.parent
+                output_filename = input_file.name.rstrip('.skel')
+                output_file = Path(output_path, output_filename)
+            else:
+                output_file = Path(output_file)
+
+            self.process_file(input_file, output_file)
+
+    def process_file(self, input_file: Path | str, output_file: Path | str):
+        """Create source code file from skeleton file."""
+
+        with (open(input_file, 'r', encoding=self.ENCODING) as fin,
+              open(output_file, 'w', encoding=self.ENCODING) as fout):
+            self.process_stream(fin, fout)
