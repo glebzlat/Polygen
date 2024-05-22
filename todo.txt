@@ -13,30 +13,38 @@ Write tests
     - [x] Parser
     - [ ] Nodes
     - [ ] Tree modifier
+        - [x] ExpandClass
+        - [x] ReplaceRep
+        - [ ] ReplaceZeroOrOne -- is it needed at all?
+        - [ ] ReplaceOneOrMore -- the same
+        - [x] CheckUndefRedef
+        - [x] SimplifyNestedExps
+        - [x] ReplaceNestedExps
+        - [x] CreateAnyCharRule
+        - [x] FindEntryRule
+        - [x] IgnoreRules
+        - [x] GenerateMetanames
+        - [x] SubstituteMetaRefs
+        - [ ] DetectLeftRec
     - [x] Preprocessor
     - [ ] Generated parsers
+        - [ ] Left recursion
 
-
-Grammar preprocessor
-
-    Add grammar preprocessor to extend directive language:
-
-        - Curly braces to apply directive to a group of rules
-
-          E.g.:
-
-          ```
-          @ignore {
-          Rule1 <- ...
-          ...
-          RuleN <- ...
-          }
-          ```
-
-        - @include directive to split the grammar into pieces
-
-
-Configurations
-
-    Create a mechanism to control the generator: choose which tree modifiers
-    to apply, add custom modifiers, add code preprocessor directives
+Implement features
+    
+    - [ ] Left recursion.
+          See "Packrat parsers can support left recursion" A. Warth, J.R.
+          Douglass, T. Millstein.
+    - [ ] Cuts.
+          See "Packrat parsers can handle practical grammars in mostly
+          constant space" K. Mizushima, A. Maeda, Y. Yamaguchi.
+    - [ ] Enhanced skeleton file preprocessor.
+          Add preprocessing language with conditional expressions
+    - [ ] Backend capabilities registry.
+          Each backend must define what node types it can accept and what
+          features it implements (like left recursion).
+    - [ ] Grammar preprocessor.
+          @include directive, group directives.
+    - [ ] Parser: return a tuple (success, value), not just single value.
+          If some function returns (True, None) then filter out None from
+          the resulting tree.

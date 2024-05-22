@@ -53,6 +53,12 @@ class SemanticError(Exception):
 
     severity = "critical"
 
+    def __str__(self):
+        return repr(self)
+
+    def __eq__(self, other):
+        return type(other) is type(self)
+
 
 class InvalidRangeError(SemanticError):
     """Malformed range quantifier.
@@ -66,6 +72,12 @@ class InvalidRangeError(SemanticError):
     def __init__(self, node: Range):
         self.node = node
 
+    def __eq__(self, other):
+        if isinstance(other, InvalidRangeError):
+            return self.node == other.node
+        else:
+            return NotImplemented
+
 
 class InvalidRepetitionError(SemanticError):
     """Malformed repetition particle.
@@ -78,6 +90,12 @@ class InvalidRepetitionError(SemanticError):
 
     def __init__(self, node: Repetition):
         self.node = node
+
+    def __eq__(self, other):
+        if isinstance(other, InvalidRepetitionError):
+            return self.node == other.node
+        else:
+            return NotImplemented
 
 
 class UndefRulesError(SemanticError):
@@ -96,6 +114,12 @@ class UndefRulesError(SemanticError):
     def __init__(self, rules: dict[Identifier, Rule]):
         self.rules = rules
 
+    def __eq__(self, other):
+        if isinstance(other, UndefRulesError):
+            return self.rules == other.rules
+        else:
+            return NotImplemented
+
 
 class RedefRulesError(SemanticError):
     """Raised when the rule with the same id is defined more than once.
@@ -110,11 +134,26 @@ class RedefRulesError(SemanticError):
     def __init__(self, rules: dict[Identifier, list[Rule]]):
         self.rules = rules
 
+    def __eq__(self, other):
+        if isinstance(other, RedefRulesError):
+            return self.rules == other.rules
+        else:
+            return NotImplemented
+
 
 class RedefEntryError(SemanticError):
     """Raised when one than one entry point is defined."""
 
     severity = "moderate"
+
+    def __init__(self, rule):
+        self.rule = rule
+
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.rule == other.rule
+        else:
+            return NotImplemented
 
 
 class EntryNotDefinedError(SemanticError):
@@ -143,10 +182,16 @@ class UndefMetaRefsError(SemanticError):
             it was found.
     """
 
+    severity = "moderate"
+
     def __init__(self, rules: dict[Identifier, Alt]):
         self.rules = rules
 
-    severity = "moderate"
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.rules == other.rules
+        else:
+            return NotImplemented
 
 
 class RedefMetaRulesError(SemanticError):
@@ -162,6 +207,12 @@ class RedefMetaRulesError(SemanticError):
     def __init__(self, rules: dict[Identifier, MetaRule]):
         self.rules = rules
 
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.rules == other.rules
+        else:
+            return NotImplemented
+
 
 class SemanticWarning(Warning):
     """Base class for semantic warnings raised by tree modifiers.
@@ -175,7 +226,8 @@ class SemanticWarning(Warning):
     formatter's responsibility.
     """
 
-    pass
+    def __eq__(self, other):
+        return type(other) is type(self)
 
 
 class UnusedRulesWarning(SemanticWarning):
@@ -263,13 +315,11 @@ class ExpandClass:
 
 
 class ReplaceRep:
-    """Replace repetition into a sequence of parts.
+    """Convert repetition of one part into a sequence of parts.
 
     ```
-    Part(prime=E, quant=Repetition(n)) ->
-        Expression(Alt(Part(prime=E1), ..., Part(prime=En)))
-    Part(prime=E, quant=Repetition(n, m)) ->
-        Expression(Alt(Part(prime=E1), ..., Part(prime=En), ..., Part(prime=Em))
+    E{n} -> En1 En2 ... EnN
+    E{n, m} -> En1 En2 ... EnN Em1? Em2? ... EmN?
     ```
     """
 
@@ -288,11 +338,11 @@ class ReplaceRep:
             part.quant = None
             return True
 
-        opt_parts = [Part(prime=p)
-                     for p in repeat(prime, node.end - node.beg)]
-        parts.append(
-            Part(prime=Expression(Alt(*opt_parts)),
-                 quant=ZeroOrOne()))
+        parts += [Part(prime=p, quant=ZeroOrOne())
+                  for p in repeat(prime, node.end - node.beg)]
+        # parts.append(
+        #     Part(prime=Expression(Alt(*opt_parts)),
+        #          quant=ZeroOrOne()))
 
         part.prime = Expression(Alt(*parts))
         part.quant = None
@@ -436,11 +486,21 @@ class SimplifyNestedExps:
     """
 
     def visit_Expression(self, node: Expression, parents):
+
+        # Try to rise up to a parent Expression
+        #  +-> Expression  <- if has only one Alt
+        #  |     |__ Alt
+        #  |           |__ Part  <- if not lookahead and not quant
+        #  |                 |__ Expression  <- we are here
+        #  |                       |
+        #  |_______________________| substitute parent exp by nested,
+        #                            removing nodes that are between
+
         if type(parents[-1]) is not Part:
             return False
 
-        part: Part = parents[-1]
-        if part.lookahead or part.quant:
+        part = parents[-1]
+        if part.lookahead is not None or part.quant is not None:
             return False
 
         parent = parents[-2]
@@ -550,21 +610,24 @@ class CreateAnyCharRule:
             self.rule_id.copy(),
             Expression(Alt(Part(prime=AnyChar())))
         )
+        self.found = False
 
     def visit_Grammar(self, node: Grammar, parents):
-        node.add(self.created_rule)
-        return False
+        if self.found:
+            node.add(self.created_rule)
+        return None
 
     def visit_AnyChar(self, node: AnyChar, parents):
         assert parents[-1] is not None and type(parents[-1]) is Part
         part = parents[-1]
 
-        # if it is a newly created rule
-        parent = parents[-4]
-        if type(parent) is Rule and parent.id == self.rule_id:
-            return False
+        # # if it is a newly created rule
+        # parent = parents[-4]
+        # if type(parent) is Rule and parent.id == self.rule_id:
+        #     return False
 
         part.prime = self.rule_id.copy()
+        self.found = True
         return False
 
 
@@ -604,7 +667,8 @@ class IgnoreRules:
 
     def visit_Identifier(self, node: Identifier, parents):
         part = parents[-1]
-        self.parts[node].append(part)
+        if type(part) is Part:
+            self.parts[node].append(part)
         return False
 
     def visit_Rule(self, node: Rule, parents):
@@ -619,8 +683,7 @@ class GenerateMetanames:
 
     Particle with the Identifier will have the metaname, created from
     this Identifier's string. Particles with other kind of stuff will
-    have indexed metanames: index, prepended with the underscore like
-    this: `_1`.
+    have indexed metanames: index, prepended with the underscore: `_1`.
 
     Lookahead particles must not have any metaname, except for the
     "ignore" metaname: `_`.
@@ -638,7 +701,7 @@ class GenerateMetanames:
     def visit_Part(self, node: Part, parents):
         metaname = node.metaname
 
-        if type(node.lookahead) in (Not, And):
+        if node.lookahead is not None:
             if metaname is not None and metaname != '_':
                 copy = node.copy()
                 node.metaname = '_'
@@ -652,6 +715,7 @@ class GenerateMetanames:
 
             if metaname in self.metanames:
                 raise MetanameRedefError(node)
+            self.metanames.add(metaname)
             return False
 
         if type(node.prime) in (Char, String, AnyChar):
@@ -692,8 +756,7 @@ class GenerateMetanames:
 
 
 class SubstituteMetaRefs:
-    """Finds and subsitutes MetaRefs by MetaRules.
-    """
+    """Finds and subsitutes MetaRefs by MetaRules."""
 
     def __init__(self):
         self.refs = defaultdict(list)
@@ -721,7 +784,7 @@ class SubstituteMetaRefs:
     def _check_redefined(self):
         duplicates = {id: rules for id, rules in self.metarules.items()
                       if len(rules) > 1}
-        if len(duplicates):
+        if duplicates:
             raise RedefMetaRulesError(duplicates)
 
     def visit_Grammar(self, node: Grammar, parents):
@@ -733,8 +796,9 @@ class SubstituteMetaRefs:
             if self.refs:
                 raise UndefMetaRefsError(dict(self.refs))
             self._check_redefined()
-            node.remove_metarules()
-            return False
+            node.nodes = [n for n in node.nodes if not isinstance(n, MetaRule)]
+            # node.remove_metarules()
+            return None
 
 
 class DetectLeftRec:
@@ -890,7 +954,7 @@ class TreeModifier:
         stages_flags = tuple([True for _ in s] for s in self.stages)
         done_stages = [False for _ in self.stages]
 
-        max_iterations = sum(len(s) for s in self.stages) * 2
+        max_iterations = sum(len(s) for s in self.stages) * 5
 
         for _ in range(max_iterations):
             for i, (stage, flags) in enumerate(zip(self.stages, stages_flags)):

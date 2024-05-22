@@ -79,6 +79,15 @@ class Grammar(Node, ArgsRepr, Sized):
         self.nodes.append(rule)
         return True
 
+    def get(self, id: Identifier
+            ) -> Optional[Rule | MetaRule | tuple[Rule | MetaRule, ...]]:
+        result = tuple(r for r in self.nodes if r.id == id)
+        if len(result) == 1:
+            return result[0]
+        if not result:
+            return None
+        return result
+
     def remove_metarules(self):
         self.nodes = list(filter(lambda i: type(i) is not MetaRule, self.nodes))
 
@@ -150,6 +159,11 @@ class Rule(Node, ArgsRepr, Sized):
         self.leftrec = leftrec
         super().__init__(begin_pos)
 
+    def copy(self, deep=False):
+        cpy = super().copy(deep)
+        cpy.directives = self.directives
+        return cpy
+
     def _get_args(self):
         return [self.id, self.expr]
 
@@ -179,6 +193,9 @@ class MetaRef(LeafNode, ArgsRepr):
     def __init__(self, id, begin_pos=0):
         self.id = id
         super().__init__(begin_pos)
+
+    def copy(self, deep=False):
+        return type(self)(self.id)
 
     def _get_args(self):
         return [self.id]
@@ -276,6 +293,12 @@ class Alt(Node, ArgsRepr, Sized):
         self.leftrec = leftrec
         super().__init__(begin_pos)
 
+    def copy(self, deep=False) -> Node:
+        parts = (p.copy(deep) for p in self.parts)
+        metarule = None if self.metarule is None else self.metarule.copy(deep)
+        self_type = type(self)
+        return self_type(*parts, metarule=metarule, leftrec=self.leftrec)
+
     def _get_args(self):
         return self.parts
 
@@ -283,7 +306,8 @@ class Alt(Node, ArgsRepr, Sized):
         return [('metarule', self.metarule), ('parts', self.parts)]
 
     def __str__(self):
-        metarule = f'[{self.metarule}]' if self.metarule is not None else ''
+        metarule = (f'[{self.metarule.id.string}]'
+                    if self.metarule is not None else '')
         parts = ', '.join(map(str, self.parts))
         return f'Alt{metarule}({parts})'
 
@@ -322,7 +346,8 @@ class Part(Node, AttributeHolder):
 
     def copy(self, deep=False):
         if deep:
-            kwargs = {k: v.copy() for k, v in self._get_kwargs()}
+            kwargs = {k: (v.copy() if isinstance(v, Node) else v)
+                      for k, v in self._get_kwargs()}
         else:
             kwargs = dict(self._get_kwargs())
         return Part(**kwargs)
@@ -512,6 +537,9 @@ class Repetition(LeafNode, ArgsRepr):
         self.end = end
         super().__init__(begin_pos)
 
+    def copy(self, deep=False):
+        return type(self)(self.beg, self.end)
+
     def _get_args(self):
         if self.end:
             return [self.beg, self.end]
@@ -537,6 +565,9 @@ class Char(LeafNode, ArgsRepr):
             return c
         code = hex(self.code)[2:].rjust(4, '0')
         return f'\\u{code}'
+
+    def copy(self, deep=False):
+        return type(self)(self.code)
 
     def __eq__(self, other):
         if not isinstance(other, Char):
