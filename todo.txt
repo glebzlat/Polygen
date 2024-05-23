@@ -19,6 +19,7 @@ Bugs:
             if the rule has two recursive paths, and parsing started
             from the first branch, then the second branch will never be
             parsed.
+        TestInterlockingLeftRecursion
 
 Write tests
 
@@ -44,7 +45,7 @@ Write tests
         - [x] Left recursion
 
 Implement features
-    
+
     - [ ] Left recursion.
           See "Packrat parsers can support left recursion" A. Warth, J.R.
           Douglass, T. Millstein.

@@ -867,3 +867,34 @@ class TestIndirectLeftRecursion_TwoBranches(ParserTest):
          'dcbafea', ((((((('d', 'c'), 'b'), 'a'), 'f'), 'e'), 'a'), True)),
         ('gfeacba', ((((((('g', 'f'), 'e'), 'a'), 'c'), 'b'), 'a'), True))
     ]
+
+
+class TestInterlockingLeftRecursion(ParserTest):
+    grammar = """
+    # This grammar is adopted from here:
+    # https://github.com/PhilippeSigaud/Pegged/wiki/Left-Recursion
+
+    @entry
+    Grammar <- L EOF
+    L <- P '.x' / 'x'
+    P <- P '(n)' / L
+    EOF <- !.
+    """
+
+    modifiers = [
+        [SubstituteMetaRefs()],
+        [CreateAnyCharRule()],
+        [ExpandClass(), ReplaceRep()],
+        [FindEntryRule(), IgnoreRules()],
+        [SimplifyNestedExps(), ReplaceNestedExps()],
+        [CheckUndefRedef()],
+        [GenerateMetanames()],
+        [DetectLeftRec()]
+    ]
+
+    successes = [
+        ('x', ('x', True)),
+        ('x.x', (('x', '.x'), True)),
+        (SkipCase('work in progress'),
+         'x(n)(n).x', (((('x', '(n)'), '(n)'), '.x'), True))
+    ]
