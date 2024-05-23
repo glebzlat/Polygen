@@ -2,6 +2,8 @@ import re
 
 from contextlib import contextmanager
 
+from ..generator.util import reindent
+
 from polygen.grammar.node import (
     Grammar,
     Rule,
@@ -18,37 +20,6 @@ from polygen.grammar.node import (
     OneOrMore,
     Repetition
 )
-
-_UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
-
-
-def wrap_string(s: str):
-    if _UNESCAPED_DOUBLE_QUOTE_RE.match(s):
-        s = s.replace('"', '\\"')
-    return '"' + s + '"'
-
-
-_LEADING_SPACE_RE = re.compile(r'^\s*')
-
-
-def reindent(string: str,
-             level: int,
-             indent='    ') -> str:
-    lines = [line for line in string.split('\n') if line.strip()]
-    new_indent = indent * level
-    base_indent = new_indent
-
-    for line in lines:
-        if m := _LEADING_SPACE_RE.match(line):
-            if len(m.group()) < len(base_indent):
-                base_indent = m.group()
-
-    for i, line in enumerate(lines):
-        if line.startswith(base_indent):
-            line = line[len(base_indent):]
-        lines[i] = new_indent + line
-
-    return '\n'.join(lines)
 
 
 class GeneratorError(Exception):

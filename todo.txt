@@ -43,6 +43,7 @@ Write tests
     - [x] Preprocessor
     - [x] Generated parsers
         - [x] Left recursion
+    - [ ] generator.util.reindent
 
 Implement features
 
@@ -62,3 +63,7 @@ Implement features
     - [ ] Parser: return a tuple (success, value), not just single value.
           If some function returns (True, None) then filter out None from
           the resulting tree.
+    - [ ] Write backend for another language, e.g. C++
+
+Misc:
+    - [ ] combine misc utilities into one module (maybe)
