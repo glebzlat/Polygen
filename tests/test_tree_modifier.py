@@ -18,7 +18,6 @@ from polygen.grammar.node import (
     ZeroOrMore,
     OneOrMore,
     Repetition,
-    Optional,
     And,
     Not,
 )
@@ -52,6 +51,23 @@ from polygen.grammar.tree_modifier import (
 
 
 class TreeModifierTestMetaClass(type):
+    """Metaclass for TreeModifier tests.
+
+    Test classes that inherit from this class define the following attributes:
+        modifier: Modifier class type to test. Required.
+        args: Positional arguments for the modifier class initialization.
+        kwargs: Keyword arguments for the modifier class initialization.
+        input_data: Input data. Required.
+        clue: Clue data to compare the result with. Required, if no `error`
+            attribute is specified.
+        error: A sequence of SemanticErrors. If specified, then the
+            TreeModifierError is expected to be raised.
+        warnings: A sequence of SemanticWarnings. If specified, then the
+            TreeModifierWarning is expected to be raised.
+        inspect_result: Optional method to inspect the resulting data.
+            Must take two positional arguments: self and the node.
+    """
+
     def __init__(cls, name, bases, body):
         if name == 'TreeModifierTest':
             return
