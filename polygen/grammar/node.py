@@ -439,6 +439,9 @@ class Class(Node, ArgsRepr, Sized):
     def __iter__(self):
         yield from self.ranges
 
+    def __hash__(self):
+        return hash(tuple(self.ranges))
+
 
 class Range(Node, ArgsRepr):
     beg: Char
@@ -466,6 +469,9 @@ class Range(Node, ArgsRepr):
         yield self.beg
         if self.end:
             yield self.end
+
+    def __hash__(self):
+        return hash((self.beg, self.end))
 
 
 class Lookahead(LeafNode):
@@ -550,6 +556,9 @@ class Repetition(LeafNode, ArgsRepr):
         if not isinstance(other, Repetition):
             return NotImplemented
         return (self.beg, self.end) == (other.beg, other.end)
+
+    def __hash__(self):
+        return hash((self.beg, self.end))
 
 
 class Char(LeafNode, ArgsRepr):

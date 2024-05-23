@@ -286,6 +286,10 @@ class ExpandClass:
     ```
     """
 
+    def __init__(self, apply=True):
+        self.apply = apply
+        self.collected = set()
+
     def _expand_range(self, rng: Range) -> set[Char]:
         """Expand range.
 
@@ -303,6 +307,15 @@ class ExpandClass:
 
     def visit_Class(self, node: Class, parents):
         assert type(parents[-1]) is Part
+
+        if not self.apply:
+            for rng in node:
+                if rng.end is not None and rng.beg > rng.end:
+                    raise InvalidRangeError(rng)
+            if node in self.collected:
+                return False
+            self.collected.add(node)
+            return True
 
         chars: set[Char] = reduce(
             operator.or_,
@@ -323,11 +336,21 @@ class ReplaceRep:
     ```
     """
 
+    def __init__(self, apply=True):
+        self.apply = apply
+        self.collected = set()
+
     def visit_Repetition(self, node: Repetition, parents):
         assert type(parents[-1]) is Part
 
         if node.end and node.beg > node.end:
             raise InvalidRepetitionError(node)
+
+        if not self.apply:
+            if node in self.collected:
+                return False
+            self.collected.add(node)
+            return True
 
         part: Part = parents[-1]
         prime = part.prime
@@ -340,9 +363,6 @@ class ReplaceRep:
 
         parts += [Part(prime=p, quant=ZeroOrOne())
                   for p in repeat(prime, node.end - node.beg)]
-        # parts.append(
-        #     Part(prime=Expression(Alt(*opt_parts)),
-        #          quant=ZeroOrOne()))
 
         part.prime = Expression(Alt(*parts))
         part.quant = None
@@ -718,7 +738,7 @@ class GenerateMetanames:
             self.metanames.add(metaname)
             return False
 
-        if type(node.prime) in (Char, String, AnyChar):
+        if type(node.prime) in (Char, String, AnyChar, Class):
             metaname = f'_{self.index}'
             self.index += 1
 

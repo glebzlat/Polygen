@@ -9,11 +9,14 @@ from polygen.grammar.node import (
     AnyChar,
     Char,
     String,
+    Range,
+    Class,
     Not,
     And,
     ZeroOrOne,
     ZeroOrMore,
-    OneOrMore
+    OneOrMore,
+    Repetition
 )
 
 _UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
@@ -122,6 +125,11 @@ class PythonGenerator:
                 self.put(f'return {retval}' if retval else 'return True')
         self.put('self._reset(_begin_pos)')
 
+    def class_to_pairs(self, node: Class):
+        pairs = ((r.beg, r.end) for r in node)
+        char_pairs = ((b, e if e is not None else b) for b, e in pairs)
+        return tuple((chr(b.code), chr(e.code)) for b, e in char_pairs)
+
     def gen_part(self, part, part_index, variables, newline):
         parts = []
 
@@ -139,6 +147,9 @@ class PythonGenerator:
             parts += 'self._loop', False
         elif type(part.quant) is OneOrMore:
             parts += 'self._loop', True
+        elif type(part.quant) is Repetition:
+            beg, end = part.quant.beg, part.quant.end
+            parts += 'self._rep', beg, end
 
         if type(part.prime) is Char:
             parts += 'self._expectc', part.prime
@@ -149,6 +160,9 @@ class PythonGenerator:
             parts += 'self._expects', part.prime
         elif type(part.prime) is AnyChar:
             parts.append('self._expectc')
+        elif type(part.prime) is Class:
+            pairs = self.class_to_pairs(part.prime)
+            parts += 'self._ranges', *pairs
         else:
             raise GeneratorError('unsupported node type', part.prime)
 

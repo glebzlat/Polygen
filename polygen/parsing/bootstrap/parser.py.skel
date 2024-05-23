@@ -240,6 +240,28 @@ class Parser:
         self._reset(pos)
         return None
 
+    def _rep(self, beg, end, fn, *args):
+        end = beg if end is None else end
+        pos = lastpos = self._mark()
+        count = 0
+        nodes = []
+        while (node := fn(*args)) is not None and self._mark() > lastpos:
+            nodes.append(node)
+            lastpos = self._mark()
+            count += 1
+        if count >= beg and count <= end:
+            return tuple(nodes)
+        self._reset(pos)
+        return None
+
+    def _ranges(self, *ranges):
+        char = self._peek_char()
+        if char is None:
+            return None
+        for beg, end in ranges:
+            if char >= beg and char <= end:
+                return self._get_char()
+
     def _maybe(self, fn, *args):
         if (result := fn(*args)) is not None:
             return result

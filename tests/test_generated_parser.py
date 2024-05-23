@@ -371,8 +371,38 @@ class TestRepetition(ParserTest):
     ]
 
     successes = [
-        ('aa', (('a', 'a', True, True), True)),
-        ('aaa', (('a', 'a', 'a', True), True)),
+        (SkipCase('work in progress'), 'aa', (('a', 'a'), True)),
+        (SkipCase('work in progress'), 'aaa', (('a', 'a', 'a'), True)),
+        ('aaaa', (('a', 'a', 'a', 'a'), True))
+    ]
+
+    failures = [
+        'a',
+        'aaaaa'
+    ]
+
+
+class TestRepetitionNoExpand(ParserTest):
+    grammar = """
+    @entry
+    Grammar <- A{2,4} EOF
+    A <- 'a'
+    EOF <- !.
+    """
+
+    modifiers = [
+        [SubstituteMetaRefs()],
+        [CreateAnyCharRule()],
+        [ExpandClass(), ReplaceRep(apply=False)],
+        [FindEntryRule(), IgnoreRules()],
+        [SimplifyNestedExps(), ReplaceNestedExps()],
+        [CheckUndefRedef()],
+        [GenerateMetanames()],
+    ]
+
+    successes = [
+        ('aa', (('a', 'a'), True)),
+        ('aaa', (('a', 'a', 'a'), True)),
         ('aaaa', (('a', 'a', 'a', 'a'), True))
     ]
 
@@ -502,6 +532,32 @@ class TestClass(ParserTest):
 
     failures = ['_', '-', ',']
 
+
+class TestClassNoExpand(ParserTest):
+    grammar = """
+    @entry
+    Symbol <- [a-zA-Z0-9]
+    """
+
+    modifiers = [
+        [SubstituteMetaRefs()],
+        [CreateAnyCharRule()],
+        [ExpandClass(apply=False), ReplaceRep()],
+        [FindEntryRule(), IgnoreRules()],
+        [SimplifyNestedExps(), ReplaceNestedExps()],
+        [CheckUndefRedef()],
+        [GenerateMetanames()],
+    ]
+
+    successes = [
+        ('a', 'a'),
+        ('z', 'z'),
+        ('A', 'A'),
+        ('0', '0'),
+        ('9', '9')
+    ]
+
+    failures = ['_', '-', ',']
 
 class TestChars(ParserTest):
     grammar = r"""

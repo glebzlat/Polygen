@@ -38,7 +38,7 @@ class NodeReprTestMetaclass(type):
 
             def test_repr(self):
                 dct_repr = node.to_dict()
-                print(dct_repr)
+                # print(dct_repr)
                 self.assertEqual(dct_repr, dct_clue)
 
                 node_clue = eval(r_clue)

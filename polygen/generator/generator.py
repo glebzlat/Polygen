@@ -40,8 +40,8 @@ class Generator:
             [SubstituteMetaRefs()],
             [CreateAnyCharRule()],
             [
-                ExpandClass(),
-                ReplaceRep(),
+                ExpandClass(apply=False),
+                ReplaceRep(apply=False),
             ],
             [FindEntryRule(), IgnoreRules()],
             [SimplifyNestedExps(), ReplaceNestedExps()],
