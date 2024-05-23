@@ -7,6 +7,19 @@ nodes in json?
 Replace True value in the generated parser by an empty tuple (). This will
 make resulting raw tree more consistent.
 
+Bugs:
+    test_generated_parsers:
+        TestNestedQuantifiers
+        TestChars
+            unicode char parsing
+        TestIgnoreRuleUnignored
+        TestHiddenLeftRecursion_Simple
+        TestHiddenLeftRecursion_Complicated
+        TestIndirectLeftRecursion_TwoBranches
+            if the rule has two recursive paths, and parsing started
+            from the first branch, then the second branch will never be
+            parsed.
+
 Write tests
 
     - [x] Reader
@@ -27,8 +40,8 @@ Write tests
         - [x] SubstituteMetaRefs
         - [ ] DetectLeftRec
     - [x] Preprocessor
-    - [ ] Generated parsers
-        - [ ] Left recursion
+    - [x] Generated parsers
+        - [x] Left recursion
 
 Implement features
     

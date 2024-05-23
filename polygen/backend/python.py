@@ -103,8 +103,11 @@ class PythonGenerator:
         self.put('if (', newline=put_newline)
         variables = []
         with self.indent():
-            for i, part in enumerate(alt.parts):
-                self.gen_part(part, i, variables, put_newline)
+            if alt.parts:
+                for i, part in enumerate(alt.parts):
+                    self.gen_part(part, i, variables, put_newline)
+            else:
+                self.put('True')
         self.put('):', indent=put_newline)
 
         with self.indent():
