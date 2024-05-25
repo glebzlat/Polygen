@@ -25,7 +25,7 @@ from polygen.grammar.tree_modifier import (
 )
 
 from polygen.generator.preprocessor import FilePreprocessor
-from polygen.backend.python import PythonGenerator
+from polygen.backend.python import Generator as PythonGenerator
 from polygen.__version__ import __version__
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
@@ -77,8 +77,8 @@ class ParserTestMetaClass(type):
             pass
 
         stream = StringIO()
-        gen = PythonGenerator(stream)
-        gen.generate(tree)
+        gen = PythonGenerator(tree, stream)
+        gen.generate()
         stream.seek(0)
 
         directives = {

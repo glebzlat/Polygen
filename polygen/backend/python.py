@@ -1,17 +1,19 @@
-import re
-
-from contextlib import contextmanager
+from io import TextIOBase
 
 from ..generator.util import reindent
 
-from polygen.grammar.node import (
+from ..generator.parser_generator import ParserGenerator
+from ..grammar.visitor import GrammarVisitor
+
+from ..grammar.node import (
     Grammar,
     Rule,
+    Alt,
+    Part,
     Identifier,
     AnyChar,
     Char,
     String,
-    Range,
     Class,
     Not,
     And,
@@ -22,132 +24,124 @@ from polygen.grammar.node import (
 )
 
 
-class GeneratorError(Exception):
-    pass
+class Generator(ParserGenerator, GrammarVisitor):
+    def __init__(self, grammar: Grammar, stream: TextIOBase):
+        self._grammar = grammar
+        super().__init__(stream)
 
+    def generate(self):
+        for i, r in enumerate(self._grammar):
+            self.visit(r, i)
 
-class PythonGenerator:
-    def __init__(self, stream=None):
-        self.indentation = ''
-        self.stream = stream
+    def visit_Rule(self, node: Rule, index: int):
+        if index:
+            # Place empty line between rules, but not before the first rule
+            self._emptyline()
 
-    def put(self, *args, newline=True, indent=True):
-        if indent:
-            print(end=self.indentation, file=self.stream)
-        print(*args, end='', file=self.stream)
-        if newline:
-            print(file=self.stream)
+        self._put('@_memoize_lr' if node.leftrec else '@_memoize')
+        self._put(f'def _{node.id.string}(self):')
 
-    @contextmanager
-    def indent(self, level: int = 1):
-        save = self.indentation
-        try:
-            self.indentation += '    ' * level
-            yield
-        finally:
-            self.indentation = save
+        with self._indent():
+            self._put('_begin_pos = self._mark()')
 
-    def generate(self, grammar: Grammar):
-        for i, rule in enumerate(grammar):
-            self.gen_rule(i, rule)
+            for i, alt in enumerate(node.expr):
+                self.visit(alt, i)
 
-    def gen_rule(self, rule_index: int, rule: Rule):
-        if rule_index != 0:
-            self.put(indent=False)
+            self._put('return None')
 
-        self.put('@_memoize_lr' if rule.leftrec else '@_memoize')
-        self.put(f'def _{rule.id.string}(self):')
-
-        with self.indent():
-            self.put('_begin_pos = self._mark()')
-
-            for i, alt in enumerate(rule.expr):
-                self.gen_alt(alt, rule, i)
-
-            self.put('return None')
-
-    _INDEXED_VAR_RE = re.compile(r'_\d+')
-
-    def isindexedvar(self, name):
-        return self._INDEXED_VAR_RE.match(name) is not None
-
-    def gen_alt(self, alt, rule, alt_index):
-        put_newline = len(alt) > 1
-
-        self.put('if (', newline=put_newline)
+    def visit_Alt(self, node: Alt, index: int):
         variables = []
-        with self.indent():
-            if alt.parts:
-                for i, part in enumerate(alt.parts):
-                    self.gen_part(part, i, variables, put_newline)
-            else:
-                self.put('True')
-        self.put('):', indent=put_newline)
 
-        with self.indent():
-            indent_lvl = len(self.indentation) // 4
-            if alt.metarule:
-                self.put(f'# {alt.metarule.id.string}')
-                self.put(
-                    reindent(alt.metarule.expr, level=indent_lvl),
+        length = len(node.parts)
+        if length == 0:
+            self._put('if True:')
+
+        elif length == 1:
+            self._put('if (', newline=False)
+            self.visit(node.parts[0], 0, variables, newline=False)
+            self._put('):', indent=False)
+
+        else:
+            self._put('if (')
+            with self._indent():
+                for i, part in enumerate(node.parts):
+                    self.visit(part, i, variables, newline=True)
+            self._put('):')
+
+        with self._indent():
+            if node.metarule:
+                self._put(f'# {node.metarule.id.string}')
+                self._put(
+                    reindent(node.metarule.expr, level=self._indent_level),
                     indent=0)
             else:
                 retval = ', '.join(variables)
-                self.put(f'return {retval}' if retval else 'return True')
-        self.put('self._reset(_begin_pos)')
+                self._put(f'return {retval}' if retval else 'return True')
+        self._put('self._reset(_begin_pos)')
 
-    def class_to_pairs(self, node: Class):
-        pairs = ((r.beg, r.end) for r in node)
-        char_pairs = ((b, e if e is not None else b) for b, e in pairs)
-        return tuple((chr(b.code), chr(e.code)) for b, e in char_pairs)
-
-    def gen_part(self, part, part_index, variables, newline):
+    def visit_Part(self,
+                   node: Part,
+                   index: int,
+                   variables: list[str],
+                   newline: bool):
         parts = []
 
-        cond = ''
-        if type(part.lookahead) is Not:
-            parts += 'self._lookahead', False
-        elif type(part.lookahead) is And:
-            parts += 'self._lookahead', True
-        else:
-            cond = 'is not None'
+        cond = 'is not None'
+        if node.lookahead is not None:
+            parts += self.visit(node.lookahead)
+            cond = None
 
-        if type(part.quant) is ZeroOrOne:
-            parts.append('self._maybe')
-        elif type(part.quant) is ZeroOrMore:
-            parts += 'self._loop', False
-        elif type(part.quant) is OneOrMore:
-            parts += 'self._loop', True
-        elif type(part.quant) is Repetition:
-            beg, end = part.quant.beg, part.quant.end
-            parts += 'self._rep', beg, end
+        if node.quant is not None:
+            parts += self.visit(node.quant)
 
-        if type(part.prime) is Char:
-            parts += 'self._expectc', part.prime
-        elif type(part.prime) is Identifier:
-            id = part.prime
-            parts.append(f'self._{id.string}')
-        elif type(part.prime) is String:
-            parts += 'self._expects', part.prime
-        elif type(part.prime) is AnyChar:
-            parts.append('self._expectc')
-        elif type(part.prime) is Class:
-            pairs = self.class_to_pairs(part.prime)
-            parts += 'self._ranges', *pairs
-        else:
-            raise GeneratorError('unsupported node type', part.prime)
+        parts += self.visit(node.prime)
 
-        metaname = part.metaname
-        if metaname != '_':
-            var = metaname
-            variables.append(metaname)
-        else:
-            var = None
+        var = None
+        if node.metaname != '_':
+            var = node.metaname
+            variables.append(var)
 
         fn, args = parts[0], ', '.join(str(i) for i in parts[1:])
-        op = 'and' if part_index else ''
+        op = 'and' if index else ''
         call = f'{fn}({args})'
         assignment = f'({var} := {call})' if var else call
 
         string = ' '.join(filter(None, (op, assignment, cond)))
-        self.put(string, newline=newline, indent=newline)
+        self._put(string, newline=newline, indent=newline)
+
+    def visit_Not(self, node: Not):
+        return 'self._lookahead', False
+
+    def visit_And(self, node: And):
+        return 'self._lookahead', True
+
+    def visit_ZeroOrOne(self, node: ZeroOrOne):
+        return ['self._maybe']
+
+    def visit_ZeroOrMore(self, node: ZeroOrMore):
+        return 'self._loop', False
+
+    def visit_OneOrMore(self, node: OneOrMore):
+        return 'self._loop', True
+
+    def visit_Repetition(self, node: Repetition):
+        return 'self._rep', node.beg, node.end
+
+    def visit_Char(self, node: Char):
+        return 'self._expectc', str(node)
+
+    def visit_Identifier(self, node: Identifier):
+        return [f'self._{node.string}']
+
+    def visit_String(self, node: String):
+        return 'self._expects', str(node)
+
+    def visit_AnyChar(self, node: AnyChar):
+        return ['self._expectc']
+
+    def visit_Class(self, node: Class):
+        pairs = ((r.beg, r.end) for r in node)
+        char_pairs = ((b, e if e is not None else b) for b, e in pairs)
+        str_pairs = tuple((chr(b.code), chr(e.code)) for b, e in char_pairs)
+
+        return 'self._ranges', *str_pairs

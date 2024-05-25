@@ -23,7 +23,7 @@ from polygen.grammar.tree_modifier import (
     TreeModifierWarning
 )
 
-from polygen.backend.python import PythonGenerator
+from polygen.backend.python import Generator as PythonGenerator
 from .preprocessor import FilePreprocessor
 
 
@@ -39,10 +39,7 @@ class Generator:
         write_rules = [
             [SubstituteMetaRefs()],
             [CreateAnyCharRule()],
-            [
-                ExpandClass(apply=False),
-                ReplaceRep(apply=False),
-            ],
+            [ExpandClass(apply=False), ReplaceRep(apply=False)],
             [FindEntryRule(), IgnoreRules()],
             [SimplifyNestedExps(), ReplaceNestedExps()],
             [CheckUndefRedef()],
@@ -80,8 +77,8 @@ class Generator:
         grammar = self.get_grammar(grammar_file, modified=True)
 
         stream = StringIO()
-        gen = PythonGenerator(stream)
-        gen.generate(grammar)
+        gen = PythonGenerator(grammar, stream)
+        gen.generate()
         stream.seek(0)
 
         directives = {
