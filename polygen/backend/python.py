@@ -128,7 +128,7 @@ class Generator(ParserGenerator, GrammarVisitor):
         return 'self._rep', node.beg, node.end
 
     def visit_Char(self, node: Char):
-        return 'self._expectc', str(node)
+        return 'self._expectc', f"'{node._chr}'"
 
     def visit_Identifier(self, node: Identifier):
         return [f'self._{node.string}']

@@ -694,7 +694,8 @@ class IgnoreRules:
     def visit_Rule(self, node: Rule, parents):
         if 'ignore' in node.directives:
             for part in self.parts[node.id]:
-                part.metaname = '_'
+                if part.metaname is None:
+                    part.metaname = '_'
         return False
 
 

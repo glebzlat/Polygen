@@ -561,6 +561,9 @@ class Repetition(LeafNode, ArgsRepr):
         return hash((self.beg, self.end))
 
 
+_printable = set((*string.digits, *string.ascii_letters, *string.punctuation))
+
+
 class Char(LeafNode, ArgsRepr):
     code: int
 
@@ -570,7 +573,7 @@ class Char(LeafNode, ArgsRepr):
 
     @property
     def _chr(self):
-        if (c := chr(self.code)) and c in string.printable:
+        if (c := chr(self.code)) and c in _printable:
             return c
         code = hex(self.code)[2:].rjust(4, '0')
         return f'\\u{code}'
@@ -603,7 +606,7 @@ class Char(LeafNode, ArgsRepr):
         return f'Char({wrap_string(self._chr)})'
 
     def __str__(self):
-        return repr(self._chr)
+        return wrap_string(self._chr, double=False)
 
     def __hash__(self):
         return hash(self.code)

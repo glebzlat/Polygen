@@ -443,8 +443,10 @@ class TestExpression(ParserTest):
 
 class TestNestedQuantifiers(ParserTest):
     grammar = """
+    # If A is placed before B, then B will never succeed, because a*
+    # succeeds even if no input was consumed.
     @entry
-    Grammar <- (A / B)+ '.' EOF
+    Grammar <- (B / A)+ '.' EOF
     A <- 'a'*
     B <- 'b'+
     EOF <- !.
@@ -462,9 +464,10 @@ class TestNestedQuantifiers(ParserTest):
 
     successes = [
         ('a.', ([['a']], '.', True)),
-        (SkipCase("work in progress"), 'b.', ()),
-        (SkipCase("work in progress"), 'ab.', ()),
-        (SkipCase("work in progress"), 'aaabbbaaa.', ())
+        ('b.', ([['b']], '.', True)),
+        ('ab.', ([['a'], ['b']], '.', True)),
+        ('aaabbbaaa.', ([['a', 'a', 'a'], ['b', 'b', 'b'], ['a', 'a', 'a']],
+                        '.', True))
     ]
 
 
@@ -559,6 +562,7 @@ class TestClassNoExpand(ParserTest):
 
     failures = ['_', '-', ',']
 
+
 class TestChars(ParserTest):
     grammar = r"""
     @entry
@@ -581,7 +585,7 @@ class TestChars(ParserTest):
     successes = [
         ('\61', '\61'),
         ('\141', '\141'),
-        (SkipCase("work in progress"), '\u03c0', '\u03c0')
+        ('\u03c0', '\u03c0')
     ]
 
 
@@ -695,8 +699,7 @@ class TestIgnoreRuleUnignored(ParserTest):
     ]
 
     successes = [
-        (SkipCase("work in progress"),
-         'a b c d ', (['a', ' ', 'b', ' ', 'c', ' ', 'd', ' '], True))
+        ('a b c d ', ([('a', ' '), ('b', ' '), ('c', ' '), ('d', ' ')], True))
     ]
 
 

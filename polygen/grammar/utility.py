@@ -1,5 +1,3 @@
-import re
-
 from typing import Any
 
 
@@ -14,10 +12,10 @@ def isiterable(obj: Any) -> bool:
         return False
 
 
-_UNESCAPED_DOUBLE_QUOTE_RE = re.compile(r'(?<!\\)"')
-
-
-def wrap_string(string: str) -> str:
-    if _UNESCAPED_DOUBLE_QUOTE_RE.match(string):
+def wrap_string(string: str, double=True) -> str:
+    if double:
         string = string.replace('"', '\\"')
-    return f'"{string}"'
+        return f'"{string}"'
+    else:
+        string = string.replace("'", "\\'")
+        return f"'{string}'"
