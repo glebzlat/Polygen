@@ -2,7 +2,7 @@ from io import StringIO
 
 import unittest
 
-from polygen.parsing import Reader
+from polygen.reader import Reader
 
 
 class ReaderTest(unittest.TestCase):

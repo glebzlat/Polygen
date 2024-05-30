@@ -1,11 +1,12 @@
 from io import TextIOBase
 
-from ..generator.util import reindent
+from polygen.generator.util import reindent
+from polygen.grammar.utility import wrap_string
 
-from ..generator.parser_generator import ParserGenerator
-from ..grammar.visitor import GrammarVisitor
+from polygen.generator.parser_generator import ParserGenerator
+from polygen.grammar.visitor import GrammarVisitor
 
-from ..grammar.node import (
+from polygen.grammar.node import (
     Grammar,
     Rule,
     Alt,
@@ -25,7 +26,7 @@ from ..grammar.node import (
 
 
 class Generator(ParserGenerator, GrammarVisitor):
-    def __init__(self, grammar: Grammar, stream: TextIOBase):
+    def __init__(self, grammar: Grammar, stream: TextIOBase, config):
         self._grammar = grammar
         super().__init__(stream)
 
@@ -127,8 +128,16 @@ class Generator(ParserGenerator, GrammarVisitor):
     def visit_Repetition(self, node: Repetition):
         return 'self._rep', node.beg, node.end
 
+    def escape_char(self, c: str):
+        map = {
+            '\\': '\\\\',
+            "'": "\'"
+        }
+        return f"'{map.get(c, c)}'"
+
     def visit_Char(self, node: Char):
-        return 'self._expectc', f"'{node._chr}'"
+        c = self.escape_char(node._chr)
+        return 'self._expectc', f"{c}"
 
     def visit_Identifier(self, node: Identifier):
         return [f'self._{node.string}']

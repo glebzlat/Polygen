@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Optional
 from functools import wraps
 
-from polygen.parsing.reader import Reader
+from polygen.reader import Reader
 from polygen.grammar.node import (
     Node,
     Grammar,

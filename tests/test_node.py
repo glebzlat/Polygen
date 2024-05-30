@@ -92,6 +92,28 @@ class TestStringRepr(NodeReprTest):
     ]
 
 
+class TestStringReprUnicode(NodeReprTest):
+
+    cases = [
+        (String(Char('\u000b'), Char('\u000c'), Char('\u000d')),
+         r"String(Char('\u000b'), Char('\u000c'), Char('\u000d'))",
+         r'"\u000b\u000c\u000d"',
+         {'type': 'String',
+          'chars': [{'begin_pos': 0, 'code': 0x000b, 'type': 'Char'},
+                    {'begin_pos': 0, 'code': 0x000c, 'type': 'Char'},
+                    {'begin_pos': 0, 'code': 0x000d, 'type': 'Char'}],
+          'begin_pos': 0}),
+
+        (String(Char('\\'), Char('u')),
+         r"String(Char('\\'), Char('u'))",
+         r'"\\u"',
+         {'type': 'String',
+          'chars': [{'begin_pos': 0, 'code': 92, 'type': 'Char'},
+                    {'begin_pos': 0, 'code': 117, 'type': 'Char'}],
+          'begin_pos': 0})
+    ]
+
+
 class TestRangeRepr(NodeReprTest):
 
     cases = [

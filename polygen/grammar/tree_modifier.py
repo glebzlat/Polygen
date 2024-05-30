@@ -214,6 +214,25 @@ class RedefMetaRulesError(SemanticError):
             return NotImplemented
 
 
+class LeftRecNotSupportedError(SemanticError):
+    """Raised if DetectLeftRec modifier is disabled and left recursion found.
+
+    Args:
+        leftrecs: A list of left recursive paths.
+    """
+
+    severity = "critical"
+
+    def __init__(self, leftrecs: list[tuple[Rule, ...]]):
+        self.leftrecs = leftrecs
+
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.leftrecs == other.leftrecs
+        else:
+            return NotImplemented
+
+
 class SemanticWarning(Warning):
     """Base class for semantic warnings raised by tree modifiers.
 
@@ -442,7 +461,7 @@ class CheckUndefRedef:
     """Check for undefined rules in expressions and for rules with same names.
     """
 
-    def __init__(self):
+    def __init__(self, apply=True):
         self.rhs_names = {}
         self.rule_names_set = set()
 
@@ -505,6 +524,9 @@ class SimplifyNestedExps:
     ```
     """
 
+    def __init__(self, apply=True):
+        pass
+
     def visit_Expression(self, node: Expression, parents):
 
         # Try to rise up to a parent Expression
@@ -562,7 +584,7 @@ class ReplaceNestedExps:
 
     id_fmt = "{string}__GEN_{idx}"
 
-    def __init__(self) -> None:
+    def __init__(self, apply=True) -> None:
         self.created_rules: list[Rule] = []
         self.id_count: dict[Identifier, int] = {}
 
@@ -624,7 +646,7 @@ class CreateAnyCharRule:
     generators to easily handle AnyChar logic in a custom manner.
     """
 
-    def __init__(self):
+    def __init__(self, apply=True):
         self.rule_id = Identifier("AnyChar__GEN")
         self.created_rule = Rule(
             self.rule_id.copy(),
@@ -652,7 +674,7 @@ class CreateAnyCharRule:
 
 
 class FindEntryRule:
-    def __init__(self) -> None:
+    def __init__(self, apply=True) -> None:
         self.entry: Rule | None = None
 
     def visit_Rule(self, node: Rule, parents):
@@ -682,7 +704,7 @@ class IgnoreRules:
     don't matter.
     """
 
-    def __init__(self):
+    def __init__(self, apply=True):
         self.parts = defaultdict(list)
 
     def visit_Identifier(self, node: Identifier, parents):
@@ -714,7 +736,7 @@ class GenerateMetanames:
     metaname will redefine the first, a warning will be raised.
     """
 
-    def __init__(self):
+    def __init__(self, apply=True):
         self.index = 1
         self.metanames = set()
         self.id_names = Counter()
@@ -779,7 +801,7 @@ class GenerateMetanames:
 class SubstituteMetaRefs:
     """Finds and subsitutes MetaRefs by MetaRules."""
 
-    def __init__(self):
+    def __init__(self, apply=True):
         self.refs = defaultdict(list)
         self.metarules = defaultdict(list)
         self.stage = 0
@@ -826,8 +848,9 @@ class DetectLeftRec:
 
     Branch = namedtuple('Branch', ('parent', 'id', 'index', 'first'))
 
-    def __init__(self):
+    def __init__(self, apply=True):
         Branch = self.Branch
+        self.apply = apply
         self.branches: dict[Identifier, set[Branch]] = {}
         self.alts: dict[Branch, Alt] = {}
         self.rules: dict[Identifier, Rule] = {}
@@ -875,7 +898,7 @@ class DetectLeftRec:
     def _find_leftrecs(self,
                        entry: Identifier,
                        path: list[Branch],
-                       leftrecs: set[tuple]):
+                       leftrecs: set[tuple[Branch, ...]]):
         branches = self.branches[entry]
         for b in branches:
             if b in path:
@@ -889,6 +912,13 @@ class DetectLeftRec:
     def visit_Grammar(self, node, parents):
         leftrecs = set()
         self._find_leftrecs(node.entry.id, [], leftrecs)
+
+        if not self.apply:
+            # Convert tuples of Branches to tuples of Rules
+            lrs = []
+            for leftrec in leftrecs:
+                lrs.append(tuple(self.rules[lr.parent] for lr in leftrec))
+            raise LeftRecNotSupportedError(lrs)
 
         for leftrec in leftrecs:
             head, *involved = leftrec
@@ -955,7 +985,7 @@ class TreeModifier:
                 self.errors.append(exc)
 
                 if exc.severity == "critical":
-                    raise TreeModifierError(self.errors)
+                    raise TreeModifierError(self.errors) from None
                 elif exc.severity == "moderate":
                     flags[i] = None
                 elif exc.severity == "low":

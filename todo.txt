@@ -64,6 +64,7 @@ Implement features
           If some function returns (True, None) then filter out None from
           the resulting tree.
     - [ ] Write backend for another language, e.g. C++
+          - [x] Add the ability to add new backends easily.
 
 Misc:
     - [ ] combine misc utilities into one module (maybe)

@@ -1,13 +1,9 @@
 import unittest
-import sys
 import inspect
 
-from io import StringIO
-from datetime import datetime
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from polygen.parsing.bootstrap.parser import Parser as GrammarParser
 from polygen.grammar.tree_modifier import (
     ExpandClass,
     ReplaceRep,
@@ -20,13 +16,9 @@ from polygen.grammar.tree_modifier import (
     GenerateMetanames,
     SubstituteMetaRefs,
     DetectLeftRec,
-    TreeModifier,
-    TreeModifierWarning
 )
 
-from polygen.generator.preprocessor import FilePreprocessor
-from polygen.backend.python import Generator as PythonGenerator
-from polygen.__version__ import __version__
+from polygen.codegen import Generator
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
 SKEL_FILE = (Path.cwd() / 'polygen' / 'parsing' /
@@ -65,46 +57,22 @@ class ParserTestMetaClass(type):
 
     @classmethod
     def create_parser(cls, idx, cls_name, grammar, modifiers):
-        parser = GrammarParser(grammar)
-        tree = parser.parse()
-
-        assert tree is not None, "parsing failure"
-
-        modifier = TreeModifier(modifiers)
-        try:
-            modifier.visit(tree)
-        except TreeModifierWarning:
-            pass
-
-        stream = StringIO()
-        gen = PythonGenerator(tree, stream)
-        gen.generate()
-        stream.seek(0)
-
-        directives = {
-            "body": stream.read(),
-            "entry": tree.entry.id.string,
-            "version": __version__,
-            "datetime": datetime.today().strftime(DATEFORMAT)
-        }
-
-        proc = FilePreprocessor(directives)
-        input_file = SKEL_FILE
+        gen = Generator.setup()
 
         tmpdir = TMPDIR_PATH / f'test_generated_parser_{cls_name}'
         if tmpdir.exists():
             tmpdir.rmdir()
         tmpdir.mkdir()
 
-        module_name = f'_test_parser_{idx}'
-        output_file = tmpdir / f'{module_name}.py'
+        module_file = tmpdir / 'parser.py'
+        gen.generate('python', tmpdir, options={}, grammar=grammar)
 
-        proc.process({input_file: output_file})
+        namespace = {}
+        with open(module_file, 'rb') as fin:
+            code = compile(fin.read(), fin.name, 'exec')
+        exec(code, namespace)
 
-        sys.path.append(str(tmpdir))
-        module = __import__(module_name)
-        sys.path.pop()
-        return module.Parser
+        return namespace['Parser']
 
     def __init__(cls, name, bases, body):
         if name == 'ParserTest':
@@ -371,8 +339,8 @@ class TestRepetition(ParserTest):
     ]
 
     successes = [
-        (SkipCase('work in progress'), 'aa', (('a', 'a'), True)),
-        (SkipCase('work in progress'), 'aaa', (('a', 'a', 'a'), True)),
+        ('aa', (('a', 'a'), True)),
+        ('aaa', (('a', 'a', 'a'), True)),
         ('aaaa', (('a', 'a', 'a', 'a'), True))
     ]
 
@@ -493,13 +461,12 @@ class TestNestedRepetitions(ParserTest):
 
     successes = [
         ('aaaaa aaaa.', (((('a', 'a', 'a', 'a', 'a'), ' '),
-                          (('a', 'a', 'a', 'a', True), True), True),
-                         '.', True)),
+                          (('a', 'a', 'a', 'a'), True)), '.', True)),
         ('bbb b.', (((('b', 'b', 'b'), ' '),
-                     (('b', True, True), True), True), '.', True)),
-        ('aaa b aaaa.', (((('a', 'a', 'a', True, True), ' '),
-                          (('b', True, True), ' '),
-                          (('a', 'a', 'a', 'a', True), True)),
+                     (('b',), True)), '.', True)),
+        ('aaa b aaaa.', (((('a', 'a', 'a'), ' '),
+                          (('b',), ' '),
+                          (('a', 'a', 'a', 'a',), True)),
                          '.',
                          True))
     ]

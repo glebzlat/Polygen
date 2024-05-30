@@ -414,7 +414,7 @@ class String(Node, ArgsRepr):
         yield from self.chars
 
     def __str__(self):
-        string = ''.join(map(lambda c: str(c)[1:-1], self.chars))
+        string = ''.join(map(lambda c: c._chr, self.chars))
         return wrap_string(string)
 
 
@@ -574,7 +574,7 @@ class Char(LeafNode, ArgsRepr):
     @property
     def _chr(self):
         if (c := chr(self.code)) and c in _printable:
-            return c
+            return repr(c)[1:-1]
         code = hex(self.code)[2:].rjust(4, '0')
         return f'\\u{code}'
 
