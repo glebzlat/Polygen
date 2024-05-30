@@ -1,7 +1,6 @@
 from io import TextIOBase
 
 from polygen.generator.util import reindent
-from polygen.grammar.utility import wrap_string
 
 from polygen.generator.parser_generator import ParserGenerator
 from polygen.grammar.visitor import GrammarVisitor
