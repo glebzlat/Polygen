@@ -18,12 +18,15 @@ def generate_cmd_action(gen: Generator, ns: Namespace):
 
 generate_cmd = subparsers.add_parser(
     "generate", help="generate parser from the grammar")
-generate_cmd.add_argument("backend", type=str)
 generate_cmd.add_argument(
-    "grammar", type=FileType('r', encoding='utf-8'),
-    help="grammar file")
+    "-b", "--backend", type=str,
+    help="code generator")
 generate_cmd.add_argument(
-    "output", type=str, help="output directory")
+    "-g", "--grammar-file", type=FileType('r', encoding='utf-8'),
+    help="grammar file",
+    dest="grammar")
+generate_cmd.add_argument(
+    "-o", "--output", type=str, help="output directory")
 generate_cmd.add_argument("--define", "-D", action="append")
 generate_cmd.set_defaults(fn=generate_cmd_action)
 

@@ -26,20 +26,11 @@ function run_tests {
 function run_generate {
   if [ "$1" = "polygen" ];
   then
-    local bootstrap_dir=polygen/parsing/bootstrap
-    local parser_grammar=grammars/parser.peg
-
-    python -m polygen "${parser_grammar}" \
-      generate -i "${bootstrap_dir}/parser.py.skel" \
-      -o "${bootstrap_dir}/parser.py"
-
+    python -m polygen generate -b python -g grammar/parser.peg -o polygen
     exit $?
   fi
 
-  local grammar=$1
-  shift
-
-  python -m polygen "${grammar}" generate $@
+  python -m polygen generate $@
   exit $?
 }
 
