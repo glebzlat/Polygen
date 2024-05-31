@@ -1,7 +1,7 @@
 import unittest
 
 from polygen.parser import Parser
-from polygen.grammar.node import (
+from polygen.node import (
     Grammar,
     Expression,
     Rule,

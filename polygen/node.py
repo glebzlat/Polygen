@@ -7,8 +7,8 @@ from collections.abc import Iterable, Sized
 from abc import abstractmethod
 from itertools import chain
 
-from polygen.attrholder import AttributeHolder, ArgsRepr
-from ..utility import isiterable, wrap_string
+from .attrholder import AttributeHolder, ArgsRepr
+from .utility import isiterable, wrap_string
 
 
 class Node(Iterable):

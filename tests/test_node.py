@@ -2,7 +2,7 @@ import unittest
 
 from collections import Counter
 
-from polygen.grammar.node import (
+from polygen.node import (
     Node,
     # Grammar,
     # Expression,

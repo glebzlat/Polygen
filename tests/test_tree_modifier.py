@@ -1,6 +1,6 @@
 import unittest
 
-from polygen.grammar.node import (
+from polygen.node import (
     Grammar,
     Rule,
     MetaRule,
@@ -22,7 +22,7 @@ from polygen.grammar.node import (
     Not,
 )
 
-from polygen.grammar.tree_modifier import (
+from polygen.tree_modifier import (
     TreeModifierError,
     TreeModifierWarning,
     InvalidRangeError,

@@ -1,11 +1,11 @@
 from io import TextIOBase
 
-from polygen.generator.util import reindent
+from polygen.utility import reindent
 
-from polygen.generator.parser_generator import ParserGenerator
-from polygen.grammar.visitor import GrammarVisitor
+from polygen.gen_base import GeneratorBase
+from polygen.visitor import GrammarVisitor
 
-from polygen.grammar.node import (
+from polygen.node import (
     Grammar,
     Rule,
     Alt,
@@ -24,7 +24,7 @@ from polygen.grammar.node import (
 )
 
 
-class Generator(ParserGenerator, GrammarVisitor):
+class Generator(GeneratorBase, GrammarVisitor):
     def __init__(self, grammar: Grammar, stream: TextIOBase, config):
         self._grammar = grammar
         super().__init__(stream)

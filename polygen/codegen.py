@@ -9,7 +9,7 @@ from io import TextIOBase
 from .__version__ import __version__
 from .config import Config
 
-from polygen.grammar.tree_modifier import (
+from .tree_modifier import (
     ExpandClass,
     ReplaceRep,
     CheckUndefRedef,
@@ -26,7 +26,7 @@ from polygen.grammar.tree_modifier import (
 )
 
 from .parser import Parser as GrammarParser
-from .generator.preprocessor import FilePreprocessor
+from .preprocessor import FilePreprocessor
 
 # Modifiers structure -- these classes will be instantiated and configured
 # by the codegen according to the backend's capabilities

@@ -4,7 +4,7 @@ import inspect
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from polygen.grammar.tree_modifier import (
+from polygen.tree_modifier import (
     ExpandClass,
     ReplaceRep,
     CheckUndefRedef,

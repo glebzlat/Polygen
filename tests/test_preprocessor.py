@@ -5,7 +5,7 @@ import shutil
 from io import StringIO
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-from polygen.generator.preprocessor import (
+from polygen.preprocessor import (
     NoSuchDirective,
     FilePreprocessorError,
     Preprocessor,

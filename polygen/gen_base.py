@@ -2,14 +2,14 @@ from io import TextIOBase
 from abc import abstractmethod
 from contextlib import contextmanager
 
-from ..grammar.node import Grammar
+from .node import Grammar
 
 
 class GeneratorError(Exception):
     pass
 
 
-class ParserGenerator:
+class GeneratorBase:
     def __init__(self, stream: TextIOBase):
         self._indentation = ''
         self._indent_level = 0

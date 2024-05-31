@@ -8,7 +8,7 @@ from typing import Optional
 from functools import wraps
 
 from polygen.reader import Reader
-from polygen.grammar.node import (
+from polygen.node import (
     Node,
     Grammar,
     Expression,
