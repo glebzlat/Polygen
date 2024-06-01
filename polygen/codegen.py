@@ -191,6 +191,7 @@ class Generator:
         grammar = parser.parse()
         if grammar is None:
             raise GeneratorError("parser failure")
+        grammar = grammar.value
 
         modifiers = self._init_modifiers(config)
         visitor = TreeModifier(modifiers)

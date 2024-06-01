@@ -90,7 +90,7 @@ class ParserTestMetaClass(type):
                 result = parser.parse()
                 try:
                     self.assertIsNotNone(result)
-                    self.assertEqual(result, clue)
+                    self.assertEqual(result.value, clue)
                 except AssertionError as e:
                     type_name = cls.__name__
                     msg = f"{type_name}:{lineno}: {e}"
@@ -141,7 +141,7 @@ class TestSimpleGrammar(ParserTest):
     }
 
     successes = [
-        ('abc', ('abc', True))
+        ('abc', ('abc',))
     ]
 
     failures = [
@@ -183,7 +183,7 @@ class TestEmptyAlt(ParserTest):
     }
 
     successes = [
-        ('', True)
+        ('', None)
     ]
 
 
@@ -230,8 +230,8 @@ class TestZeroOrOne(ParserTest):
     }
 
     successes = [
-        ('ab', ('a', 'b', True)),
-        ('a', ('a', True, True))
+        ('ab', ('a', 'b')),
+        ('a', ('a',))
     ]
 
     failues = [
@@ -254,9 +254,9 @@ class TestZeroOrMore(ParserTest):
     }
 
     successes = [
-        ('a', ('a', [], True)),
-        ('abb', ('a', ['b', 'b'], True)),
-        ('abbb', ('a', ['b', 'b', 'b'], True)),
+        ('a', ('a', [])),
+        ('abb', ('a', ['b', 'b'])),
+        ('abbb', ('a', ['b', 'b', 'b'])),
     ]
 
 
@@ -275,8 +275,8 @@ class TestOneOrMore(ParserTest):
     }
 
     successes = [
-        ('ab', ('a', ['b'], True)),
-        ('abbb', ('a', ['b', 'b', 'b'], True)),
+        ('ab', ('a', ['b'])),
+        ('abbb', ('a', ['b', 'b', 'b'])),
     ]
 
     failures = [
@@ -299,9 +299,9 @@ class TestRepetition(ParserTest):
     }
 
     successes = [
-        ('aa', (('a', 'a'), True)),
-        ('aaa', (('a', 'a', 'a'), True)),
-        ('aaaa', (('a', 'a', 'a', 'a'), True))
+        ('aa', (('a', 'a'),)),
+        ('aaa', (('a', 'a', 'a'),)),
+        ('aaaa', (('a', 'a', 'a', 'a'),))
     ]
 
     failures = [
@@ -325,9 +325,9 @@ class TestRepetitionNoExpand(ParserTest):
     }
 
     successes = [
-        (SkipCase('work in progress'), 'aa', (('a', 'a'), True)),
-        (SkipCase('work in progress'), 'aaa', (('a', 'a', 'a'), True)),
-        ('aaaa', (('a', 'a', 'a', 'a'), True))
+        ('aa', (('a', 'a'),)),
+        ('aaa', (('a', 'a', 'a'),)),
+        ('aaaa', (('a', 'a', 'a', 'a'),))
     ]
 
     failures = [
@@ -353,11 +353,11 @@ class TestExpression(ParserTest):
     }
 
     successes = [
-        ('a.', (['a'], '.', True)),
-        ('b.', (['b'], '.', True)),
-        ('c.', (['c'], '.', True)),
-        ('abc.', (['a', 'b', 'c'], '.', True)),
-        ('cba.', (['c', 'b', 'a'], '.', True))
+        ('a.', (['a'], '.')),
+        ('b.', (['b'], '.')),
+        ('c.', (['c'], '.')),
+        ('abc.', (['a', 'b', 'c'], '.')),
+        ('cba.', (['c', 'b', 'a'], '.'))
     ]
 
 
@@ -379,11 +379,12 @@ class TestNestedQuantifiers(ParserTest):
     }
 
     successes = [
-        ('a.', ([['a']], '.', True)),
-        ('b.', ([['b']], '.', True)),
-        ('ab.', ([['a'], ['b']], '.', True)),
-        ('aaabbbaaa.', ([['a', 'a', 'a'], ['b', 'b', 'b'], ['a', 'a', 'a']],
-                        '.', True))
+        ('a.', ([['a']], '.')),
+        ('b.', ([['b']], '.')),
+        ('ab.', ([['a'], ['b']], '.')),
+        ('aaabbbaaa.', ([['a', 'a', 'a'],
+                         ['b', 'b', 'b'],
+                         ['a', 'a', 'a']], '.'))
     ]
 
 
@@ -405,14 +406,13 @@ class TestNestedRepetitions(ParserTest):
 
     successes = [
         ('aaaaa aaaa.', (((('a', 'a', 'a', 'a', 'a'), ' '),
-                          (('a', 'a', 'a', 'a'), True)), '.', True)),
+                          ((('a', 'a', 'a', 'a'),))), '.')),
         ('bbb b.', (((('b', 'b', 'b'), ' '),
-                     (('b',), True)), '.', True)),
+                     (('b',),)), '.')),
         ('aaa b aaaa.', (((('a', 'a', 'a'), ' '),
                           (('b',), ' '),
-                          (('a', 'a', 'a', 'a',), True)),
-                         '.',
-                         True))
+                          ((('a', 'a', 'a', 'a'),))),
+                         '.'))
     ]
 
     failures = [
@@ -536,7 +536,7 @@ class TestIgnorePart(ParserTest):
     }
 
     successes = [
-        ('a-b', ('a', 'b', True))
+        ('a-b', ('a', 'b'))
     ]
 
 
@@ -559,7 +559,7 @@ class TestIgnoreRule(ParserTest):
     }
 
     successes = [
-        ('a   b  cd ', (['a', 'b', 'c', 'd'], True))
+        ('a   b  cd ', (['a', 'b', 'c', 'd'],))
     ]
 
 
@@ -582,7 +582,7 @@ class TestIgnoreRuleUnignored(ParserTest):
     }
 
     successes = [
-        ('a b c d ', ([('a', ' '), ('b', ' '), ('c', ' '), ('d', ' ')], True))
+        ('a b c d ', ([('a', ' '), ('b', ' '), ('c', ' '), ('d', ' ')],))
     ]
 
 
@@ -609,8 +609,8 @@ class TestDirectLeftRecursion(ParserTest):
     }
 
     successes = [
-        ('1', ('1', True)),
-        ('1+2', (('1', '+', '2'), True)),
+        ('1', ('1',)),
+        ('1+2', (('1', '+', '2'),)),
         ('1+2+3+4+5+6+7+8+9', ((((((((('1', '+', '2'),
                                       '+', '3'),
                                      '+', '4'),
@@ -618,7 +618,7 @@ class TestDirectLeftRecursion(ParserTest):
                                    '+', '6'),
                                   '+', '7'),
                                  '+', '8'),
-                                '+', '9'), True)),
+                                '+', '9'),)),
         ('1-2-3-4-5-6-7-8-9', ((((((((('1', '-', '2'),
                                       '-', '3'),
                                      '-', '4'),
@@ -626,7 +626,7 @@ class TestDirectLeftRecursion(ParserTest):
                                    '-', '6'),
                                   '-', '7'),
                                  '-', '8'),
-                                '-', '9'), True)),
+                                '-', '9'),)),
         ('1-2+3-4+5-6+7-8+9', ((((((((('1', '-', '2'),
                                       '+', '3'),
                                      '-', '4'),
@@ -634,7 +634,7 @@ class TestDirectLeftRecursion(ParserTest):
                                    '-', '6'),
                                   '+', '7'),
                                  '-', '8'),
-                                '+', '9'), True)),
+                                '+', '9'),)),
         ('1+2-3+4-5+6-7+8-9', ((((((((('1', '+', '2'),
                                       '-', '3'),
                                      '+', '4'),
@@ -642,21 +642,21 @@ class TestDirectLeftRecursion(ParserTest):
                                    '+', '6'),
                                   '-', '7'),
                                  '+', '8'),
-                                '-', '9'), True)),
+                                '-', '9'),)),
 
-        ('1+2*3', (('1', '+', ('2', '*', '3')), True)),
-        ('6-3*2', (('6', '-', ('3', '*', '2')), True)),
-        ('1*2+3', ((('1', '*', '2'), '+', '3'), True)),
+        ('1+2*3', (('1', '+', ('2', '*', '3')),)),
+        ('6-3*2', (('6', '-', ('3', '*', '2')),)),
+        ('1*2+3', ((('1', '*', '2'), '+', '3'),)),
 
-        ('4+3/3', (('4', '+', ('3', '/', '3')), True)),
-        ('2-6/3', (('2', '-', ('6', '/', '3')), True)),
-        ('8/4-2', ((('8', '/', '4'), '-', '2'), True)),
+        ('4+3/3', (('4', '+', ('3', '/', '3')),)),
+        ('2-6/3', (('2', '-', ('6', '/', '3')),)),
+        ('8/4-2', ((('8', '/', '4'), '-', '2'),)),
 
-        ('2*2/2', ((('2', '*', '2'), '/', '2'), True)),
-        ('6/2*3', ((('6', '/', '2'), '*', '3'), True)),
+        ('2*2/2', ((('2', '*', '2'), '/', '2'),)),
+        ('6/2*3', ((('6', '/', '2'), '*', '3'),)),
 
-        ('8/4/2', ((('8', '/', '4'), '/', '2'), True)),
-        ('2*2*2', ((('2', '*', '2'), '*', '2'), True))
+        ('8/4/2', ((('8', '/', '4'), '/', '2'),)),
+        ('2*2*2', ((('2', '*', '2'), '*', '2'),))
     ]
 
 
@@ -677,12 +677,12 @@ class TestHiddenLeftRecursion_Simple(ParserTest):
     }
 
     successes = [
-        ('1', ('1', True)),
+        ('1', ('1',)),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1', (('-', '1'), True)),
-        ('1+2', ((True, '1', '+', '2'), True)),
+         '-1', ('-', '1')),
+        ('1+2', (('1', '+', '2'),)),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1+2', (('-', '1', '+', '2'), True)),
+         '-1+2', ('-', '1', '+', '2')),
     ]
 
 
@@ -704,14 +704,14 @@ class TestHiddenLeftRecursion_Complicated(ParserTest):
     }
 
     successes = [
-        ('1', ('1', True)),
+        ('1', ('1',)),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1', (('-', '1'), True)),
-        ('1+2', ((True, '1', '+', '2'), True)),
+         '-1', ('-', '1')),
+        ('1+2', (('1', '+', '2'),)),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1+2', (('-', '1', '+', '2'), True)),
+         '-1+2', ('-', '1', '+', '2')),
         (SkipCase('there is a bug in DetectLeftRec'),
-         'a=1+1', ((('a', '='), '1', '+', '1'), True)),
+         'a=1+1', (('a', '='), '1', '+', '1')),
     ]
 
 
@@ -733,17 +733,17 @@ class TestIndirectLeftRecursion_OneBranch(ParserTest):
     }
 
     successes = [
-        ('dcba', (((('d', 'c'), 'b'), 'a'), True)),
+        ('dcba', (((('d', 'c'), 'b'), 'a'),)),
         ('dcbacbacba', (((((((((('d',
-                                 'c'),
-                                'b'),
-                               'a'),
-                              'c'),
-                             'b'),
-                            'a'),
-                           'c'),
-                          'b'),
-                         'a'), True))
+                                'c'),
+                               'b'),
+                              'a'),
+                             'c'),
+                            'b'),
+                           'a'),
+                          'c'),
+                         'b'),
+                        'a'),))
     ]
 
 
@@ -768,21 +768,21 @@ class TestIndirectLeftRecursion_TwoBranches(ParserTest):
     }
 
     successes = [
-        ('dcba', (((('d', 'c'), 'b'), 'a'), True)),
-        ('gfea', (((('g', 'f'), 'e'), 'a'), True)),
+        ('dcba', (((('d', 'c'), 'b'), 'a'),)),
+        ('gfea', (((('g', 'f'), 'e'), 'a'),)),
         ('gfeafeafea', (((((((((('g',
-                                 'f'),
-                                'e'),
-                               'a'),
-                              'f'),
-                             'e'),
-                            'a'),
-                           'f'),
-                          'e'),
-                         'a'), True)),
+                                'f'),
+                               'e'),
+                              'a'),
+                             'f'),
+                            'e'),
+                           'a'),
+                          'f'),
+                         'e'),
+                        'a'),)),
         (SkipCase('annoying bug'),
-         'dcbafea', ((((((('d', 'c'), 'b'), 'a'), 'f'), 'e'), 'a'), True)),
-        ('gfeacba', ((((((('g', 'f'), 'e'), 'a'), 'c'), 'b'), 'a'), True))
+         'dcbafea', ((((((('d', 'c'), 'b'), 'a'), 'f'), 'e'), 'a'),)),
+        ('gfeacba', ((((((('g', 'f'), 'e'), 'a'), 'c'), 'b'), 'a'),))
     ]
 
 
@@ -805,8 +805,8 @@ class TestInterlockingLeftRecursion(ParserTest):
     }
 
     successes = [
-        ('x', ('x', True)),
-        ('x.x', (('x', '.x'), True)),
+        ('x', ('x',)),
+        ('x.x', (('x', '.x'),)),
         (SkipCase('work in progress'),
-         'x(n)(n).x', (((('x', '(n)'), '(n)'), '.x'), True))
+         'x(n)(n).x', ((('x', '(n)'), '(n)'), '.x'))
     ]

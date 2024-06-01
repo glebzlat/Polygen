@@ -69,14 +69,30 @@ class Generator(GeneratorBase, GrammarVisitor):
             self._put('):')
 
         with self._indent():
+
+            # Unpack values from Success wrappers
+            for var in variables:
+                self._put(f'{var} = {var}.value')
+
             if node.metarule:
+                self._emptyline()
                 self._put(f'# {node.metarule.id.string}')
+                body = reindent(node.metarule.expr, level=self._indent_level)
                 self._put(
-                    reindent(node.metarule.expr, level=self._indent_level),
+                    body.strip('\n'),
                     indent=0)
             else:
-                retval = ', '.join(variables)
-                self._put(f'return {retval}' if retval else 'return True')
+                if len(variables) == 1:
+                    self._put(f'return Success({variables[0]})')
+                elif variables:
+                    # Remove empty successes
+                    retval = ', '.join(variables)
+                    self._put(f'__tup = tuple(x for x in ({retval}) '
+                              f'if x is not None)')
+                    self._put('return Success(__tup)')
+                else:
+                    # Empty success
+                    self._put('return Success()')
         self._put('self._reset(_begin_pos)')
 
     def visit_Part(self,
@@ -128,11 +144,9 @@ class Generator(GeneratorBase, GrammarVisitor):
         return 'self._rep', node.beg, node.end
 
     def escape_char(self, c: str):
-        map = {
-            '\\': '\\\\',
-            "'": "\'"
-        }
-        return f"'{map.get(c, c)}'"
+        if c == '\\':
+            return "'\\\\'"
+        return f"'{c}'"
 
     def visit_Char(self, node: Char):
         c = self.escape_char(node._chr)

@@ -93,8 +93,8 @@ $sequence_action {
 $prefix_action {
   metaname = metaname if isinstance(metaname, str) else None
   lookahead = lookahead if isnode(lookahead) else None
-  prime, quant = suffix
-  quant = quant if isnode(quant) else None
+  prime, *rest = suffix
+  quant = rest[0] if rest else None
   return Part(lookahead=lookahead, prime=prime, quant=quant, metaname=metaname,
               begin_pos=_begin_pos)
 }
