@@ -3,6 +3,7 @@ import sys
 from os import PathLike, path
 from typing import Any
 from pathlib import Path
+from collections import ChainMap
 
 FS_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding()
 CONFIG_FILENAME = "config.py"
@@ -82,60 +83,59 @@ class Config:
     }
 
     def __init__(self,
-                 config: dict[str, Any]):
-        self._overrides = {}
-        self._config = Config.config_values.copy()
-        self._raw_config = config
+                 config: dict[str, Any],
+                 overrides: dict[str, Any] | None = None):
+        """Create Config object.
 
-    def _override(self, name: str, value: Any) -> Any:
-        if name in self._config:
-            option = self._config[name]
-            if option.required or not option.override:
-                raise ConfigError
-
-        self._raw_config[name] = value
-        return value
+        Args:
+            config: Primary config options from the config file.
+            overrides: Optional primary config options overrides.
+        """
+        self._config = ChainMap(
+            {}, config, Config.config_values.copy())
+        if overrides is not None:
+            self.overrides(overrides)
 
     def overrides(self, overrides: dict[str, Any]):
-        self._overrides = overrides.copy()
-        raw = self._raw_config
-        for name in list(self._overrides.keys()):
-            value = self._overrides.pop(name)
+        """Override options."""
+        overrides = overrides.copy()
+        for name, value in overrides.items():
 
             # Override a dictionary key.
             if '.' in name:
                 attr, key = name.split('.', 1)
 
-                if attr in self._config:
-                    option = self._config[attr]
+                if attr not in self._config:
+                    msg = f"option not in config: {attr}"
+                    raise ConfigError(msg)
+
+                option = self._config[attr]
+                if type(option) is _Opt:
                     if not option.override:
-                        raise ConfigError
-                    if attr in raw and type(raw[attr]) is dict:
-                        raw[attr][key] = value
-                    else:
-                        msg = f"cannot override key {key}: {attr} is not a dict"
+                        msg = f"option not overridable: {attr}"
                         raise ConfigError(msg)
+                    self._config[attr] = option = option.default
+
+                if type(option) is dict:
+                    option[key] = value
+                else:
+                    msg = f"cannot override key {key}: {attr} is not a dict"
+                    raise ConfigError(msg)
 
             # Override option.
             else:
-                value = self.convert_overrides(name, value)
-
-                if name in self._config:
-                    option = self._config[name]
-                    if option.required or not option.override:
-                        msg = (f"cannot override non-overridable or "
-                               f"required option: {name}")
-                        raise ConfigError(msg)
-                    self._raw_config[name] = value
-                else:
+                if name not in self._config:
                     msg = f"option not in config: {name}"
                     raise ConfigError(msg)
-                self._override(name, value)
+
+                value = self.convert_overrides(name, value)
+                self._config[name] = value
 
     @classmethod
     def read(cls,
              config_dir: str | PathLike[str],
              overrides: dict | None = None):
+        """Create the Config object from configuration file."""
         filename = path.join(config_dir, CONFIG_FILENAME)
         if not path.isfile(filename):
             raise ConfigError()
@@ -147,12 +147,15 @@ class Config:
         return obj
 
     def convert_overrides(self, name: str, value: str) -> Any:
-        opt = self._config[name]
+        """Infer the option's type and convert the value."""
+
+        # Ensure to take the _Opt object from the config.
+        opt = self._config.maps[-1][name]
         default = opt.default
         valid_types = opt.valid_types
 
-        if opt.required:
-            msg = f"required options overriding is not allowed: {name}"
+        if opt.required or not opt.override:
+            msg = f"cannot override required option: {name}"
             raise ConfigError(msg)
 
         if valid_types == Any:
@@ -181,15 +184,10 @@ class Config:
 
     def __getattr__(self, name: str) -> Any:
         if name in self._config:
-            # Check values from the config
-            if name in self._raw_config:
-                self.__dict__[name] = value = self._raw_config[name]
-                return value
-
-            # Fall back to the default option's value
-            default = self._config[name].default
-            self.__dict__[name] = default
-            return default
+            value = self._config[name]
+            if type(value) is _Opt:
+                return value.default
+            return value
 
         if name.startswith('_'):
             type_name = type(self).__name__
@@ -228,5 +226,3 @@ def eval_config_file(filename: str | PathLike[str]) -> dict[str, Any]:
         raise ConfigError(f'an exception in the config file: {e}') from e
 
     return namespace
-
-

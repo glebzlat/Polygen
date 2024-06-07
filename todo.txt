@@ -9,10 +9,6 @@ make resulting raw tree more consistent.
 
 Bugs:
     test_generated_parsers:
-        TestNestedQuantifiers
-        TestChars
-            unicode char parsing
-        TestIgnoreRuleUnignored
         TestHiddenLeftRecursion_Simple
         TestHiddenLeftRecursion_Complicated
         TestIndirectLeftRecursion_TwoBranches
@@ -55,16 +51,7 @@ Implement features
           constant space" K. Mizushima, A. Maeda, Y. Yamaguchi.
     - [ ] Enhanced skeleton file preprocessor.
           Add preprocessing language with conditional expressions
-    - [ ] Backend capabilities registry.
-          Each backend must define what node types it can accept and what
-          features it implements (like left recursion).
     - [ ] Grammar preprocessor.
           @include directive, group directives.
-    - [ ] Parser: return a tuple (success, value), not just single value.
-          If some function returns (True, None) then filter out None from
-          the resulting tree.
     - [ ] Write backend for another language, e.g. C++
           - [x] Add the ability to add new backends easily.
-
-Misc:
-    - [ ] combine misc utilities into one module (maybe)
