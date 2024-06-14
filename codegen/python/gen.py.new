@@ -9,7 +9,6 @@ from polygen.node import (
     DLL,
     Grammar,
     Rule,
-    MetaRule,
     Expr,
     Alt,
     NamedItem,
@@ -47,8 +46,7 @@ class Generator(GeneratorBase, GrammarVisitor):
             self.emptyline()
 
         if node.leftrec:
-            if node.head:
-                self.put("@_memoize_lr")
+            self.put(f"@_memoize_lr(head={bool(node.head)})")
         else:
             self.put("@_memoize")
 
@@ -99,10 +97,8 @@ class Generator(GeneratorBase, GrammarVisitor):
 
             if node.metarule:
                 self.emptyline()
-
-                assert type(node.metarule) is MetaRule
                 self.put(f"# Metarule: {node.metarule.id.value}")
-                expr = reindent(node.metarule.expr, level=self._indent_level)
+                expr = reindent(node.metarule.expr, level=self.indent_level)
                 self.put(expr.strip('\n'), indent=0)
             else:
                 if len(variables) == 1:
@@ -111,12 +107,12 @@ class Generator(GeneratorBase, GrammarVisitor):
                     # Remove empty successes
                     return_value = ', '.join(variables)
                     self.put(f"__tup = tuple(x for x in ({return_value}) "
-                             f"if x is not None)")
+                             f"if x is not None")
                     self.put("return Success(__tup)")
                 else:
                     self.put("return Success()")
 
-        self.put("self._reset(_begin_pos)")
+            self.put("self._reset(_begin_pos)")
 
     def visit_NamedItem(self,
                         node: NamedItem,
@@ -124,60 +120,67 @@ class Generator(GeneratorBase, GrammarVisitor):
                         variables: list[str],
                         newline: bool):
 
-        self.put("and " if index else "", newline=False, indent=newline)
+        if node.name != NamedItem.IGNORE:
+            self.put(f"{node.name} := ", newline=False, indent=newline)
 
-        ignore = node.name == Id(NamedItem.IGNORE)
-        assign = "" if ignore else f"{node.name} := "
-        parts = self.visit(node.item)
-
-        fn, *args = parts
-        body = ', '.join(str(i) for i in args)
-        call = f"{assign}{fn}({body})"
-
-        if not ignore:
-            call = f"({call})"
-
-        self.put(call, indent=False, newline=False)
+        self.visit(node.item)
 
         if newline:
             self.put("", indent=False)
 
-        if not ignore:
-            variables.append(node.name.value)
-
     def visit_ZeroOrOne(self, node: ZeroOrOne):
-        return "self._maybe", *self.visit(node.item)
+        with self.function_call("self._maybe"):
+            self.visit(node.item)
 
     def visit_ZeroOrMore(self, node: ZeroOrMore):
-        return "self._loop", "False", *self.visit(node.item)
+        with self._function_call("self._loop"):
+            self.put("False")
+            self.visit(node.item)
 
     def visit_OneOrMore(self, node: OneOrMore):
-        return "self._loop", "True", *self.visit(node.item)
+        with self._function_call("self._loop"):
+            self.put("True")
+            self.visit(node.item)
 
     def visit_Repetition(self, node: Repetition):
-        return "self._rep", node.first, node.last, *self.visit(node.item)
+        with self.function_call("self._rep"):
+            self.put(node.beg)
+            self.put(node.end)
+            self.visit(node.item)
 
     def visit_And(self, node: And):
-        return "self._lookahead", "True", *self.visit(node.item)
+        with self.function_call("self._lookahead"):
+            self.put("True")
+            self.visit(node.item)
 
     def visit_Not(self, node: Not):
-        return "self._lookahead", "False", *self.visit(node.item)
+        with self.function_call("self._lookahead"):
+            self.put("False")
+            self.visit(node.item)
 
     def visit_String(self, node: String):
-        return "self._expects", node
+        with self.function_call("self._expects"):
+            self.put(str(node))
 
     def visit_Char(self, node: Char):
-        return "self._expectc", node
+        with self.function_call("self._expectc"):
+            self.put(str(node))
 
     def visit_AnyChar(self, node: AnyChar):
-        return ("self._expectc",)
+        with self.function_call("self._expectc"):
+            pass
 
     def visit_Id(self, node: Id):
-        return (f"self._{node.value}",)
+        with self.function_call(f"self._{node.value}"):
+            pass
 
     def visit_Class(self, node: Class):
-        return "self._ranges", *(self.visit(r) for r in node)
+        with self.function_call("self._ranges"):
+            for r in node:
+                self.visit(r)
 
     def visit_Range(self, node: Range) -> str:
-        last = node.last or node.first
-        return f"({node.first}, {last})"
+        if node.last is None:
+            self.put(str(node.first))
+        else:
+            self.put(f"({node.first}, {node.last})")

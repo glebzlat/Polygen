@@ -10,11 +10,11 @@ DirName     <- Identifier
 Expression  <- Sequence seqs:(SLASH Sequence)*                    $expr_action
 Sequence    <- parts:Prefix* m:MetaRule?                          $sequence_action
 Prefix      <- MetaName? lookahead:(AND / NOT)? Suffix            $prefix_action
-Suffix      <- Primary (QUESTION / STAR / PLUS / Repetition)?
+Suffix      <- Primary q:(QUESTION / STAR / PLUS / Repetition)?   $suffix_action
 Primary     <- Identifier !LEFTARROW
              / OPEN Expression CLOSE
              / Literal / Class / DOT
-MetaName    <- Identifier SEMI                                    $metaname_action
+MetaName    <- Identifier SEMI
 MetaRule    <- '${' expr:(NestedBody / !'}' .)* '}' Spacing       $metarule_def_action
              / '$' Spacing Identifier !'{'                        $metarule_ref_action
 
@@ -69,52 +69,48 @@ EndOfLine   <- '\r\n' / '\n' / '\r'
 EndOfFile   <- !.
 
 $grammar_action {
-  return Grammar(*entity, begin_pos=_begin_pos)
+  rules = (r for r in entity if isinstance(r, Rule))
+  metarules = (r for r in entity if isinstance(r, MetaRule))
+  return Grammar(rules, metarules)
 }
 
 $def_action {
-  return Rule(identifier, expression, directives=directive,
-              begin_pos=_begin_pos)
+  ignore = "ignore" in directive
+  entry = "entry" in directive
+  return Rule(identifier, expression, ignore=ignore, entry=entry)
 }
 
 $directive_action {
-  return dirname.string
+  return dirname.value
 }
 
 $expr_action {
-  return Expression(sequence, *seqs, begin_pos=_begin_pos)
+  return Expr(sequence, seqs)
 }
 
 $sequence_action {
-  m = m if isnode(m) else None
-  return Alt(*parts, metarule=m, begin_pos=_begin_pos)
+  return Alt(parts, metarule=m)
 }
 
 $prefix_action {
-  metaname = metaname if isinstance(metaname, str) else None
-  lookahead = lookahead if isnode(lookahead) else None
-  prime, *rest = suffix
-  quant = rest[0] if rest else None
-  return Part(lookahead=lookahead, prime=prime, quant=quant, metaname=metaname,
-              begin_pos=_begin_pos)
+  obj = lookahead(suffix) if lookahead is not None else suffix
+  return NamedItem(metaname, obj)
 }
 
-$metaname_action {
-  return identifier.string
+$suffix_action {
+  return q(primary) if q is not None else primary
 }
 
 $metarule_def_action {
-  string = ''.join(expr)
-  return MetaRule(expr=string, begin_pos=_begin_pos)
+  return MetaRule(None, ''.join(expr))
 }
 
 $metarule_ref_action {
-  return MetaRef(identifier, begin_pos=_begin_pos)
+  return MetaRef(identifier)
 }
 
 $metadef_action {
-  return MetaRule(id=identifier, expr=expr,
-                  begin_pos=_begin_pos)
+  return MetaRule(identifier, expr)
 }
 
 $metadef_body_action {
@@ -127,69 +123,55 @@ $nested_body_action {
 }
 
 $ident_action {
-  string = ''.join((start, *cont))
-  return Identifier(string, begin_pos=_begin_pos)
+  return Id(''.join((start, *cont)))
 }
 
 $literal_action {
   if len(chars) == 1:
     return chars[0]
-  return String(*chars, begin_pos=_begin_pos)
+  return String(chars)
 }
 
 $class_action {
-  return Class(*ranges, begin_pos=_begin_pos)
+  return Class(ranges)
 }
 
 $range_2_action {
-  return Range(beg, end, begin_pos=_begin_pos)
+  return Range(beg, end)
 }
 
 $range_1_action {
-  return Range(beg, begin_pos=_begin_pos)
+  return Range(beg)
 }
 
 $esc_char_action {
-  CHR_MAP = {
-      'n': Char('\n'),
-      'r': Char('\r'),
-      't': Char('\t'),
-      '\'': Char('\''),
-      '\"': Char('\"'),
-      '[': Char('['),
-      ']': Char(']'),
-      '\\': Char('\\')
+  chr_map = {
+      'n': '\n',
+      'r': '\r',
+      't': '\t',
   }
 
-  node = CHR_MAP[char]
-  node.begin_pos = _begin_pos
-  node.end_pos = self._mark()
-  return node
+  return Char(chr_map.get(char, char))
 }
 
 $oct_char_action_1 {
   string = ''.join((char1, char2, char3))
-  return Char(int(string, base=8), begin_pos=_begin_pos)
+  return Char(int(string, base=8))
 }
 
 $oct_char_action_2 {
   char2 = char2 if isinstance(char2, str) else ''
   string = ''.join((char1, char2))
-  return Char(int(string, base=8), begin_pos=_begin_pos)
+  return Char(int(string, base=8))
 }
 
 $unicode_char_action {
   string = ''.join(chars)
-  return Char(int(string, base=16), begin_pos=_begin_pos)
+  return Char(int(string, base=16))
 }
 
 $any_char_action {
-  return Char(ord(any), begin_pos=_begin_pos)
-}
-
-$rep_action {
-  beg, end = grp if isinstance(grp, tuple) else (grp, None)
-  return Repetition(beg, end, begin_pos=_begin_pos)
+  return Char(ord(any))
 }
 
 $number_action {
@@ -198,25 +180,30 @@ $number_action {
 }
 
 $and_action {
-  return And(begin_pos=_begin_pos)
+  return And
 }
 
 $not_action {
-  return Not(begin_pos=_begin_pos)
+  return Not
 }
 
 $optional_action {
-  return ZeroOrOne(begin_pos=_begin_pos)
+  return ZeroOrOne
 }
 
 $zero_or_more_action {
-  return ZeroOrMore(begin_pos=_begin_pos)
+  return ZeroOrMore
 }
 
 $one_or_more_action {
-  return OneOrMore(begin_pos=_begin_pos)
+  return OneOrMore
+}
+
+$rep_action {
+  beg, end = grp if isinstance(grp, tuple) else (grp, None)
+  return lambda item: Repetition(item, beg, end)
 }
 
 $dot_action {
-  return AnyChar(begin_pos=_begin_pos)
+  return AnyChar()
 }

@@ -2,25 +2,27 @@ import unittest
 
 from polygen.parser import Parser
 from polygen.node import (
+    DLL,
     Grammar,
-    Expression,
     Rule,
     MetaRef,
     MetaRule,
-    Identifier,
-    Range,
+    Expr,
     Alt,
-    Part,
-    AnyChar,
+    NamedItem,
+    Id,
     String,
+    Char,
+    AnyChar,
     Class,
-    Not,
-    And,
+    Range,
     ZeroOrOne,
     ZeroOrMore,
     OneOrMore,
     Repetition,
-    Char
+    And,
+    Not,
+    Item
 )
 
 
@@ -29,12 +31,16 @@ class ParserTestMetaclass(type):
         if name == 'ParserTest':
             return
 
+        node_extractor = getattr(cls, 'node_extractor', lambda obj: obj)
+
         def test_successes(self):
             for input, clue in self.successes:
                 parser = Parser(input)
                 result = parser.parse()
                 self.assertIsNotNone(result)
-                self.assertEqual(result.value, clue)
+
+                value = node_extractor(result.value)
+                self.assertEqual(value, clue)
 
         def test_failures(self):
             for input in self.failures:
@@ -54,29 +60,15 @@ ParserTest = ParserTestMetaclass('ParserTest', bases, {})
 
 class TestSimpleRule(ParserTest):
     successes = [
-        ("Id <- ", Grammar(Rule(Identifier('Id'), Expression(Alt())))),
-        ("Id <- Id", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Id'))))))),
-        ("Id <- Expr", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr'))))))),
-        ("Id1 <- Id2 <-", Grammar(
-            Rule(Identifier('Id1'), Expression(Alt())),
-            Rule(Identifier('Id2'), Expression(Alt())))),
-        ("Id\t\n\t\r<-      \n\rExpr\t\r", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr'))))))),
-        ("Id <- (Expr)", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Expression(Alt(
-                              Part(metaname=None,
-                                   prime=Identifier('Expr')))))))))),
+        ("Id <- ", Grammar([Rule(Id('Id'), Expr([Alt([])]))])),
+        ("A <- B", Grammar([
+            Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))])),
+        ("A\t\n\t\r<-  \n\rB", Grammar([
+            Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))])),
+        ("A <- (B)", Grammar([
+            Rule(Id('A'), Expr([Alt([
+                NamedItem(None, Expr([Alt([NamedItem(None, Id('B'))])]))
+            ])]))])),
     ]
 
     failures = [
@@ -89,23 +81,22 @@ class TestSimpleRule(ParserTest):
         "Id <- Expr)",
         "Id <- (Expr",
         "3d <- Expr",
-        "Id <- 23expr"
+        "Id <- 23expr",
+        "1d <- Expr"
     ]
 
 
 class TestRuleMetaRef(ParserTest):
-    metaref = MetaRef(Identifier('rulename'))
+    metaref = MetaRef(Id('name'))
+
     successes = [
-        ("Id <- Expr $rulename", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')),
-                     metarule=metaref))))),
-        ("Id <- Expr $\t\nrulename", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')),
-                     metarule=metaref)))))
+        ("Id <- Expr $name", Grammar([
+            Rule(Id('Id'), Expr([
+                Alt([
+                    NamedItem(None, Id('Expr'))
+                ], metarule=metaref)
+            ]))
+        ]))
     ]
 
     failures = [
@@ -115,32 +106,27 @@ class TestRuleMetaRef(ParserTest):
 
 
 class TestRuleMetaRule(ParserTest):
-    metarule1 = MetaRule(id=None, expr="hello world")
-    metarule2 = MetaRule(id=None, expr="{{{properly nested}}}")
-    metarule3 = MetaRule(id=None, expr="\n\t\r hello world\n\r ")
+    metarule1 = MetaRule(None, expr="hello world")
+    metarule2 = MetaRule(None, expr="{nested}")
 
     successes = [
-        ("Id <- Expr ${hello world}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')),
-                     metarule=metarule1))))),
-        ("Id <- Expr ${{{{properly nested}}}}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')),
-                     metarule=metarule2))))),
-        ("Id <- Expr ${\n\t\r hello world\n\r }", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')),
-                     metarule=metarule3))))),
-        ("Id <- Expr $rulename {hello world}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('Expr'))))),
-            MetaRule(id=Identifier('rulename'), expr='hello world')))
+        ("A <- B ${hello world}", Grammar([
+            Rule(Id('A'), Expr([
+                Alt([NamedItem(None, Id('B'))], metarule=metarule1)
+            ]))
+        ])),
+        ("A <- B ${{nested}}", Grammar([
+            Rule(Id('A'), Expr([
+                Alt([NamedItem(None, Id('B'))], metarule=metarule2)
+            ]))
+        ])),
+        ("A <- B $name {expr}", Grammar([
+            Rule(Id('A'), Expr([
+                Alt([NamedItem(None, Id('B'))])
+            ]))
+        ], [
+            MetaRule(Id('name'), 'expr')
+        ]))
     ]
 
     failures = [
@@ -152,35 +138,43 @@ class TestRuleMetaRule(ParserTest):
     ]
 
 
-class TestRuleDirective(ParserTest):
-
-    # TODO: add Rule directives into comparison
+class TestEntryRule(ParserTest):
     successes = [
-        ("@directive\nId <- Expr", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')))),
-                 directives=["directive"]))),
-        ("@ a @b Id <- Expr", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Identifier('Expr')))),
-                 directives=["a", "b"])))
-    ]
-
-    failures = [
-        "@ Id <- Expr",
-        "@Id <- Expr"
+        ("@entry\nA <- B", Grammar([
+            Rule(Id('A'), Expr([
+                Alt([NamedItem(None, Id('B'))])
+            ]), entry=False)
+        ]))
     ]
 
 
-class TestMetaDef(ParserTest):
-    successes = [
-        ("$metadef {hello world}", Grammar(
-            MetaRule(id=Identifier('metadef'), expr='hello world'))),
-        ("$ metadef{hello world}", Grammar(
-            MetaRule(id=Identifier('metadef'), expr='hello world'))),
-    ]
+class TestRuleDirectives(unittest.TestCase):
+    def test_entry(self):
+        parser = Parser("@entry A <- B")
+        result = parser.parse()
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.value.rules.begin.entry)
+        self.assertFalse(result.value.rules.begin.ignore)
+
+    def test_ignore(self):
+        parser = Parser("@ignore A <- B")
+        result = parser.parse()
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.value.rules.begin.ignore)
+
+
+class TestMetaRule(ParserTest):
+    def test_1(self):
+        parser = Parser("$name {expr}")
+        result = parser.parse()
+
+        self.assertIsNotNone(result)
+
+        rule = result.value.metarules.begin
+        self.assertEqual(rule.id, Id('name'))
+        self.assertEqual(rule.expr, 'expr')
 
     failures = [
         "metadef {hello world}",
@@ -188,90 +182,45 @@ class TestMetaDef(ParserTest):
     ]
 
 
-class TestCharString(ParserTest):
+class TestCharAndString(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar) -> Item:
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- 'c'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('c'))))))),
-        ("Id <- 'str'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=String(Char('s'), Char('t'), Char('r')))))))),
-        ('Id <- "c"', Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('c'))))))),
-        ('Id <- "str"', Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=String(Char('s'), Char('t'), Char('r')))))))),
-        ("Id <- '\\''", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\''))))))),
-        ('Id <- "\\""', Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('"'))))))),
-        ("Id <- '\\n'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\n'))))))),
+        ("A <- 'c'", Char('c')),
+        ("A <- 'abc'", String([Char('a'), Char('b'), Char('c')])),
+        ('A <- "c"', Char('c')),
+        ('A <- "abc"', String([Char('a'), Char('b'), Char('c')])),
 
-        # XXX: maybe this is incorrect
-        ("Id <- '\n'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\n'))))))),
+        ("A <- '\\''", Char('\'')),
+        ('A <- "\\""', Char('"')),
+        ("A <- '\\n'", Char('\n')),
+        ("A <- '\\r'", Char('\r')),
+        ("A <- '\\t'", Char('\t')),
+        ("A <- '\\['", Char('[')),
+        ("A <- '\\]'", Char(']')),
+        ("A <- '\\\\'", Char('\\')),
 
-        ("Id <- '\\r'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\r'))))))),
-        ("Id <- '\\t'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\t'))))))),
-        ("Id <- '\\['", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('['))))))),
-        ("Id <- '\\]'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(']'))))))),
-        ("Id <- '\\\\'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char('\\'))))))),
-        ("Id <- '\\141'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0o141))))))),
-        ("Id <- '\\73'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0o73))))))),
+        ("A <- '['", Char('[')),
+        ("A <- ']'", Char(']')),
+
+        ("A <- '\\141'", Char(0o141)),
+        ("A <- '\\73'", Char(0o73)),
+
+        ("A <- '\\u03c0'", Char(0x03c0)),
+        ("A <- '\\uabcd'", Char(0xabcd)),
+        ("A <- '\\uABCD'", Char(0xabcd))
     ]
 
     failures = [
         "Id <- '",
         'Id <- "',
+
         "Id <- '\\a'",
         "Id <- '\\b'",
-    ]
 
-
-class TestUnicodeChar(ParserTest):
-    successes = [
-        ("Id <- '\\u03C0'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
-        ("Id <- '\\u03c0'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0x03c0))))))),
-        ("Id <- '\\uabcd'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0xabcd))))))),
-        ("Id <- '\\ufeed'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0xfeed))))))),
-        ("Id <- '\\uFEED'", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Char(0xFEED))))))),
-    ]
-
-    failures = [
         "Id <- '\\u03c'",
         "Id <- '\\u 03c0'",
         "Id <- '\\u12g3'"
@@ -279,25 +228,15 @@ class TestUnicodeChar(ParserTest):
 
 
 class TestRepetition(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- E{1}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=Repetition(1))))))),
-        ("Id <- E{123}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=Repetition(123))))))),
-        ("Id <- E{1,2}", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=Repetition(1, 2)))))))
+        ("A <- B{1}", Repetition(Id('B'), 1, None)),
+        ("A <- B{123}", Repetition(Id('B'), 123, None)),
+        ("A <- B{1,2}", Repetition(Id('B'), 1, 2))
     ]
 
     failures = [
@@ -310,214 +249,121 @@ class TestRepetition(ParserTest):
 
 
 class TestAnyChar(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return list(DLL.astuple(gram.rules.begin.expr.alts.begin.items))
+
     successes = [
-        ("Id <- .", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=AnyChar())))))),
-        ("Id <- ...", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=AnyChar()),
-                     Part(metaname=None,
-                          prime=AnyChar()),
-                     Part(metaname=None,
-                          prime=AnyChar()))))))
+        ("Id <- .", [NamedItem(None, AnyChar())]),
+        ("Id <- ...", [NamedItem(None, AnyChar()),
+                       NamedItem(None, AnyChar()),
+                       NamedItem(None, AnyChar())])
     ]
 
 
 class TestZeroOrOne(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- E?", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=ZeroOrOne())))))),
-        ("Id <- .?", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=AnyChar(),
-                          quant=ZeroOrOne()))))))
+        ("A <- B?", ZeroOrOne(Id('B')))
     ]
 
     failures = [
-        "Id <- ?"
+        "A <- ?"
     ]
 
 
 class TestZeroOrMore(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- E*", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=ZeroOrMore())))))),
-        ("Id <- .*", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=AnyChar(),
-                          quant=ZeroOrMore()))))))
+        ("A <- B*", ZeroOrMore(Id('B')))
     ]
 
     failures = [
-        "Id <- *"
+        "A <- *"
     ]
 
 
 class TestOneOrMore(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- E+", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Identifier('E'),
-                          quant=OneOrMore())))))),
-        ("Id <- .+", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=AnyChar(),
-                          quant=OneOrMore()))))))
+        ("A <- B+", OneOrMore(Id('B')))
     ]
 
     failures = [
-        "Id <- +"
+        "A <- +"
     ]
 
 
 class TestAnd(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- &E", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=And(),
-                          prime=Identifier('E'))))))),
-        ("Id <- &E?", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=And(),
-                          prime=Identifier('E'),
-                          quant=ZeroOrOne())))))),
-        ("Id <- &A B", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=And(),
-                          prime=Identifier('A')),
-                     Part(metaname=None,
-                          prime=Identifier('B'))))))),
+        ("A <- &B", And(Id('B'))),
+        ("A <- &(B)", And(Expr([Alt([NamedItem(None, Id('B'))])]))),
+        ("A <- &B?", And(ZeroOrOne(Id('B')))),
     ]
 
     failures = [
-        "Id <- &&E",
-        "Id <- &",
-        "Id <- &?",
-        "Id <- &*",
-        "Id <- &+"
+        "A <- &&B",
+        "A <- &!B",
+        "A <- &!",
+        "A <- &?"
     ]
 
 
 class TestNot(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- !E", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=Not(),
-                          prime=Identifier('E'))))))),
-        ("Id <- !E?", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=Not(),
-                          prime=Identifier('E'),
-                          quant=ZeroOrOne())))))),
-        ("Id <- !A B", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          lookahead=Not(),
-                          prime=Identifier('A')),
-                     Part(metaname=None,
-                          prime=Identifier('B'))))))),
+        ("A <- !B", Not(Id('B'))),
+        ("A <- !(B)", Not(Expr([Alt([NamedItem(None, Id('B'))])]))),
+        ("A <- !B?", Not(ZeroOrOne(Id('B')))),
     ]
 
     failures = [
-        "Id <- !!E",
-        "Id <- !",
-        "Id <- !?",
-        "Id <- !*",
-        "Id <- !+"
+        "A <- !!B",
+        "A <- &!B",
+        "A <- &!",
+        "A <- !&B",
+        "A <- !?"
     ]
 
 
 class TestClass(ParserTest):
+
+    @staticmethod
+    def node_extractor(gram: Grammar):
+        return gram.rules.begin.expr.alts.begin.items.begin.item
+
     successes = [
-        ("Id <- []", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(Part(metaname=None, prime=Class())))))),
-        ("Id <- [a]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Class(Range(Char('a'))))))))),
-        ("Id <- [\\]]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Class(Range(Char(']'))))))))),
-        ("Id <- [\\[]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Class(Range(Char('['))))))))),
-        ("Id <- [-]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None, prime=Class(Range(Char('-'))))))))),
-        ("Id <- [abc]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(
-                              Range(Char('a')),
-                              Range(Char('b')),
-                              Range(Char('c'))))))))),
-        ("Id <- [a-c]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(Range(Char('a'), Char('c'))))))))),
-        ("Id <- [---]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(Range(Char('-'), Char('-'))))))))),
-        ("Id <- [a-z0-9]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(
-                              Range(Char('a'), Char('z')),
-                              Range(Char('0'), Char('9'))))))))),
-        ("Id <- [a-z-]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(
-                              Range(Char('a'), Char('z')),
-                              Range(Char('-'))))))))),
-        ("Id <- [-a-z-]", Grammar(
-            Rule(Identifier('Id'),
-                 Expression(Alt(
-                     Part(metaname=None,
-                          prime=Class(
-                              Range(Char('-')),
-                              Range(Char('a'), Char('z')),
-                              Range(Char('-'))))))))),
+        ("A <- []", Class([])),
+        ("A <- [a]", Class([Range(Char('a'))])),
+        ("A <- [ab]", Class([Range(Char('a')), Range(Char('b'))])),
+        ("A <- [a-c]", Class([Range(Char('a'), Char('c'))])),
+        ("A <- [a-c0-9]", Class([Range(Char('a'), Char('c')),
+                                 Range(Char('0'), Char('9'))])),
+        ("A <- [---]", Class([Range(Char('-'), Char('-'))])),
+        ("A <- [a-z-]", Class([Range(Char('a'), Char('z')), Range(Char('-'))])),
+        ("A <- [-a-z-]", Class([Range(Char('-')),
+                                Range(Char('a'), Char('z')),
+                                Range(Char('-'))]))
     ]

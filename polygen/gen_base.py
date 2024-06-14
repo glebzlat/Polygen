@@ -14,8 +14,12 @@ class GeneratorBase:
         self._indentation = ''
         self._indent_level = 0
         self._stream = stream
+        self._put_impl = self._put_line
 
-    def _put(self, *args, newline=True, indent=True):
+    def put(self, *args, newline=True, indent=True):
+        self._put_impl(args, newline, indent)
+
+    def _put_line(self, args, newline, indent):
         if indent:
             print(end=self._indentation, file=self._stream)
         print(*args, end='', file=self._stream)
@@ -23,7 +27,7 @@ class GeneratorBase:
             print(file=self._stream)
 
     @contextmanager
-    def _indent(self, level: int = 1):
+    def indent(self, level: int = 1):
         save = self._indentation
         try:
             self._indentation += '    ' * level
@@ -33,8 +37,33 @@ class GeneratorBase:
             self._indentation = save
             self._indent_level -= level
 
-    def _emptyline(self):
-        self._put(indent=False)
+    def emptyline(self):
+        self.put(indent=False)
+
+    @contextmanager
+    def function_call(self, name: str, newline=False):
+        parts = []
+
+        def _put_arg(self, *args, newline=True, indent=True):
+            parts.extend(args)
+
+        put_save = self._put_impl
+        self._put_impl = _put_arg
+
+        try:
+            yield
+        finally:
+            self._put_impl = put_save
+
+        self.put(f"{name}(", newline=False, indent=False)
+        self.put(', '.join(str(i) for i in parts), newline=False, indent=False)
+        self.put(")", newline=newline, indent=False)
+
+    @contextmanager
+    def enclose(self, start: str, end: str, *, newline=False, indent=False):
+        self.put(start, newline=False, indent=indent)
+        yield
+        self.put(end, indent=False, newline=newline)
 
     @abstractmethod
     def generate(self, grammar: Grammar):

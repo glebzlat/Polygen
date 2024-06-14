@@ -9,45 +9,35 @@ from io import TextIOBase
 from .__version__ import __version__
 from .config import Config
 
-from .tree_modifier import (
-    ExpandClass,
-    ReplaceRep,
-    CheckUndefRedef,
-    SimplifyNestedExps,
-    ReplaceNestedExps,
-    CreateAnyCharRule,
-    FindEntryRule,
-    IgnoreRules,
-    GenerateMetanames,
-    SubstituteMetaRefs,
-    DetectLeftRec,
-    TreeModifier,
-    TreeModifierWarning
+from .tree_modifier.tree_modifier import (
+    MODIFIERS,
+    TreeModifier
 )
+from .tree_modifier.errors import TreeModifierWarning
 
 from .parser import Parser as GrammarParser
 from .preprocessor import FilePreprocessor
 
 # Modifiers structure -- these classes will be instantiated and configured
 # by the codegen according to the backend's capabilities
-MODIFIERS = (
-    [SubstituteMetaRefs],
-    [CreateAnyCharRule],
-    [ExpandClass, ReplaceRep],
-    [FindEntryRule, IgnoreRules],
-    [SimplifyNestedExps, ReplaceNestedExps],
-    [CheckUndefRedef],
-    [GenerateMetanames],
-    [DetectLeftRec]
-)
+# MODIFIERS = (
+#     [SubstituteMetaRefs],
+#     [CreateAnyCharRule],
+#     [ExpandClass, ReplaceRep],
+#     [FindEntryRule, IgnoreRules],
+#     [SimplifyNestedExps, ReplaceNestedExps],
+#     [CheckUndefRedef],
+#     [GenerateMetanames],
+#     [DetectLeftRec]
+# )
 
-CAPABILITIES = {
-    "leftrec": DetectLeftRec,
-    "repetition": ReplaceRep,
-    "char-class": ExpandClass
-}
+# CAPABILITIES = {
+#     "leftrec": DetectLeftRec,
+#     "repetition": ReplaceRep,
+#     "char-class": ExpandClass
+# }
 
-MODIFIERS_CAPABILITIES = {cls: name for name, cls in CAPABILITIES.items()}
+# MODIFIERS_CAPABILITIES = {cls: name for name, cls in CAPABILITIES.items()}
 
 MODULE_PATH = Path(__file__).parent.absolute()
 CODEGEN_PATH = MODULE_PATH.parent / 'codegen'
@@ -193,12 +183,14 @@ class Generator:
             raise GeneratorError("parser failure")
         grammar = grammar.value
 
+        print(repr(grammar))
         modifiers = self._init_modifiers(config)
         visitor = TreeModifier(modifiers)
         try:
-            visitor.visit(grammar)
+            visitor.apply(grammar)
         except TreeModifierWarning as warn:
             self._modifier_warning = warn
+        # print(repr(grammar))
 
         stream = StringIO()
         gen_cls = self._get_gen(config)
@@ -216,7 +208,7 @@ class Generator:
             pre.PARSER_NAME: config.parser_name,
             pre.DATETIME: datetime.today().strftime(config.datetime_fmt),
             pre.BODY: stream.read(),
-            pre.ENTRY: grammar.entry.id.string,
+            pre.ENTRY: grammar.entry.id.value,
             pre.VERSION: __version__,
 
             **config.definitions
@@ -252,26 +244,7 @@ class Generator:
             raise self._modifier_warning
 
     def _init_modifiers(self, config: Config):
-        capabilities = {cap: False for cap in CAPABILITIES}
-        for cap, value in config.capabilities.items():
-            capabilities[cap] = value
-
-        modifiers = []
-        for stage in MODIFIERS:
-            mod_list = []
-            modifiers.append(mod_list)
-            for cls in stage:
-
-                # If modifier is declared as capability and not defined
-                # by the backend, then it is disabled by default.
-                if cls not in MODIFIERS_CAPABILITIES:
-                    apply = True
-                else:
-                    name = MODIFIERS_CAPABILITIES[cls]
-                    apply = capabilities.get(name, False)
-                obj = cls(apply=apply)
-                mod_list.append(obj)
-
+        modifiers = [mod() for mod in MODIFIERS if type(mod) is type]
         return modifiers
 
     def _get_gen(self, config: Config):

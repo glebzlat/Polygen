@@ -1,4 +1,6 @@
-from typing import Any
+import string
+
+from typing import Any, Literal
 
 
 def isiterable(obj: Any) -> bool:
@@ -10,15 +12,6 @@ def isiterable(obj: Any) -> bool:
         return True
     except TypeError:
         return False
-
-
-def wrap_string(string: str, double=True) -> str:
-    if double:
-        string = string.replace('"', '\\"')
-        return f'"{string}"'
-    else:
-        string = string.replace("'", "\\'")
-        return f"'{string}'"
 
 
 def reindent(string: str,
@@ -74,3 +67,81 @@ def reindent(string: str,
             lines[i] = new_indent + line[indent_len:]
 
     return '\n'.join(lines)
+
+
+_PRINTABLE = set(string.printable)
+_WHITESPACE = set(string.whitespace)
+
+
+def code_to_char(code: int) -> str:
+    """Convert character code to character.
+
+    If the character is whitespace, then its representation will be returned.
+    If the character is not printable, its unicode representation will be
+    returned
+    """
+    c = chr(code)
+    if c in _PRINTABLE:
+        if c in _WHITESPACE:
+            return repr(c)[1:-1]
+        return c
+    code = hex(code)[2:].rjust(4, '0')
+    return fr"\u{code}"
+
+
+WrapStringMode = Literal[
+    "auto",
+    "double",
+    "single",
+    "force_double",
+    "force_single"
+]
+
+
+def wrap_string(s: str, mode: WrapStringMode = "auto") -> str:
+    """Wrap string in quotes.
+
+    Allows to choose, which quotation mark to use.
+
+    Modes:
+        auto: By default. Choose the appropriate quotation mark type.
+            If both single and double marks are appeared in the string,
+            then escape single marks and use single mark.
+
+        double: Prefer double quotes, if no double quotes appeared or both
+            single and double quotes appeared.
+
+        single: Prefer single quotes, if no single quotes appeared or both
+            single and double quotes appeared.
+
+        force_double: Use double quotes. Escape double quotes in the string.
+
+        force_single: Use single quotes. Escape single quotes in the string.
+    """
+    q = "'"
+    single, double = "'" in s, '"' in s
+    if mode in ("auto", "single", "double"):
+        if single and double:
+            if mode == "double":
+                s, q = s.replace('"', '\\"'), '"'
+            elif mode == "single":
+                s, q = s.replace("'", "\\'"), "'"
+            else:
+                s = s.replace("'", "\\'")
+        elif single:
+            q = '"'
+        elif double:
+            q = "'"
+        else:
+            if mode == "double":
+                q = '"'
+            elif mode == "single":
+                q = "'"
+        return f"{q}{s}{q}"
+    elif mode == "force_double":
+        s, q = s.replace('"', '\\"'), '"'
+    elif mode == "force_single":
+        s, q = s.replace("'", "\\'"), "'"
+    else:
+        raise ValueError(f"incorrect mode: {mode}")
+    return f"{q}{s}{q}"
