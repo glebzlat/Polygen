@@ -9,15 +9,8 @@ make resulting raw tree more consistent.
 
 Bugs:
     test_generated_parsers:
-
-        Left recursion is completely broken.
-
         TestHiddenLeftRecursion_Simple
         TestHiddenLeftRecursion_Complicated
-        TestIndirectLeftRecursion_TwoBranches
-            if the rule has two recursive paths, and parsing started
-            from the first branch, then the second branch will never be
-            parsed.
         TestInterlockingLeftRecursion
 
     I found that SLASH in Expression rule appears in the result, so I needed
@@ -34,23 +27,19 @@ Write tests
     - [x] Parser
     - [ ] Nodes
     - [ ] Tree modifier
-        - [x] ExpandClass
-        - [x] ReplaceRep
-        - [ ] ReplaceZeroOrOne -- is it needed at all?
-        - [ ] ReplaceOneOrMore -- the same
-        - [x] CheckUndefRedef
-        - [x] SimplifyNestedExps
-        - [x] ReplaceNestedExps
-        - [x] CreateAnyCharRule
+        - [x] CheckUndefinedRules
+        - [x] CheckRedefinedRules
+        - [x] ReplaceNestedExprs
+        - [x] CreateAnyChar
         - [x] FindEntryRule
-        - [x] IgnoreRules
-        - [x] GenerateMetanames
-        - [x] SubstituteMetaRefs
-        - [ ] DetectLeftRec
+        - [ ] IgnoreRules
+        - [ ] GenerateMetanames
+        - [ ] SubstituteMetaRefs
+        - [ ] compute_lr
     - [x] Preprocessor
     - [x] Generated parsers
         - [x] Left recursion
-    - [ ] generator.util.reindent
+    - [x] generator.util.reindent
 
 Implement features
 

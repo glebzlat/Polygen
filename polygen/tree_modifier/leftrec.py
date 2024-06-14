@@ -47,8 +47,8 @@ class NullableVisitor(GrammarVisitor):
         return False
 
     def visit_Alt(self, node: Alt) -> bool:
-        for part in node.parts:
-            if not self.visit(part):
+        for item in node:
+            if not self.visit(item):
                 return False
         node.nullable = True
         return True
@@ -74,7 +74,7 @@ class NullableVisitor(GrammarVisitor):
         return False
 
     def visit_Repetition(self, node: Repetition) -> bool:
-        return node.beg == 0
+        return node.first == 0
 
     def visit_String(self, node: String) -> bool:
         return not node.chars
@@ -90,7 +90,7 @@ class NullableVisitor(GrammarVisitor):
 
 
 def compute_nullables(tree: Grammar):
-    vis = NullableVisitor()
+    vis = NullableVisitor(tree)
     vis.visit(tree)
 
 
@@ -98,11 +98,12 @@ class FirstGraphVisitor(GrammarVisitor):
     def visit_Grammar(self, node: Grammar):
         graph = {}
         for r in node:
-            graph.update(self.visit(r))
+            key, val = self.visit(r)
+            graph[key] = val
         return graph
 
     def visit_Rule(self, node: Rule):
-        return {n.id: self.visit(n) for n in node}
+        return node.id, self.visit(node.expr)
 
     def visit_Expr(self, node: Expr):
         names = set()
@@ -112,14 +113,18 @@ class FirstGraphVisitor(GrammarVisitor):
 
     def visit_Alt(self, node: Alt):
         names = set()
-        for i in node.items:
-            names |= self.visit(i)
+        for i in node:
+            assert type(i) is NamedItem
+            names |= self.visit(i) or set()
             if not i.nullable:
                 break
         return names
 
+    def visit_NamedItem(self, node: NamedItem):
+        return self.visit(node.item)
+
     def visit_Id(self, node: Id):
-        return {node.value}
+        return {node}
 
     def visit_String(self, node: String):
         return set()
@@ -177,6 +182,7 @@ def compute_lr(tree: Grammar):
 
     compute_nullables(tree)
     graph = make_first_graph(tree)
+    # print(graph)
 
     for scc in strongly_connected_components(graph, tree.entry.id):
         rules[scc[0]].head = True

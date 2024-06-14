@@ -18,27 +18,6 @@ from .tree_modifier.errors import TreeModifierWarning
 from .parser import Parser as GrammarParser
 from .preprocessor import FilePreprocessor
 
-# Modifiers structure -- these classes will be instantiated and configured
-# by the codegen according to the backend's capabilities
-# MODIFIERS = (
-#     [SubstituteMetaRefs],
-#     [CreateAnyCharRule],
-#     [ExpandClass, ReplaceRep],
-#     [FindEntryRule, IgnoreRules],
-#     [SimplifyNestedExps, ReplaceNestedExps],
-#     [CheckUndefRedef],
-#     [GenerateMetanames],
-#     [DetectLeftRec]
-# )
-
-# CAPABILITIES = {
-#     "leftrec": DetectLeftRec,
-#     "repetition": ReplaceRep,
-#     "char-class": ExpandClass
-# }
-
-# MODIFIERS_CAPABILITIES = {cls: name for name, cls in CAPABILITIES.items()}
-
 MODULE_PATH = Path(__file__).parent.absolute()
 CODEGEN_PATH = MODULE_PATH.parent / 'codegen'
 BACKEND_DIRS = list(CODEGEN_PATH.iterdir())
@@ -244,7 +223,7 @@ class Generator:
             raise self._modifier_warning
 
     def _init_modifiers(self, config: Config):
-        modifiers = [mod() for mod in MODIFIERS if type(mod) is type]
+        modifiers = [(mod() if type(mod) is type else mod) for mod in MODIFIERS]
         return modifiers
 
     def _get_gen(self, config: Config):
