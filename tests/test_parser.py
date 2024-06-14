@@ -37,10 +37,14 @@ class ParserTestMetaclass(type):
             for input, clue in self.successes:
                 parser = Parser(input)
                 result = parser.parse()
-                self.assertIsNotNone(result)
 
-                value = node_extractor(result.value)
-                self.assertEqual(value, clue)
+                try:
+                    self.assertIsNotNone(result)
+                    value = node_extractor(result.value)
+                    self.assertEqual(value, clue)
+                except AssertionError as e:
+                    msg = f"Input string: {input!r}; What: {e}"
+                    raise AssertionError(msg)
 
         def test_failures(self):
             for input in self.failures:

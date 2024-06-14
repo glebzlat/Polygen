@@ -7,7 +7,7 @@ Definition  <- Directive* Identifier LEFTARROW Expression         $def_action
 Directive   <- AT DirName Spacing                                 $directive_action
 DirName     <- Identifier
 
-Expression  <- Sequence seqs:(SLASH Sequence)*                    $expr_action
+Expression  <- Sequence seqs:(_:SLASH Sequence)*                  $expr_action
 Sequence    <- parts:Prefix* m:MetaRule?                          $sequence_action
 Prefix      <- MetaName? lookahead:(AND / NOT)? Suffix            $prefix_action
 Suffix      <- Primary q:(QUESTION / STAR / PLUS / Repetition)?   $suffix_action
@@ -85,7 +85,7 @@ $directive_action {
 }
 
 $expr_action {
-  return Expr(sequence, seqs)
+  return Expr((sequence, *seqs))
 }
 
 $sequence_action {
@@ -128,7 +128,7 @@ $ident_action {
 
 $literal_action {
   if len(chars) == 1:
-    return chars[0]
+      return chars[0]
   return String(chars)
 }
 

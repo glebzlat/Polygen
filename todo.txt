@@ -9,6 +9,9 @@ make resulting raw tree more consistent.
 
 Bugs:
     test_generated_parsers:
+
+        Left recursion is completely broken.
+
         TestHiddenLeftRecursion_Simple
         TestHiddenLeftRecursion_Complicated
         TestIndirectLeftRecursion_TwoBranches
@@ -16,6 +19,14 @@ Bugs:
             from the first branch, then the second branch will never be
             parsed.
         TestInterlockingLeftRecursion
+
+    I found that SLASH in Expression rule appears in the result, so I needed
+    to ignore it explicitly. It must be a bug somewhere in IgnoreRules
+    modifier.
+
+    The following nodes MUST NOT BE EQUAL:
+        Expr([Alt([NamedItem(None, Not(Class([Range(Char("'"), None)]))), NamedItem(None, Id('Char'))])])
+        Expr([Alt([NamedItem(None, Not(Class([Range(Char('"'), None)]))), NamedItem(None, Id('Char'))])])
 
 Write tests
 

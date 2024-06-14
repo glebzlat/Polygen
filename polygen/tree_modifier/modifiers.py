@@ -103,7 +103,7 @@ class ReplaceNestedExprs:
     """
 
     def __init__(self):
-        self.created_rules: list[Rule] = []
+        self.created_exprs: dict[Expr, Id] = {}
         self.id_count: Counter[Id] = Counter()
         self.done = False
 
@@ -121,10 +121,10 @@ class ReplaceNestedExprs:
         if type(parents[-1]) is Rule:
             return
 
-        for r in self.created_rules:
-            if node == r.expr:
-                parents[-1].item = r.id
-                return
+        # Replace expression by the reference
+        if node in self.created_exprs:
+            parents[-1].item = self.created_exprs[node]
+            return
 
         rule_id = self._get_rule_id(parents)
         assert rule_id is not None
@@ -132,12 +132,13 @@ class ReplaceNestedExprs:
         new_id = self._create_id(rule_id)
         parents[-1].item = new_id
 
-        new_rule = Rule(new_id, node)
-        self.created_rules.append(new_rule)
+        self.created_exprs[node] = new_id
 
     def visit_Grammar(self, node: Grammar, parents):
-        lst = Rule.from_iterable(self.created_rules)
-        node.rules.end.emplace_after(lst)
+        rules = (Rule(id, expr) for expr, id in self.created_exprs.items())
+        lst = Rule.from_iterable(rules)
+        if lst:
+            node.rules.end.emplace_after(lst)
 
     def apply(self):
         self.done = True

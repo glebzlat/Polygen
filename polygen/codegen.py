@@ -183,7 +183,7 @@ class Generator:
             raise GeneratorError("parser failure")
         grammar = grammar.value
 
-        print(repr(grammar))
+        # print(repr(grammar))
         modifiers = self._init_modifiers(config)
         visitor = TreeModifier(modifiers)
         try:
