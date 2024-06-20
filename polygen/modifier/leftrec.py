@@ -6,6 +6,7 @@ from ..node import (
     GrammarVisitor,
     Grammar,
     Rule,
+    MetaRule,
     Expr,
     Alt,
     NamedItem,
@@ -98,6 +99,8 @@ class FirstGraphVisitor(GrammarVisitor):
     def visit_Grammar(self, node: Grammar):
         graph = {}
         for r in node:
+            if isinstance(r, MetaRule):
+                continue
             key, val = self.visit(r)
             graph[key] = val
         return graph

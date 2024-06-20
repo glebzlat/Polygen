@@ -10,7 +10,7 @@ class Reader:
     Reader supports strings and UTF-8 encoded streams only.
     """
 
-    def __init__(self, stream: str | io.IOBase, bufsize=4096):
+    def __init__(self, stream: str | io.TextIOBase, bufsize=4096):
         self.buffer = ""
         self.stream = None
         self.name = None

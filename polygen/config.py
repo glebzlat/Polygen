@@ -1,50 +1,72 @@
+from __future__ import annotations
+
 import sys
 
-from os import PathLike, path
-from typing import Any
-from pathlib import Path
-from collections import ChainMap
+from collections import ChainMap, defaultdict
+from typing import Any, Callable, GenericAlias, Iterable, Optional, Iterator
+from os import PathLike
 
 FS_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding()
-CONFIG_FILENAME = "config.py"
 
 
 class ConfigError(Exception):
-    pass
+    """Exception class for Config related errors."""
 
 
-class _Enum:
-    def __init__(self, *variants: str | bool | None):
-        self.variants
+class Enum:
+    """Variants enumeration.
 
-    def match(self, value: str | bool | None) -> bool:
+    Used to define variants for the option.
+    """
+
+    def __init__(self, *variants: str | int | bool | None):
+        self.variants = variants
+
+    def match(self, value: str | bool) -> bool:
         if isinstance(value, (list, tuple)):
             return all(i in self.variants for i in value)
         else:
             return value in self.variants
 
+    def __repr__(self):
+        variants = ', '.join(str(v) for v in self.variants)
+        return f"Enum({variants})"
 
-class _Opt:
+    def __str__(self):
+        variants = ' | '.join(str(v) for v in self.variants)
+        return f"({variants})"
+
+
+class Option:
+    """Config option.
+
+    Used to define the schema. Immutable.
+
+    Parameters:
+        type: Option's type.
+        required: If the option is required. If the option is required and
+                  not assigned, an error will be raised.
+        override: Option can be assigned only once.
+        default: Option's default value.
+    """
 
     default: Any
     required: bool
     override: bool
-    valid_types: type | tuple[type, ...] | tuple[()] | _Enum
+    type: type | GenericAlias | Enum
 
     def __init__(self,
-                 valid_types,
+                 type,
                  default=None,
                  required=False,
                  override=True):
         super().__setattr__('default', default)
         super().__setattr__('required', required)
-        super().__setattr__('valid_types', valid_types)
+        super().__setattr__('type', type)
         super().__setattr__('override', override)
-        super().__setattr__('_reserved',
-                            {'default', 'valid_types', 'required', 'override'})
 
     def __eq__(self, other):
-        if isinstance(other, _Opt):
+        if isinstance(other, Option):
             self_tup = (self.default, self.valid_types)
             other_tup = (other.default, other.valid_types)
             return self_tup == other_tup
@@ -54,152 +76,264 @@ class _Opt:
         return hash((self.default, self.valid_types))
 
     def __setattr__(self, name: str, value: Any):
-        if name in self._reserved:
-            raise TypeError
-        super().__setattr__(name, value)
+        raise AttributeError
 
     def __delattr__(self, name: str, value: Any):
-        if name in self._reserved:
-            raise TypeError
-        delattr(super(), name, value)
+        raise AttributeError
+
+    def __repr__(self):
+        if type(self.type) is type:
+            tp = self.type.__name__
+        elif isinstance(self.type, Enum):
+            tp = repr(self.type)
+        else:
+            tp = self.type
+        attrs = ('default', 'required', 'override')
+        kwargs = ', '.join(f"{attr}={getattr(self, attr)}" for attr in attrs)
+        return f"Option({tp}, {kwargs})"
+
+    def __str__(self):
+        return repr(self)
 
 
 class Config:
-
-    # This code is heavily inspired by Sphinx:
-    # https://github.com/sphinx-doc/sphinx/blob/master/sphinx/config.py
-
-    config_values = {
-        'name': _Opt(str, required=True),
-        'language': _Opt(str, required=True),
-        'version': _Opt(str, default='0'),
-        'datetime_fmt': _Opt(str, default='%Y-%m-%dT%H:%M'),
-        'capabilities': _Opt(list, default=[]),
-        'files': _Opt(dict, default={}),
-        'definitions': _Opt(dict, default={}),
-        'generator': _Opt((str, Path), default='gen.py', override=False),
-        'parser_name': _Opt(str, default='Parser'),
-        'options': _Opt(dict, default={}, override=False)
-    }
-
-    def __init__(self,
-                 config: dict[str, Any],
-                 overrides: dict[str, Any] | None = None):
-        """Create Config object.
+    def __init__(self, schema: dict[str, Option], strict=False):
+        """Initialize Config instance.
 
         Args:
-            config: Primary config options from the config file.
-            overrides: Optional primary config options overrides.
+            schema: Schema mapping.
+            strict: If true, adding options that are not in schema
+                    is not allowed.
         """
-        self._config = ChainMap(
-            {}, config, Config.config_values.copy())
-        if overrides is not None:
-            self.overrides(overrides)
+        self._config = ChainMap(schema)
+        self._types: dict[type, tuple[Callable, type | Callable]] = {}
 
-    def overrides(self, overrides: dict[str, Any]):
-        """Override options."""
-        overrides = overrides.copy()
-        for name, value in overrides.items():
+        register = self.register_type
+        register(int, int)
+        register(bool, bool)
+        register(str, str)
 
-            # Override a dictionary key.
-            if '.' in name:
-                attr, key = name.split('.', 1)
+        self.strict = strict
 
-                if attr not in self._config:
-                    msg = f"option not in config: {attr}"
-                    raise ConfigError(msg)
+    @property
+    def schema(self) -> dict[str, Option]:
+        """Return the schema mapping."""
+        return self._config.maps[-1]
 
-                option = self._config[attr]
-                if type(option) is _Opt:
-                    if not option.override:
-                        msg = f"option not overridable: {attr}"
-                        raise ConfigError(msg)
-                    self._config[attr] = option = option.default
+    def register_type(self,
+                      type_: type | GenericAlias,
+                      convert_fn: Optional[Callable] = None):
+        """Add the new type handler."""
+        self._types[type_] = ((lambda types, val: convert_fn(val))
+                              if type(convert_fn) is type else convert_fn)
 
-                if type(option) is dict:
-                    option[key] = value
-                else:
-                    msg = f"cannot override key {key}: {attr} is not a dict"
-                    raise ConfigError(msg)
+    def override(self, options: dict[str, Any]):
+        """Assign options to config.
 
-            # Override option.
-            else:
-                if name not in self._config:
-                    msg = f"option not in config: {name}"
-                    raise ConfigError(msg)
+        Each call to `override` adds new option values on the top
+        of old values.
 
-                value = self.convert_overrides(name, value)
-                self._config[name] = value
+        Args:
+            options: Option dictionary.
 
-    @classmethod
-    def read(cls,
-             config_dir: str | PathLike[str],
-             overrides: dict | None = None):
-        """Create the Config object from configuration file."""
-        filename = path.join(config_dir, CONFIG_FILENAME)
-        if not path.isfile(filename):
-            raise ConfigError()
-        namespace = eval_config_file(filename)
+        Raises:
+            ConfigError
+        """
+        self._try_insert_map(self._override, options)
 
-        obj = cls(namespace)
-        if overrides is not None:
-            obj.overrides(overrides)
-        return obj
+    def parse(self, it: Iterable[str]):
+        """Parse and override options.
 
-    def convert_overrides(self, name: str, value: str) -> Any:
-        """Infer the option's type and convert the value."""
+        Option string has the format `<option_name>.<attribute>=<value>`,
+        where `.<attribute>` is optional: `<option_name>=<value>`.
 
-        # Ensure to take the _Opt object from the config.
-        opt = self._config.maps[-1][name]
-        default = opt.default
-        valid_types = opt.valid_types
+        The first option form can be used with options of type `dict` only.
 
-        if opt.required or not opt.override:
-            msg = f"cannot override required option: {name}"
+        Args:
+            it: Iterable of strings.
+
+        Raises:
+            ConfigError
+        """
+        self._try_insert_map(self._parse, it)
+
+    def validate(self) -> None:
+        """Validate added options.
+
+        During the validation, options that are required but not percieved
+        in the config are found. If there are such options, ConfigError
+        will be raised.
+
+        Raises:
+            ConfigError.
+        """
+        required_options: list[str] = []
+        for name, value in self._config.items():
+            if isinstance(value, Option) and value.required:
+                required_options.append(name)
+
+        if required_options:
+            opts = ', '.join(repr(n) for n in required_options)
+            msg = f"required options: {opts}"
             raise ConfigError(msg)
 
-        if valid_types == Any:
-            return value
-        elif type(default) is bool:
-            if value in {'1', 'true', 'True'}:
-                return True
-            elif value in {'0', 'false', 'False'}:
-                return False
+    def _try_insert_map(self, fn: Callable, *args: Any):
+        self._config.maps.insert(0, {})
+        try:
+            fn(*args)
+        except Exception:
+            self._config.maps.pop(0)
+            raise
+
+    def _override(self, options: dict[str, Any], convert=False):
+        schema = self.schema
+
+        for name, value in options.items():
+            if name not in schema:
+                if self.strict:
+                    msg = f"cannot add name {name!r} that is not in config"
+                    raise ConfigError(msg)
+                self._config[name] = value
+                continue
+
+            option = self._get_option(name)
+
+            success, msg = self._valid_value(name, value, option)
+            if convert or not success:
+                convert_fn = self._types.get(option.type)
+                if not convert_fn:
+                    raise ConfigError(msg)
+                value = convert_fn(self._types, value)
+
+            self._config[name] = value
+
+    def _valid_value(self, name, value, option) -> tuple[bool, str | None]:
+        tp = option.type
+
+        if isinstance(tp, GenericAlias):
+            origin, args = tp.__origin__, tp.__args__
+            if not isinstance(value, origin):
+                msg = f"option {name!r} must be of type {tp}, got {type(value)}"
+                return False, msg
+
+            if issubclass(origin, dict) and len(args) == 2:
+                val_type = args[1]
+                for attr, val in value.items():
+                    if not isinstance(val, val_type):
+                        msg = (f"option {name!r}: {attr!r} must be of type "
+                               f"{val_type}, got {type(val)}: {val!r}")
+                        return False, msg
+
+            elif issubclass(origin, (list, tuple)) and args:
+                val_type = args[0]
+                for i, val in enumerate(value):
+                    if not isinstance(val, val_type):
+                        msg = (
+                            f"option {name!r}: element with index {i} must "
+                            f"be of type {val_type}, got {type(val)}: {val!r}")
+                        return False, msg
+
+        elif type(tp) is type and not isinstance(value, tp):
+            msg = (f"option {name!r} must be of type {tp}, got {type(value)}: "
+                   f"{value!r}")
+            return False, msg
+
+        elif isinstance(tp, Enum) and not tp.match(value):
+            msg = (f"option {name!r} must be one of the following: {tp}, "
+                   f"got {value!r}")
+            return False, msg
+
+        return True, None
+
+    def _parse(self, it: Iterable[str]):
+        dct: defaultdict[dict] = defaultdict(dict)
+
+        for s in it:
+            lhs, value = s.split('=')
+
+            if '.' in lhs:
+                name, attr = lhs.split('.', 1)
+                dct[name][attr] = value
             else:
-                msg = f"incorrect value for bool option {name}: {value}"
-                raise ValueError(msg)
-        elif isinstance(default, dict):
-            msg = (f"cannot override dictionary config setting {name} "
-                   f"(use '{name}.key=value')")
-            raise ValueError(msg)
-        elif isinstance(default, list):
-            return value.split(',')
-        elif isinstance(default, int):
-            try:
-                return int(value)
-            except ValueError as e:
-                raise ValueError from e
-        else:
-            return value
+                dct[lhs] = value
+
+        self._override(dct, convert=True)
+
+    def _get_option(self, name: str):
+        if name not in self.schema:
+            raise ConfigError
+        option = self.schema[name]
+        if len(self._config.maps) > 2 and not option.override:
+            msg = f"option {name!r} can be assigned only once"
+            raise ConfigError(msg)
+        return self.schema[name]
+
+    def items(self) -> Iterator[tuple[str, Any]]:
+        for name, value in self._config.items():
+            if isinstance(value, Option):
+                value = value.default
+            yield name, value
+
+    def keys(self) -> Iterator[str]:
+        yield from self
+
+    def values(self) -> Iterator[Any]:
+        for val in self._config.values():
+            if isinstance(val, Option):
+                val = val.default
+            yield val
+
+    def clear(self):
+        """Remove assigned options, preserving the schema.
+
+        After calling this method, `Config.layers` returns 0.
+        """
+        self._config.maps = self._config.maps[-1:]
+
+    @property
+    def layers(self) -> int:
+        """Total number of override layers."""
+        return len(self._config.maps) - 1
+
+    def pop_layer(self) -> Optional[dict[str, Any]]:
+        """Remove the latest override layer, if exists.
+
+        Removes and returns the latest added override layer, if exists.
+        Otherwise, does nothing and returns None.
+        """
+        if len(self._config.maps) == 1:
+            return None
+        return self._config.maps.pop(0)
 
     def __getattr__(self, name: str) -> Any:
         if name in self._config:
             value = self._config[name]
-            if type(value) is _Opt:
+            if isinstance(value, Option):
                 return value.default
             return value
 
-        if name.startswith('_'):
-            type_name = type(self).__name__
-            msg = f"{type_name!r} object has no attribute {name!r}"
-            raise AttributeError(msg)
-
         raise AttributeError(f"no such config value: {name!r}")
+
+    def copy(self, *, with_options=False) -> Config:
+        """Create a copy of Config object.
+
+        Kwargs:
+            with_options: Controls whether to copy the original object's
+                          options or not.
+        """
+        obj = Config(self.schema)
+
+        if with_options:
+            for map in self._config.maps[-2::-1]:
+                obj.override(map)
+                obj.validate()
+
+        return obj
 
     def __getitem__(self, name: str) -> Any:
         return getattr(self, name)
 
-    def __setitem__(self, name: str, value, Any):
+    def __setitem__(self, name: str, value: Any):
         setattr(self, name, value)
 
     def __delitem__(self, name: str):
@@ -208,13 +342,42 @@ class Config:
     def __contains__(self, name: str) -> bool:
         return name in self._config
 
+    def __iter__(self) -> Iterator[str]:
+        yield from self._config
+
+    def __repr__(self):
+        lines = ["Config({"]
+        for name, val in self.schema.items():
+            lines.append(f"  {name!r}: {val!r},")
+        lines.append("})")
+        return '\n'.join(lines)
+
+    def __str__(self):
+        return repr(self)
+
+
+def read_file(schema: dict[str, Option], filename: str | PathLike[str]):
+    """Create Config object from configuration file."""
+    namespace = eval_config_file(filename)
+
+    options = {attr: val for attr, val in namespace.items()
+               if not attr.startswith('__')}
+
+    cfg = Config(schema)
+    cfg.override(options)
+    cfg.validate()
+
+    # print(dict(cfg.items()))
+
+    return cfg
+
 
 def eval_config_file(filename: str | PathLike[str]) -> dict[str, Any]:
     namespace = {}
 
     try:
         with open(filename, 'rb') as fin:
-            code = compile(fin.read(), filename.encode(FS_ENCODING), 'exec')
+            code = compile(fin.read(), filename, 'exec')
             exec(code, namespace)
     except SyntaxError as e:
         raise ConfigError(f'syntax error in the config file: {e}') from e

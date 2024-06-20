@@ -24,15 +24,15 @@ from polygen.node import (
     Item
 )
 
-from polygen.tree_modifier.tree_modifier import TreeModifier
-from polygen.tree_modifier.errors import (
+from polygen.modifier.tree_modifier import TreeModifier
+from polygen.modifier.errors import (
     TreeModifierWarning,
     UndefRulesError,
     RedefRulesError,
     UndefEntryError,
     RedefEntryError,
 )
-from polygen.tree_modifier.modifiers import (
+from polygen.modifier.modifiers import (
     CheckUndefinedRules,
     CheckRedefinedRules,
     ReplaceNestedExprs,

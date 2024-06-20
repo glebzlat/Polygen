@@ -4,7 +4,7 @@ import inspect
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from polygen.codegen import Generator
+from polygen.codegen import CodeGenerator
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
 SKEL_FILE = (Path.cwd() / 'polygen' / 'parsing' /
@@ -43,7 +43,7 @@ class ParserTestMetaClass(type):
 
     @classmethod
     def create_parser(cls, idx, cls_name, grammar, capabilities: dict):
-        gen = Generator.setup()
+        gen = CodeGenerator.setup()
 
         tmpdir = TMPDIR_PATH / f'test_generated_parser_{cls_name}'
         if tmpdir.exists():

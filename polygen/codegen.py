@@ -6,14 +6,14 @@ from datetime import datetime
 from enum import StrEnum
 from io import TextIOBase
 
-from .__version__ import __version__
-from .config import Config
+from typing import Any
 
-from .tree_modifier.tree_modifier import (
-    MODIFIERS,
-    TreeModifier
-)
-from .tree_modifier.errors import TreeModifierWarning
+from .__version__ import __version__
+from .config import Config, Option, read_file
+
+from .modifier.tree_modifier import TreeModifier
+from .modifier.errors import TreeModifierWarning
+from .modifier.registry import ModifierRegistry
 
 from .parser import Parser as GrammarParser
 from .preprocessor import FilePreprocessor
@@ -35,42 +35,74 @@ class PredefinedDirectives(StrEnum):
     VERSION = "version"
 
 
-class GeneratorError(Exception):
-    """Exceptions related to the Generator."""
+class CodeGeneratorError(Exception):
+    """CodeGenerator errors occured due to the user's mistakes.
+
+    Instances of this class contain descriptive messages and should be
+    given to the user without traceback."""
 
 
-class Generator:
-    """Backends manager.
+class CodeGenerator:
+    """Handles backend managing and code generation.
 
-    Each backend minimally consists of a config file, a generator and a
-    skeleton file.
+    Code generation process consists of following stages:
+        1. Backend configuration selection.
+        2. Parser converts text grammar representation into grammar tree.
+        3. `ModifierRegistry` creates and configures modifier instances,
+           according to the backend modifier's configuration and options
+           overrides given by the user.
+        4. `TreeModifier` uses created modifiers to make the grammar tree.
+        5. Code generator takes modified grammar tree and converts it
+           into the code.
+        6. Preprocessor takes skeleton file from config, the code from
+           the previous stage, user defined options and inserts the code
+           into the skeleton file, creating valid source code.
 
-    A config file defines generator capabilities (which nodes and language
-    constructions it accepts), preprocessor definitions and a list of files
-    to be preprocessed and converted into the ready to use parser
+    Thus, `CodeGenerator` is responsible for:
+        1. Backend configurations managing.
+        2. Creation and managing of Parser, Registry, Modifier and
+           Preprocessor instances.
 
-    The generator is a Python module, which takes the grammar tree and
-    produces the main code of the parser.
-
-    The skeleton file is the rest of the code of the parser and utility code.
-    It contains directives that will be substituted by the preprocessor, along
-    with the code.
-
-    Generator manages backend configurations, setups modifiers accordingly
-    to backend's capabilities, fires up the grammar parser, producing the
-    grammar, uses the TreeModifier to rewrite the grammar, uses the backend
-    generator to create the prepared code and then fires up file preprocessor
-    to insert this code into the skeleton, thus creating a final file.
+    Each backend is defined by its config file. Also backends must have
+    the code generator and at least one skeleton file.
     """
 
+    config_values = {
+        'name': Option(str, required=True),
+        'language': Option(str, required=True),
+        'version': Option(str, default='0'),
+        'datetime_fmt': Option(str, default='%Y-%m-%dT%H:%M'),
+        'files': Option(dict, default={}),
+        'definitions': Option(dict, default={}),
+        'generator': Option((str, Path), default='gen.py', override=False),
+        'parser_name': Option(str, default='Parser'),
+        'options': Option(dict, default={}, override=False)
+    }
+
     def __init__(self, backends: dict[str, Config]):
-        """Create Generator instance.
+        """Create CodeGenerator instance.
 
         Args:
             backends: A dictionary BackendName -> Config.
         """
-        self._backends = backends
+        self._backends: dict[str, Config] = backends
         self._modifier_warning = None
+
+    def add_backend(self, name: str, config: Config):
+        """Add backend config."""
+        if name in self._backends:
+            raise ValueError(f"duplicate backend name: {name}")
+        self._backends[name] = config
+
+    def add_backend_dir(self, directory: str | PathLike[str]):
+        """Add backend config from directory."""
+        path = Path(directory)
+        if not path.exists() or not path.is_dir():
+            raise ValueError(f"path does not exist or not a directory: {path}")
+
+        config = Config.read(path)
+        config.backend_path = path
+        self.add_backend(config.name, config)
 
     @classmethod
     def setup(cls, directories: Iterable[str | PathLike[str]] | None = None):
@@ -91,17 +123,18 @@ class Generator:
         for path in paths:
             if not path.exists():
                 continue
-            config = Config.read(path)
-            config.backend_path = path
-            backends[config.name] = config
+            filename = path / "config.py"
+            cfg = read_file(cls.config_values, filename)
+            cfg.backend_path = path
+            backends[cfg.name] = cfg
 
-        return Generator(backends)
+        return CodeGenerator(backends)
 
     def backends_info(self) -> dict[str, tuple[str, str]]:
         """Get the info about backends.
 
         Returns:
-            A dictionary BackendName -> tuple of Language and Version.
+            dict[Backend name, tuple[Language, Version]]
         """
         return {name: (conf.language, conf.version)
                 for name, conf in self._backends.items()}
@@ -115,8 +148,11 @@ class Generator:
                  grammar: str | TextIOBase | None = None):
         """Produce the output.
 
-        If `grammar_file` nor `grammar` argument is not set, or they're both
-        set, ValueError exception will be raised.
+        If the `grammar` argument is given, then will Parser will read it.
+        If the `grammar_file` argument is given, then the corresponding
+        file will be opened and Parser will read data from it.
+        If both arguments are given or they are both None, ValueError will
+        be raised
 
         Args:
             backend: Backend name. Must be in available backends, which can
@@ -134,42 +170,77 @@ class Generator:
             TreeModifierWarning.
             ValueError.
         """
-        if backend not in self._backends:
-            msg = f"no such backend: {backend!r}"
-            raise GeneratorError(msg)
 
-        if (grammar is None and grammar_file is None
-                or grammar is not None and grammar_file is not None):
-            raise ValueError("give either a grammar or a grammar_file")
+        exc = ValueError("give either a grammar or a grammar_file")
 
-        if grammar_file is not None:
-            with open(grammar_file, 'rt', encoding='UTF-8') as fin:
-                self._generate(backend, output_dir, options, fin)
+        if grammar is not None and grammar_file is not None:
+            raise exc
+        elif grammar_file is not None:
+            istream = open(grammar_file, 'rt', encoding='UTF-8')
         elif grammar is not None:
-            self._generate(backend, output_dir, options, grammar)
+            istream = grammar
+        else:
+            raise exc
+
+        try:
+            self._generate(backend, output_dir, options, istream)
+        finally:
+            if isinstance(istream, TextIOBase):
+                istream.close()
+
+    def get_grammar_tree(self,
+                         backend: str,
+                         options: Iterable[str],
+                         input_data: str | TextIOBase):
+        """Generate the grammar from the input data.
+
+        Grammar tree generation happens in two stages:
+            1. Parser generates raw grammar tree.
+            2. Tree modifier adds, removes and modifies nodes in the grammar,
+               making it suitable for parser generator.
+
+        Stage 2 consists of two substages:
+            2.1. Creation of modifier instances through the Modifier registry,
+                 which performs modifier instances setup.
+            2.2. Applying the created modifies on the raw grammar tree
+                 using TreeModifier.
+
+        Args:
+            backend: Name of the backend parser generator.
+            options: Options for ModifierRegistry.
+            input_data: Parser input data.
+
+        Return:
+            Grammar instance.
+
+        Raises:
+            GeneratorError
+        """
+
+        parser = GrammarParser(input_data)
+        grammar = parser.parse()
+        if grammar is None:
+            raise CodeGeneratorError("parser failure")
+        grammar = grammar.value
+
+        registry = ModifierRegistry()
+        modifiers = registry.configure(options)
+
+        visitor = TreeModifier(modifiers)
+        try:
+            visitor.apply(grammar)
+        except TreeModifierWarning as warn:
+            self._modifier_warning = warn
+
+        return grammar
 
     def _generate(self,
                   backend: str,
                   output_dir: str | PathLike[str],
                   options,
                   grammar):
+        grammar = self.get_grammar_tree(backend, options, grammar)
         config = self._backends[backend]
-        config.overrides(options)
-
-        parser = GrammarParser(grammar)
-        grammar = parser.parse()
-        if grammar is None:
-            raise GeneratorError("parser failure")
-        grammar = grammar.value
-
-        # print(repr(grammar))
-        modifiers = self._init_modifiers(config)
-        visitor = TreeModifier(modifiers)
-        try:
-            visitor.apply(grammar)
-        except TreeModifierWarning as warn:
-            self._modifier_warning = warn
-        # print(repr(grammar))
 
         stream = StringIO()
         gen_cls = self._get_gen(config)
@@ -181,7 +252,7 @@ class Generator:
         for dir in config.definitions:
             if dir in pre.__members__:
                 msg = f"config hinders predefined directive: {dir}"
-                raise GeneratorError(msg)
+                raise CodeGeneratorError(msg)
 
         directives = {
             pre.PARSER_NAME: config.parser_name,
@@ -201,7 +272,7 @@ class Generator:
         output_dir = Path(output_dir)
         if not output_dir.exists():
             msg = f"output directory {output_dir} does not exist"
-            raise GeneratorError(msg)
+            raise CodeGeneratorError(msg)
         if not output_dir.absolute():
             output_dir = Path.cwd() / output_dir
 
@@ -213,7 +284,7 @@ class Generator:
 
             if not skel_file.exists() or not skel_file.is_file():
                 msg = f"{skel_file!s} does not exist or not a file"
-                raise GeneratorError(msg)
+                raise CodeGeneratorError(msg)
 
             files[skel_file] = output_file
 
@@ -222,16 +293,12 @@ class Generator:
         if self._modifier_warning is not None:
             raise self._modifier_warning
 
-    def _init_modifiers(self, config: Config):
-        modifiers = [(mod() if type(mod) is type else mod) for mod in MODIFIERS]
-        return modifiers
-
     def _get_gen(self, config: Config):
         backend_root = config.backend_path
         module: Path = backend_root / config.generator
         if not module.exists():
             msg = f"{module} generator file does not exist"
-            raise GeneratorError(msg)
+            raise ValueError(msg)
 
         namespace = {}
         with open(module, 'rb') as fin:
