@@ -26,7 +26,7 @@ function run_tests {
 function run_generate {
   if [ "$1" = "polygen" ];
   then
-    python -m polygen generate -b python -g grammar/parser.peg -o polygen
+    python -m polygen generate grammar/parser.peg -b python -o polygen
     exit $?
   fi
 

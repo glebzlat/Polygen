@@ -6,8 +6,6 @@ from datetime import datetime
 from enum import StrEnum
 from io import TextIOBase
 
-from typing import Any
-
 from .__version__ import __version__
 from .config import Config, Option, read_file
 
@@ -86,6 +84,9 @@ class CodeGenerator:
             backends: A dictionary BackendName -> Config.
         """
         self._backends: dict[str, Config] = backends
+
+        self.registry = ModifierRegistry()
+
         self._modifier_warning = None
 
     def add_backend(self, name: str, config: Config):
@@ -143,7 +144,7 @@ class CodeGenerator:
                  backend: str,
                  output_dir: str | PathLike[str],
                  *,
-                 options: dict,
+                 modifier_options: dict,
                  grammar_file: str | PathLike[str] | None = None,
                  grammar: str | TextIOBase | None = None):
         """Produce the output.
@@ -183,15 +184,15 @@ class CodeGenerator:
             raise exc
 
         try:
-            self._generate(backend, output_dir, options, istream)
+            self._generate(backend, output_dir, modifier_options, istream)
         finally:
             if isinstance(istream, TextIOBase):
                 istream.close()
 
     def get_grammar_tree(self,
-                         backend: str,
-                         options: Iterable[str],
-                         input_data: str | TextIOBase):
+                         input_data: str | TextIOBase,
+                         modifier_options
+                         ):
         """Generate the grammar from the input data.
 
         Grammar tree generation happens in two stages:
@@ -206,7 +207,6 @@ class CodeGenerator:
                  using TreeModifier.
 
         Args:
-            backend: Name of the backend parser generator.
             options: Options for ModifierRegistry.
             input_data: Parser input data.
 
@@ -223,8 +223,7 @@ class CodeGenerator:
             raise CodeGeneratorError("parser failure")
         grammar = grammar.value
 
-        registry = ModifierRegistry()
-        modifiers = registry.configure(options)
+        modifiers = self.registry.configure(modifier_options)
 
         visitor = TreeModifier(modifiers)
         try:
@@ -237,9 +236,9 @@ class CodeGenerator:
     def _generate(self,
                   backend: str,
                   output_dir: str | PathLike[str],
-                  options,
+                  modifier_options,
                   grammar):
-        grammar = self.get_grammar_tree(backend, options, grammar)
+        grammar = self.get_grammar_tree(grammar, modifier_options)
         config = self._backends[backend]
 
         stream = StringIO()

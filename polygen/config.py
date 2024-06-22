@@ -53,7 +53,7 @@ class Option:
     default: Any
     required: bool
     override: bool
-    type: type | GenericAlias | Enum
+    type: type | GenericAlias | Enum | Config
 
     def __init__(self,
                  type,
@@ -96,29 +96,62 @@ class Option:
         return repr(self)
 
 
+def _convert_bool(types, value: str):
+    value = value.lower()
+    if value == "true":
+        return True
+    elif value == "false":
+        return False
+    else:
+        raise ConfigError(f"{value!r} cannot be converted to bool")
+
+
 class Config:
-    def __init__(self, schema: dict[str, Option], strict=False):
+    def __init__(self,
+                 schema: dict[str, Option],
+                 unknown_options: str = "ignore"):
         """Initialize Config instance.
+
+        `unknown_options` determines what to do if an option name not in
+        configuration schema:
+
+        - "error": raise an error
+        - "ignore": silently omit
+        - "add": add to config
+
+        By default is is "ignore".
 
         Args:
             schema: Schema mapping.
-            strict: If true, adding options that are not in schema
-                    is not allowed.
+            unknown_options: What to do, if option name not in schema.
         """
         self._config = ChainMap(schema)
         self._types: dict[type, tuple[Callable, type | Callable]] = {}
 
         register = self.register_type
         register(int, int)
-        register(bool, bool)
+        register(bool, _convert_bool)
         register(str, str)
 
-        self.strict = strict
+        self._unknown_options: str
+        self.unknown_options = unknown_options
 
     @property
     def schema(self) -> dict[str, Option]:
         """Return the schema mapping."""
         return self._config.maps[-1]
+
+    @property
+    def unknown_options(self):
+        return self._unknown_options
+
+    @unknown_options.setter
+    def unknown_options(self, value):
+        allowed_vals = ("error", "ignore", "add")
+        if value not in allowed_vals:
+            vals = ', '.join(allowed_vals)
+            raise ValueError(f"unknown_options must be in {vals}")
+        self._unknown_options = value
 
     def register_type(self,
                       type_: type | GenericAlias,
@@ -127,19 +160,24 @@ class Config:
         self._types[type_] = ((lambda types, val: convert_fn(val))
                               if type(convert_fn) is type else convert_fn)
 
-    def override(self, options: dict[str, Any]):
+    def override(self, options: dict[str, Any], from_string=False):
         """Assign options to config.
 
         Each call to `override` adds new option values on the top
         of old values.
 
+        `from_string` is used when the option dictionary is created
+        from string representation, and its values are strings. Config
+        will convert strings to option values.
+
         Args:
             options: Option dictionary.
+            from_string: Convert string values to types.
 
         Raises:
             ConfigError
         """
-        self._try_insert_map(self._override, options)
+        self._try_insert_map(self._override, options, from_string)
 
     def parse(self, it: Iterable[str]):
         """Parse and override options.
@@ -171,6 +209,8 @@ class Config:
         for name, value in self._config.items():
             if isinstance(value, Option) and value.required:
                 required_options.append(name)
+            elif isinstance(value, Config):
+                value.validate()
 
         if required_options:
             opts = ', '.join(repr(n) for n in required_options)
@@ -188,22 +228,41 @@ class Config:
     def _override(self, options: dict[str, Any], convert=False):
         schema = self.schema
 
+        def _convert_value(name, val, msg=None):
+            fn = self._types.get(option.type)
+            if not fn:
+                msg = msg or f"{name!r}: cannot convert: {val!r}"
+                raise ConfigError(msg)
+
+            try:
+                return fn(self._types, value)
+            except Exception as e:
+                raise ConfigError(f"option {name!r}: {e}")
+
         for name, value in options.items():
             if name not in schema:
-                if self.strict:
+                if self.unknown_options == "error":
                     msg = f"cannot add name {name!r} that is not in config"
                     raise ConfigError(msg)
-                self._config[name] = value
+                elif self.unknown_options == "ignore":
+                    pass
+                elif self.unknown_options == "add":
+                    self._config[name] = value
                 continue
 
             option = self._get_option(name)
 
-            success, msg = self._valid_value(name, value, option)
-            if convert or not success:
-                convert_fn = self._types.get(option.type)
-                if not convert_fn:
-                    raise ConfigError(msg)
-                value = convert_fn(self._types, value)
+            if isinstance(option.type, Config):
+                self._config[name] = cfg = option.type.copy()
+                cfg.override(value, convert)
+                continue
+
+            if convert:
+                value = _convert_value(name, value)
+            else:
+                success, msg = self._valid_value(name, value, option)
+                if not success:
+                    value = _convert_value(name, value)
 
             self._config[name] = value
 
@@ -322,6 +381,7 @@ class Config:
                           options or not.
         """
         obj = Config(self.schema)
+        obj.unknown_options = self.unknown_options
 
         if with_options:
             for map in self._config.maps[-2::-1]:

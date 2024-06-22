@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any, Callable, Optional, Iterable
 
 from ..config import Config, Option
@@ -17,6 +16,10 @@ from .modifiers import (
     ValidateNodes
 )
 from .leftrec import compute_lr
+
+
+class RegistryError(Exception):
+    pass
 
 
 class ModifierRegistry:
@@ -66,56 +69,66 @@ class ModifierRegistry:
             if options is not None:
                 raise ValueError(f"cannot use options with callable: {name}")
 
-        self._modifiers[name] = cls, Config(schema=schema)
+        self._modifiers[name] = cls, Config(schema=schema,
+                                            unknown_options="error")
 
     @property
-    def schema(self) -> dict[str, dict[str, Option]]:
+    def schema(self) -> dict[str, Config]:
         opts = {}
-        for name, (cls, options) in self._modifiers.items():
-            opts[name] = options
+        for name, (cls, cfg) in self._modifiers.items():
+            opts[name] = cfg
         return opts
 
-    def configure_modifier(self,
-                           name: str,
-                           options: Optional[dict[str, Any]]) -> object | None:
-        if name not in self._modifiers:
-            raise ValueError()
-
-        cls, config = self._modifiers[name]
-
-        config = config.copy()
-        if options is not None:
-            config.override(options)
-        # print(f"{cls.__name__}: {config._enabled}")
-        if not config._enabled:
-            return None
-
-        if type(cls) is not type:
-            return cls
-
-        public_options = {name: val for name, val in config.items()
-                          if not name.startswith('_')}
-        return cls(**public_options)
-
     def configure(self, options: dict[str, dict[str, Any]]) -> list[object]:
-        modifiers = self._modifiers
-        mods = (self.configure_modifier(n, options.get(n)) for n in modifiers)
-        return [m for m in mods if m is not None]
+        options = options.copy()
+        mods = []
 
+        for name in self._modifiers:
+            cls, config = self._modifiers[name]
 
-def parse_modifier_options(registry: ModifierRegistry,
-                           options: Iterable[str]):
-    opts = defaultdict(dict)
-    for s in options:
-        lhs, value = s.split('=', 1)
-        key, *subkey = lhs.split('.')
+            config = config.copy()
+            if name in options:
+                config.override(options.pop(name), from_string=True)
+            # print(f"{cls.__name__}: {config._enabled}")
+            if not config._enabled:
+                continue
 
-        if len(subkey) == 1:
-            opts[key][subkey[0]] = value
-        elif len(subkey) > 1:
-            raise ValueError
-        else:
-            opts[key]['_enabled'] = value == 'True'
+            if type(cls) is not type:
+                mods.append(cls)
+                continue
 
-    # print(opts)
-    return registry.configure(opts)
+            public_options = {name: val for name, val in config.items()
+                              if not name.startswith('_')}
+            mods.append(cls(**public_options))
+
+        if options:
+            keys = ', '.join(repr(s) for s in options)
+            raise RegistryError(f"{keys} not in modifiers")
+
+        return mods
+
+    @classmethod
+    def parse_modifier_options(
+            cls, options: Iterable[str]) -> dict[str, str | bool]:
+        opts = {}
+        for s in options:
+            lhs, value = s.split('=', 1)
+            prefix, *key = lhs.split('.')
+
+            if prefix != "mod":
+                continue
+
+            if not key:
+                raise RegistryError(f"key expected: {s!r}")
+
+            if len(key) == 1:
+                opts.setdefault(key[0], {})['_enabled'] = value
+            else:
+                level, last_idx = opts, len(key) - 1
+                for i, k in enumerate(key):
+                    if i == last_idx:
+                        level[k] = value
+                    else:
+                        level = level.setdefault(k, {})
+
+        return opts

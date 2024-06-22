@@ -56,6 +56,16 @@ class TestConfig(unittest.TestCase):
 
         self.assertEqual(cfg.bool, True)
 
+        cfg.clear()
+        cfg.parse(["bool=false"])
+        cfg.validate()
+
+        self.assertEqual(cfg.bool, False)
+
+        cfg.clear()
+        with self.assertRaises(ConfigError):
+            cfg.parse(["bool=hello"])
+
     def test_parse_string_option(self):
         schema = {"string": Option(str)}
         cfg = Config(schema)
@@ -86,16 +96,16 @@ class TestConfig(unittest.TestCase):
 
     def test_non_strict_config(self):
         schema = {"a": Option(int), "b": Option(bool)}
-        cfg = Config(schema)
+        cfg = Config(schema, unknown_options="add")
 
         cfg.override({"a": 42, "b": True, "c": "Hello"})
         cfg.validate()
 
         self.assertEqual(cfg.c, "Hello")
 
-    def test_strict_config(self):
+    def test_error_unknown_option(self):
         schema = {"a": Option(int), "b": Option(bool)}
-        cfg = Config(schema, strict=True)
+        cfg = Config(schema, unknown_options="error")
 
         with self.assertRaises(ConfigError):
             cfg.override({"a": 42, "b": True, "c": "Hello"})
@@ -148,3 +158,36 @@ class TestConfig(unittest.TestCase):
         cfg.validate()
 
         self.assertEqual(cfg.foo.value, 10)
+
+    def test_subconfig(self):
+        subschema = {"foo": Option(int, required=True), "bar": Option(bool)}
+        subcfg = Config(subschema)
+
+        schema = {"subconfig": Option(subcfg), "foo": Option(str)}
+        cfg = Config(schema)
+
+        cfg.override({"subconfig": {"foo": 42, "bar": True}, "foo": "hello"})
+        cfg.validate()
+
+        self.assertEqual(cfg.foo, "hello")
+        self.assertEqual(cfg.subconfig.foo, 42)
+        self.assertEqual(cfg.subconfig.bar, True)
+
+        cfg.clear()
+        cfg.parse(["subconfig.foo=256", "subconfig.bar=False", "foo=world"])
+        cfg.validate()
+
+        self.assertEqual(cfg.foo, "world")
+        self.assertEqual(cfg.subconfig.foo, 256)
+        self.assertEqual(cfg.subconfig.bar, False)
+
+        cfg.subconfig.clear()
+
+        with self.assertRaises(ConfigError):
+            cfg.validate()
+
+        cfg.clear()
+        cfg.override({"subconfig": {}})
+
+        with self.assertRaises(ConfigError):
+            cfg.validate()

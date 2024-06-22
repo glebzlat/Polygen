@@ -54,7 +54,8 @@ class ParserTestMetaClass(type):
                         for name, value in capabilities.items()}
 
         module_file = tmpdir / 'parser.py'
-        gen.generate('python', tmpdir, options=capabilities, grammar=grammar)
+        gen.generate('python', tmpdir, modifier_options=capabilities,
+                     grammar=grammar)
 
         namespace = {}
         with open(module_file, 'rb') as fin:
