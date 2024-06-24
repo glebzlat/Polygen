@@ -59,7 +59,7 @@ class Generator(GeneratorBase, GrammarVisitor):
             if node.nullable:
                 self.put("# Nullable")
             if node.leftrec:
-                self.put(f"# Left recursive: {node.leftrec}")
+                self.put("# Left recursive")
 
             self.put("_begin_pos = self._mark()")
             self.visit(node.expr)
@@ -92,6 +92,8 @@ class Generator(GeneratorBase, GrammarVisitor):
 
             if node.nullable:
                 self.put("# Nullable")
+
+            self.put(f"# {node}")
 
             # Unpack values from Success wrappers
             for var in variables:

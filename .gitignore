@@ -1,3 +1,6 @@
 __pycache__/
 .env/
+eggs/
+*.egg-info/
+*.egg
 commit.msg

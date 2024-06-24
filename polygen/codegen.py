@@ -17,7 +17,7 @@ from .parser import Parser as GrammarParser
 from .preprocessor import FilePreprocessor
 
 MODULE_PATH = Path(__file__).parent.absolute()
-CODEGEN_PATH = MODULE_PATH.parent / 'codegen'
+CODEGEN_PATH = MODULE_PATH / 'backend'
 BACKEND_DIRS = list(CODEGEN_PATH.iterdir())
 
 

@@ -1,0 +1,19 @@
+[project]
+name = "polygen"
+dynamic = ["version"]
+requires-python = ">= 3.11"
+dependencies = ["click"]
+authors = [{name = "Gleb Zlatanov"}]
+description = "A Packrat parser generator tool."
+# readme = "README.md"
+# license = {file = "LICENSE"}
+classifiers = [
+  "Development Status :: 3 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Build Tools"
+]
+keywords = ["packrat", "peg", "parser", "generator", "parser generator"]
+
+[build-system]
+requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3"]
+build-backend = "setuptools.build_meta"
