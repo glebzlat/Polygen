@@ -44,6 +44,8 @@ from polygen.modifier.modifiers import (
     # ValidateNodes
 )
 
+from polygen.modifier.leftrec import compute_lr
+
 
 class TreeModifierTestMeta(type):
 
@@ -221,3 +223,60 @@ class Test_CreateAnyChar_strict(ModifierTest):
                 None,
                 Class([Range(Char('a'), Char('c'))]))])]))
     ])
+
+
+class Test_compute_lr(unittest.TestCase):
+
+    def test_simple_lr(self):
+        rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('A'))])]))
+        tree = Grammar([rule])
+        tree.entry = rule
+
+        compute_lr(tree)
+
+        self.assertTrue(rule.leftrec)
+
+    def test_simple_nullable(self):
+        nullable_rule = Rule(
+            Id('A'), Expr([Alt([NamedItem(None, ZeroOrOne(Char('.')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([nullable_rule, rule])
+        tree.entry = rule
+
+        compute_lr(tree)
+
+        self.assertTrue(rule.leftrec)
+
+    def test_complex_nullable(self):
+        nullable_rule = Rule(
+            Id('A'),
+            Expr([
+                Alt([NamedItem(None, Char('='))]),
+                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([nullable_rule, rule])
+        tree.entry = rule
+
+        compute_lr(tree)
+
+        self.assertTrue(rule.leftrec)
+
+    def test_nullable_rule_after_rhs_id(self):
+        nullable_rule = Rule(
+            Id('A'),
+            Expr([
+                Alt([NamedItem(None, Char('='))]),
+                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([rule, nullable_rule])
+        tree.entry = rule
+
+        compute_lr(tree)
+
+        self.assertTrue(rule.leftrec)

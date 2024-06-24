@@ -27,9 +27,14 @@ from ..node import (
 class NullableVisitor(GrammarVisitor):
     def __init__(self, grammar: Grammar):
         self.grammar = grammar
-        self.visited: set[str] = set()
+        self.visited: set[Id] = set()
+        self.nullables: set[Id] = set()
 
     def visit_Grammar(self, node: Grammar):
+        for r in node:
+            self.visit(r)
+
+        self.visited.clear()
         for r in node:
             self.visit(r)
 
@@ -39,10 +44,11 @@ class NullableVisitor(GrammarVisitor):
         self.visited.add(node.id)
         if self.visit(node.expr):
             node.nullable = True
+            self.nullables.add(node.id)
         return node.nullable
 
-    def visit_Expression(self, node: Expr) -> bool:
-        for alt in node.alts:
+    def visit_Expr(self, node: Expr) -> bool:
+        for alt in node:
             if self.visit(alt):
                 return True
         return False
@@ -58,6 +64,9 @@ class NullableVisitor(GrammarVisitor):
         if self.visit(node.item):
             node.nullable = True
         return node.nullable
+
+    def visit_Id(self, node: Id) -> bool:
+        return node in self.nullables
 
     def visit_Not(self, node: Not) -> bool:
         return True
@@ -124,6 +133,15 @@ class FirstGraphVisitor(GrammarVisitor):
         return names
 
     def visit_NamedItem(self, node: NamedItem):
+        return self.visit(node.item)
+
+    def visit_ZeroOrOne(self, node: ZeroOrOne):
+        return self.visit(node.item)
+
+    def visit_ZeroOrMore(self, node: ZeroOrMore):
+        return self.visit(node.item)
+
+    def visit_OneOrMore(self, node: OneOrMore):
         return self.visit(node.item)
 
     def visit_Id(self, node: Id):
