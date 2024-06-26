@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterator, TypeVar, Hashable
+from typing import Iterator, TypeVar, Hashable, OrderedDict
 
 from ..node import (
     GrammarVisitor,
     Grammar,
     Rule,
+    LR,
     MetaRule,
     Expr,
     Alt,
@@ -106,7 +107,7 @@ def compute_nullables(tree: Grammar):
 
 class FirstGraphVisitor(GrammarVisitor):
     def visit_Grammar(self, node: Grammar):
-        graph = {}
+        graph: dict[Id, list[Id]] = {}
         for r in node:
             if isinstance(r, MetaRule):
                 continue
@@ -118,16 +119,24 @@ class FirstGraphVisitor(GrammarVisitor):
         return node.id, self.visit(node.expr)
 
     def visit_Expr(self, node: Expr):
-        names = set()
+        names, added = [], set()
         for n in node:
-            names |= self.visit(n)
+            for n in self.visit(n):
+                if n in added:
+                    continue
+                names.append(n)
+                added.add(n)
         return names
 
     def visit_Alt(self, node: Alt):
-        names = set()
+        names, added = [], set()
         for i in node:
             assert type(i) is NamedItem
-            names |= self.visit(i) or set()
+            for n in (self.visit(i) or []):
+                if n in added:
+                    continue
+                names.append(n)
+                added.add(n)
             if not i.nullable:
                 break
         return names
@@ -145,22 +154,22 @@ class FirstGraphVisitor(GrammarVisitor):
         return self.visit(node.item)
 
     def visit_Id(self, node: Id):
-        return {node}
+        return [node]
 
     def visit_String(self, node: String):
-        return set()
+        return []
 
     def visit_Char(self, node: Char):
-        return set()
+        return []
 
     def visit_And(self, node: And):
-        return set()
+        return []
 
     def visit_Not(self, node: Not):
-        return set()
+        return []
 
 
-def make_first_graph(grammar: Grammar) -> dict[str, set[str]]:
+def make_first_graph(grammar: Grammar) -> dict[str, list[str]]:
     vis = FirstGraphVisitor()
     return vis.visit(grammar)
 
@@ -183,7 +192,7 @@ def strongly_connected_components(
     Returns:
         iterator
     """
-    stack: dict[str, int] = {}
+    stack: OrderedDict[str, int] = {}
 
     def dfs(v):
         if v in stack:
@@ -203,9 +212,18 @@ def compute_lr(tree: Grammar):
 
     compute_nullables(tree)
     graph = make_first_graph(tree)
-    # print(graph)
+
+    # from pprint import pprint
+    # pprint(graph, sort_dicts=False)
 
     for scc in strongly_connected_components(graph, tree.entry.id):
-        rules[scc[0]].head = True
+        lr = LR(scc)
+        # print("lr chain:", lr)
+        head_rule = rules[lr.chains[0][0]]
+        head_rule.head = True
         for involved in scc:
-            rules[involved].leftrec = True
+            rule = rules[involved]
+            if rule.leftrec is None:
+                rule.leftrec = lr.copy()
+            else:
+                rule.leftrec.chains.extend(lr.chains)

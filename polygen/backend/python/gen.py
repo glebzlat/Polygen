@@ -46,7 +46,7 @@ class Generator(GeneratorBase, GrammarVisitor):
             # Place empty line between rules, but not before the first rule
             self.emptyline()
 
-        if node.leftrec:
+        if node.leftrec is not None:
             if node.head:
                 self.put("@_memoize_lr")
         else:
@@ -55,11 +55,12 @@ class Generator(GeneratorBase, GrammarVisitor):
         self.put(f"def _{node.id.value}(self):")
 
         with self.indent():
-
             if node.nullable:
                 self.put("# Nullable")
-            if node.leftrec:
-                self.put("# Left recursive")
+            if node.leftrec is not None:
+                self.put("# Left recursive:")
+                for line in str(node.leftrec).split('\n'):
+                    self.put(f"#   {line}")
 
             self.put("_begin_pos = self._mark()")
             self.visit(node.expr)

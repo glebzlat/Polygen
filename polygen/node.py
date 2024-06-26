@@ -249,16 +249,25 @@ class Rule(DLL):
 
 
 class LR:
-    def __init__(self, head: Id, involved: tuple[Id]):
-        self.head = head
-        self.involved = involved
+    def __init__(self, *chains: tuple[Id]):
+        self.chains = list(chains)
 
     def __repr__(self):
-        return f"LR(head={self.head!r}, involved={self.involved!r})"
+        return f"LR({self.chains!r})"
 
     def __str__(self):
-        return ' -> '.join(str(i) for i in
-                           (self.head, *self.involved, self.head))
+        lines = []
+        for chain in self.chains:
+            tail = chain[0]
+            lines.append(' -> '.join(str(i) for i in (*chain, tail)))
+        return '\n'.join(lines)
+
+    @property
+    def heads(self):
+        yield from (c[0] for c in self.chains)
+
+    def copy(self):
+        return LR(*self.chains)
 
 
 class MetaRef:
@@ -360,10 +369,9 @@ class Alt(DLL):
 
     def __str__(self):
         items = ' '.join(str(i) for i in DLL.forward(self.items))
-        metarule = self.metarule
-        if metarule is None:
-            metarule = ""
-        return f"{items} {metarule}"
+        if self.metarule:
+            return ' '.join(items, str(self.metarule))
+        return items
 
     def __iter__(self):
         yield from DLL.forward(self.items)
