@@ -79,8 +79,10 @@ class ModifierRegistry:
             opts[name] = cfg
         return opts
 
-    def configure(self, options: dict[str, dict[str, Any]]) -> list[object]:
-        options = options.copy()
+    def configure(
+        self, options: dict[str, dict[str, Any]] | None = None
+    ) -> list[object]:
+        options = options.copy() if options is not None else {}
         mods = []
 
         for name in self._modifiers:
