@@ -370,7 +370,7 @@ class Alt(DLL):
     def __str__(self):
         items = ' '.join(str(i) for i in DLL.forward(self.items))
         if self.metarule:
-            return ' '.join(items, str(self.metarule))
+            return ' '.join((items, str(self.metarule)))
         return items
 
     def __iter__(self):
