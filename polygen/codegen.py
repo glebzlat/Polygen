@@ -13,6 +13,7 @@ from .modifier.tree_modifier import TreeModifier
 from .modifier.errors import TreeModifierWarning
 from .modifier.registry import ModifierRegistry
 
+from .reader import Reader
 from .parser import Parser as GrammarParser
 from .preprocessor import FilePreprocessor
 
@@ -217,7 +218,8 @@ class CodeGenerator:
             GeneratorError
         """
 
-        parser = GrammarParser(input_data)
+        reader = Reader(input_data)
+        parser = GrammarParser(reader)
         grammar = parser.parse()
         if grammar is None:
             raise CodeGeneratorError("parser failure")

@@ -4,6 +4,7 @@ import inspect
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
+from polygen.reader import Reader
 from polygen.codegen import CodeGenerator, CodeGeneratorError
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
@@ -89,7 +90,8 @@ class ParserTestMetaClass(type):
             def wrapper(self):
                 if skip is not None:
                     self.skipTest(skip.reason)
-                parser = self.parser(input_str)
+                reader = Reader(input_str)
+                parser = self.parser(reader)
                 # breakpoint()
                 result = parser.parse()
                 try:
@@ -109,7 +111,8 @@ class ParserTestMetaClass(type):
             input_str = case
 
             def wrapper(self):
-                parser = self.parser(input_str)
+                reader = Reader(input_str)
+                parser = self.parser(reader)
                 result = parser.parse()
                 try:
                     self.assertIsNone(result)

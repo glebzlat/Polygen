@@ -1,5 +1,6 @@
 import unittest
 
+from polygen.reader import Reader
 from polygen.parser import Parser
 from polygen.node import (
     DLL,
@@ -35,7 +36,8 @@ class ParserTestMetaclass(type):
 
         def test_successes(self):
             for input, clue in self.successes:
-                parser = Parser(input)
+                reader = Reader(input)
+                parser = Parser(reader)
                 result = parser.parse()
 
                 try:
@@ -48,7 +50,8 @@ class ParserTestMetaclass(type):
 
         def test_failures(self):
             for input in self.failures:
-                parser = Parser(input)
+                reader = Reader(input)
+                parser = Parser(reader)
                 result = parser.parse()
                 self.assertIsNone(result)
 
@@ -159,7 +162,7 @@ class TestEntryRule(ParserTest):
 
 class TestRuleDirectives(unittest.TestCase):
     def test_entry(self):
-        parser = Parser("@entry A <- B")
+        parser = Parser(Reader("@entry A <- B"))
         result = parser.parse()
 
         self.assertIsNotNone(result)
@@ -167,7 +170,7 @@ class TestRuleDirectives(unittest.TestCase):
         self.assertFalse(result.value.rules.begin.ignore)
 
     def test_ignore(self):
-        parser = Parser("@ignore A <- B")
+        parser = Parser(Reader("@ignore A <- B"))
         result = parser.parse()
 
         self.assertIsNotNone(result)
@@ -176,7 +179,7 @@ class TestRuleDirectives(unittest.TestCase):
 
 class TestMetaRule(ParserTest):
     def test_1(self):
-        parser = Parser("$name {expr}")
+        parser = Parser(Reader("$name {expr}"))
         result = parser.parse()
 
         self.assertIsNotNone(result)

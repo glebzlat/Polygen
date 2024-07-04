@@ -106,13 +106,13 @@ def _memoize_lr(fn):
 
 class Parser:
 
-    def __init__(self, stream, actions=None):
+    def __init__(self, reader: Reader, actions=None):
         self._memos = {}
 
         self._heads = {}
         self._lrstack = []
 
-        self._reader = Reader(stream)
+        self._reader = reader
         self._chars: list[str] = []
         self._pos = 0
 
