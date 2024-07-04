@@ -13,7 +13,7 @@ class ReaderTest(unittest.TestCase):
         clue = s
         self.assertFalse(r.eof)
         self.assertEqual(list(clue), list(r))
-        self.assertEqual(r.name, "<unicode string>")
+        self.assertEqual(r.name, "<string>")
         self.assertTrue(r.eof)
 
     def test_read_stream(self):
@@ -24,7 +24,7 @@ class ReaderTest(unittest.TestCase):
         clue = s
         self.assertFalse(r.eof)
         self.assertEqual(list(clue), list(r))
-        self.assertEqual(r.name, "<file>")
+        self.assertEqual(r.name, "<stream>")
         self.assertTrue(r.eof)
 
     def test_line_count(self):

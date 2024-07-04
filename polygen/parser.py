@@ -6,7 +6,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import Optional, Union, Any, List
 
-from polygen.reader import Reader
+from polygen.reader import Token, Reader
 from polygen.node import (
     Grammar,
     Rule,
@@ -98,30 +98,30 @@ class Parser:
     def __init__(self, reader: Reader, actions=None):
         self._memos = {}
 
-        self._heads = {}
-        self._lrstack = []
-
         self._reader = reader
-        self._chars: List[str] = []
+        self._tokens: List[Token] = []
         self._pos = 0
 
     @_memoize
-    def _expectc(self, char: Optional[str] = None) -> Optional[str]:
-        if c := self._peek_char():
-            if char is None or c == char:
+    def _expectc(self, char: Optional[str] = None) -> Optional[Token]:
+        if tok := self._peek_token():
+            if char is None or tok.value == char:
                 self._pos += 1
-                return c
+                return tok
         return None
 
     @_memoize
-    def _expects(self, string: str) -> Optional[str]:
+    def _expects(self, string: str) -> Optional[Token]:
         pos = self._mark()
         for c in string:
-            if c != self._peek_char():
+            tok = self._peek_token()
+            if tok is None or c != tok.value:
                 self._reset(pos)
                 return None
             self._pos += 1
-        return string
+        reader = self._reader
+        line, start, end, filename = reader.line, pos, self._pos, reader.name
+        return Token(string, line, start, end, filename)
 
     def _lookahead(self, positive, fn, *args) -> Optional[list]:
         pos = self._mark()
@@ -131,53 +131,54 @@ class Parser:
             return []
         return None
 
-    def _loop(self, nonempty, fn, *args) -> Optional[List[str]]:
+    def _loop(self, nonempty, fn, *args) -> Optional[List[Token]]:
         pos = lastpos = self._mark()
-        nodes = []
-        while (node := fn(*args)) is not None and self._mark() > lastpos:
-            nodes.append(node)
+        tokens = []
+        while (tok := fn(*args)) is not None and self._mark() > lastpos:
+            tokens.append(tok)
             lastpos = self._mark()
-        if len(nodes) >= nonempty:
-            return nodes
+        if len(tokens) >= nonempty:
+            return tokens
         self._reset(pos)
         return None
 
-    def _rep(self, beg, end, fn, *args) -> Optional[List[str]]:
+    def _rep(self, beg, end, fn, *args) -> Optional[List[Token]]:
         end = beg if end is None else end
         pos = lastpos = self._mark()
         count = 0
-        nodes = []
-        while (node := fn(*args)) is not None and self._mark() > lastpos:
-            nodes.append(node)
+        tokens = []
+        while (tok := fn(*args)) is not None and self._mark() > lastpos:
+            tokens.append(tok)
             lastpos = self._mark()
             count += 1
         if count >= beg and count <= end:
-            return nodes
+            return tokens
         self._reset(pos)
         return None
 
     def _ranges(self, *ranges) -> Optional[str]:
-        char = self._peek_char()
-        if char is None:
+        token = self._peek_token()
+        if token is None:
             return None
+        value = token.value
         for beg, end in ranges:
-            if char >= beg and char <= end:
+            if value >= beg and value <= end:
                 self._pos += 1
-                return char
+                return token
 
-    def _maybe(self, fn, *args) -> Union[list, str, Any]:
+    def _maybe(self, fn, *args) -> Union[list, Token, Any]:
         result = fn(*args)
         return result if result is not None else []
 
-    def _get_char(self) -> Optional[str]:
-        char = self._peek_char()
+    def _get_token(self) -> Optional[Token]:
+        token = self._peek_token()
         self._pos += 1
-        return char
+        return token
 
-    def _peek_char(self) -> Optional[str]:
-        if self._pos == len(self._chars):
-            self._chars.append(next(self._reader, None))
-        return self._chars[self._pos]
+    def _peek_token(self) -> Optional[Token]:
+        if self._pos == len(self._tokens):
+            self._tokens.append(next(self._reader, None))
+        return self._tokens[self._pos]
 
     def _mark(self) -> int:
         return self._pos
