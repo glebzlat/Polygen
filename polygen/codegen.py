@@ -223,7 +223,7 @@ class CodeGenerator:
         grammar = parser.parse()
         if grammar is None:
             raise CodeGeneratorError("parser failure")
-        grammar = grammar.value
+        grammar = grammar
 
         modifiers = self.registry.configure(modifier_options)
 

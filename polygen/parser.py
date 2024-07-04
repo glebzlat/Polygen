@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from functools import wraps
+from typing import Optional, Union, Any, List
 
 from polygen.reader import Reader
 from polygen.node import (
@@ -31,21 +32,8 @@ from polygen.node import (
 __all__ = ['Parser']
 
 
-class Success:
-    """Parsing result wrapper."""
-
-    def __init__(self, value=None):
-        self.value = value
-
-    def __repr__(self):
-        return f'Success({self.value})'
-
-    def __str__(self):
-        return repr(self)
-
-
 class _MemoEntry:
-    def __init__(self, value, pos):
+    def __init__(self, value: Union[str, Any], pos: int):
         self.value = value
         self.pos = pos
 
@@ -64,16 +52,10 @@ def _memoize(fn):
         key = (fn, args, pos)
         memo = self._memos.get(key)
         if memo is None:
-            result = fn(self, *args)
-            self._memos[key] = _MemoEntry(result, self._mark())
+            self._memos[key] = memo = _MemoEntry(fn(self, *args), self._mark())
         else:
-            result = memo.value
             self._reset(memo.pos)
-
-        if result is not None:
-            if type(result) is not Success:
-                return Success(result)
-        return result
+        return memo.value
 
     return wrapper
 
@@ -106,9 +88,6 @@ def _memoize_lr(fn):
             result = memo.value
             self._reset(memo.pos)
 
-        if result is not None:
-            if type(result) is not Success:
-                return Success(result)
         return result
 
     return wrapper_lr
@@ -123,49 +102,47 @@ class Parser:
         self._lrstack = []
 
         self._reader = reader
-        self._chars: list[str] = []
+        self._chars: List[str] = []
         self._pos = 0
 
     @_memoize
-    def _expectc(self, char: str | None = None) -> Success | None:
+    def _expectc(self, char: Optional[str] = None) -> Optional[str]:
         if c := self._peek_char():
             if char is None or c == char:
                 self._pos += 1
-                return Success(c)
+                return c
         return None
 
     @_memoize
-    def _expects(self, string: str) -> Success | None:
+    def _expects(self, string: str) -> Optional[str]:
         pos = self._mark()
         for c in string:
             if c != self._peek_char():
                 self._reset(pos)
                 return None
             self._pos += 1
-        return Success(string)
+        return string
 
-    def _lookahead(self, positive, fn, *args) -> Success | None:
+    def _lookahead(self, positive, fn, *args) -> Optional[list]:
         pos = self._mark()
         ok = fn(*args) is not None
         self._reset(pos)
         if ok == positive:
-            return Success()
+            return []
         return None
 
-    def _loop(self, nonempty, fn, *args) -> Success | None:
+    def _loop(self, nonempty, fn, *args) -> Optional[List[str]]:
         pos = lastpos = self._mark()
         nodes = []
         while (node := fn(*args)) is not None and self._mark() > lastpos:
-            # Unwrap nodes, removing empty wrappers
-            if node.value is not None:
-                nodes.append(node.value)
+            nodes.append(node)
             lastpos = self._mark()
         if len(nodes) >= nonempty:
-            return Success(nodes)
+            return nodes
         self._reset(pos)
         return None
 
-    def _rep(self, beg, end, fn, *args) -> Success | None:
+    def _rep(self, beg, end, fn, *args) -> Optional[List[str]]:
         end = beg if end is None else end
         pos = lastpos = self._mark()
         count = 0
@@ -175,30 +152,29 @@ class Parser:
             lastpos = self._mark()
             count += 1
         if count >= beg and count <= end:
-            # Unwrap nodes, removing empty wrappers
-            nodes = tuple(n.value for n in nodes if n.value is not None)
-            return Success(nodes)
+            return nodes
         self._reset(pos)
         return None
 
-    def _ranges(self, *ranges):
+    def _ranges(self, *ranges) -> Optional[str]:
         char = self._peek_char()
         if char is None:
             return None
         for beg, end in ranges:
             if char >= beg and char <= end:
-                return Success(self._get_char())
+                self._pos += 1
+                return char
 
-    def _maybe(self, fn, *args):
+    def _maybe(self, fn, *args) -> Union[list, str, Any]:
         result = fn(*args)
-        return Success(result.value if result is not None else result)
+        return result if result is not None else []
 
-    def _get_char(self) -> str | None:
+    def _get_char(self) -> Optional[str]:
         char = self._peek_char()
         self._pos += 1
         return char
 
-    def _peek_char(self) -> str | None:
+    def _peek_char(self) -> Optional[str]:
         if self._pos == len(self._chars):
             self._chars.append(next(self._reader, None))
         return self._chars[self._pos]
@@ -209,20 +185,18 @@ class Parser:
     def _reset(self, pos: int):
         self._pos = pos
 
-    def parse(self) -> Success:
+    def parse(self) -> Any:
         return self._Grammar()
 
     @_memoize
     def _Grammar(self):
         _begin_pos = self._mark()
         if (
-            self._Spacing()
-            and (entity := self._loop(True, self._Entity))
-            and (endoffile := self._EndOfFile())
+            self._Spacing() is not None
+            and (entity := self._loop(True, self._Entity)) is not None
+            and (endoffile := self._EndOfFile()) is not None
         ):
             # Spacing Entity+ EndOfFile
-            entity = entity.value
-            endoffile = endoffile.value
 
             # Metarule: grammar_action
             rules = (r for r in entity if isinstance(r, Rule))
@@ -234,15 +208,13 @@ class Parser:
     @_memoize
     def _Entity(self):
         _begin_pos = self._mark()
-        if ((definition := self._Definition())):
+        if ((definition := self._Definition()) is not None):
             # Definition
-            definition = definition.value
-            return Success(definition)
+            return definition
         self._reset(_begin_pos)
-        if ((metadef := self._MetaDef())):
+        if ((metadef := self._MetaDef()) is not None):
             # MetaDef
-            metadef = metadef.value
-            return Success(metadef)
+            return metadef
         self._reset(_begin_pos)
         return None
 
@@ -250,25 +222,21 @@ class Parser:
     def _Definition(self):
         _begin_pos = self._mark()
         if (
-            (directive := self._loop(False, self._Directive))
-            and (identifier := self._Identifier())
-            and self._LEFTARROW()
-            and (expression := self._Expression())
+            (directive := self._loop(False, self._Directive)) is not None
+            and (identifier := self._Identifier()) is not None
+            and self._LEFTARROW() is not None
+            and (expression := self._Expression()) is not None
         ):
             # Directive* Identifier LEFTARROW Expression
-            directive = directive.value
-            identifier = identifier.value
-            expression = expression.value
 
             # Metarule: def_action
             ignore = "ignore" in directive
             entry = "entry" in directive
             return Rule(identifier, expression, ignore=ignore, entry=entry)
         self._reset(_begin_pos)
-        if ((metadef := self._MetaDef())):
+        if ((metadef := self._MetaDef()) is not None):
             # MetaDef
-            metadef = metadef.value
-            return Success(metadef)
+            return metadef
         self._reset(_begin_pos)
         return None
 
@@ -276,12 +244,11 @@ class Parser:
     def _Directive(self):
         _begin_pos = self._mark()
         if (
-            self._AT()
-            and (dirname := self._DirName())
-            and self._Spacing()
+            self._AT() is not None
+            and (dirname := self._DirName()) is not None
+            and self._Spacing() is not None
         ):
             # AT DirName Spacing
-            dirname = dirname.value
 
             # Metarule: directive_action
             return dirname.value
@@ -291,10 +258,9 @@ class Parser:
     @_memoize
     def _DirName(self):
         _begin_pos = self._mark()
-        if ((identifier := self._Identifier())):
+        if ((identifier := self._Identifier()) is not None):
             # Identifier
-            identifier = identifier.value
-            return Success(identifier)
+            return identifier
         self._reset(_begin_pos)
         return None
 
@@ -303,13 +269,11 @@ class Parser:
         # Nullable
         _begin_pos = self._mark()
         if (
-            (sequence := self._Sequence())
-            and (seqs := self._loop(False, self._Expression__GEN_1))
+            (sequence := self._Sequence()) is not None
+            and (seqs := self._loop(False, self._Expression__GEN_1)) is not None
         ):
             # Nullable
             # Sequence Expression__GEN_1*
-            sequence = sequence.value
-            seqs = seqs.value
 
             # Metarule: expr_action
             return Expr((sequence, *seqs))
@@ -321,15 +285,14 @@ class Parser:
         # Nullable
         _begin_pos = self._mark()
         if (
-            (parts := self._loop(False, self._Prefix))
-            and (m := self._maybe(self._MetaRule))
+            (parts := self._loop(False, self._Prefix)) is not None
+            and (m := self._maybe(self._MetaRule)) is not None
         ):
             # Nullable
             # Prefix* MetaRule?
-            parts = parts.value
-            m = m.value
 
             # Metarule: sequence_action
+            m = m or None
             return Alt(parts, metarule=m)
         self._reset(_begin_pos)
         return None
@@ -338,17 +301,15 @@ class Parser:
     def _Prefix(self):
         _begin_pos = self._mark()
         if (
-            (metaname := self._maybe(self._MetaName))
-            and (lookahead := self._maybe(self._Prefix__GEN_1))
-            and (suffix := self._Suffix())
+            (metaname := self._maybe(self._MetaName)) is not None
+            and (lookahead := self._maybe(self._Prefix__GEN_1)) is not None
+            and (suffix := self._Suffix()) is not None
         ):
             # MetaName? Prefix__GEN_1? Suffix
-            metaname = metaname.value
-            lookahead = lookahead.value
-            suffix = suffix.value
 
             # Metarule: prefix_action
-            obj = lookahead(suffix) if lookahead is not None else suffix
+            obj = lookahead(suffix) if lookahead else suffix
+            metaname = metaname or None
             return NamedItem(metaname, obj)
         self._reset(_begin_pos)
         return None
@@ -357,15 +318,13 @@ class Parser:
     def _Suffix(self):
         _begin_pos = self._mark()
         if (
-            (primary := self._Primary())
-            and (q := self._maybe(self._Suffix__GEN_1))
+            (primary := self._Primary()) is not None
+            and (q := self._maybe(self._Suffix__GEN_1)) is not None
         ):
             # Primary Suffix__GEN_1?
-            primary = primary.value
-            q = q.value
 
             # Metarule: suffix_action
-            return q(primary) if q is not None else primary
+            return q(primary) if q else primary
         self._reset(_begin_pos)
         return None
 
@@ -373,36 +332,31 @@ class Parser:
     def _Primary(self):
         _begin_pos = self._mark()
         if (
-            (identifier := self._Identifier())
-            and self._lookahead(False, self._LEFTARROW)
+            (identifier := self._Identifier()) is not None
+            and self._lookahead(False, self._LEFTARROW) is not None
         ):
             # Identifier !LEFTARROW
-            identifier = identifier.value
-            return Success(identifier)
+            return identifier
         self._reset(_begin_pos)
         if (
-            self._OPEN()
-            and (expression := self._Expression())
-            and self._CLOSE()
+            self._OPEN() is not None
+            and (expression := self._Expression()) is not None
+            and self._CLOSE() is not None
         ):
             # OPEN Expression CLOSE
-            expression = expression.value
-            return Success(expression)
+            return expression
         self._reset(_begin_pos)
-        if ((literal := self._Literal())):
+        if ((literal := self._Literal()) is not None):
             # Literal
-            literal = literal.value
-            return Success(literal)
+            return literal
         self._reset(_begin_pos)
-        if ((_class := self._Class())):
+        if ((_class := self._Class()) is not None):
             # Class
-            _class = _class.value
-            return Success(_class)
+            return _class
         self._reset(_begin_pos)
-        if ((dot := self._DOT())):
+        if ((dot := self._DOT()) is not None):
             # DOT
-            dot = dot.value
-            return Success(dot)
+            return dot
         self._reset(_begin_pos)
         return None
 
@@ -410,12 +364,11 @@ class Parser:
     def _MetaName(self):
         _begin_pos = self._mark()
         if (
-            (identifier := self._Identifier())
-            and self._SEMI()
+            (identifier := self._Identifier()) is not None
+            and self._SEMI() is not None
         ):
             # Identifier SEMI
-            identifier = identifier.value
-            return Success(identifier)
+            return identifier
         self._reset(_begin_pos)
         return None
 
@@ -423,25 +376,21 @@ class Parser:
     def _MetaRule(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('$'))
-            and (body := self._MetaDefBody())
+            (_1 := self._expectc('$')) is not None
+            and (body := self._MetaDefBody()) is not None
         ):
             # '$' MetaDefBody
-            _1 = _1.value
-            body = body.value
 
             # Metarule: metarule_def_action
             return MetaRule(None, body)
         self._reset(_begin_pos)
         if (
-            (_1 := self._expectc('$'))
-            and self._Spacing()
-            and (identifier := self._Identifier())
-            and self._lookahead(False, self._expectc, '{')
+            (_1 := self._expectc('$')) is not None
+            and self._Spacing() is not None
+            and (identifier := self._Identifier()) is not None
+            and self._lookahead(False, self._expectc, '{') is not None
         ):
             # '$' Spacing Identifier !'{'
-            _1 = _1.value
-            identifier = identifier.value
 
             # Metarule: metarule_ref_action
             return MetaRef(identifier)
@@ -452,15 +401,12 @@ class Parser:
     def _MetaDef(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('$'))
-            and self._Spacing()
-            and (identifier := self._Identifier())
-            and (expr := self._MetaDefBody())
+            (_1 := self._expectc('$')) is not None
+            and self._Spacing() is not None
+            and (identifier := self._Identifier()) is not None
+            and (expr := self._MetaDefBody()) is not None
         ):
             # '$' Spacing Identifier MetaDefBody
-            _1 = _1.value
-            identifier = identifier.value
-            expr = expr.value
 
             # Metarule: metadef_action
             return MetaRule(identifier, expr)
@@ -471,15 +417,12 @@ class Parser:
     def _MetaDefBody(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('{'))
-            and (expr := self._loop(False, self._MetaDefBody__GEN_2))
-            and (_2 := self._expectc('}'))
-            and self._Spacing()
+            (_1 := self._expectc('{')) is not None
+            and (expr := self._loop(False, self._MetaDefBody__GEN_2)) is not None
+            and (_2 := self._expectc('}')) is not None
+            and self._Spacing() is not None
         ):
             # '{' MetaDefBody__GEN_2* '}' Spacing
-            _1 = _1.value
-            expr = expr.value
-            _2 = _2.value
 
             # Metarule: metadef_body_action
             return ''.join(expr)
@@ -489,9 +432,8 @@ class Parser:
     @_memoize
     def _EscCurClose(self):
         _begin_pos = self._mark()
-        if ((str := self._expects("\\}"))):
+        if ((str := self._expects("\\}")) is not None):
             # "\\}"
-            str = str.value
 
             # Metarule: esc_cur_close_action
             return '}'
@@ -502,13 +444,11 @@ class Parser:
     def _Identifier(self):
         _begin_pos = self._mark()
         if (
-            (start := self._IdentStart())
-            and (cont := self._loop(False, self._IdentCont))
-            and self._Spacing()
+            (start := self._IdentStart()) is not None
+            and (cont := self._loop(False, self._IdentCont)) is not None
+            and self._Spacing() is not None
         ):
             # IdentStart IdentCont* Spacing
-            start = start.value
-            cont = cont.value
 
             # Metarule: ident_action
             return Id(''.join((start, *cont)))
@@ -518,25 +458,22 @@ class Parser:
     @_memoize
     def _IdentStart(self):
         _begin_pos = self._mark()
-        if ((_1 := self._ranges(('a', 'z'), ('A', 'Z'), ('_', '_')))):
+        if ((_1 := self._ranges(('a', 'z'), ('A', 'Z'), ('_', '_'))) is not None):
             # [a-zA-Z_]
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IdentCont(self):
         _begin_pos = self._mark()
-        if ((identstart := self._IdentStart())):
+        if ((identstart := self._IdentStart()) is not None):
             # IdentStart
-            identstart = identstart.value
-            return Success(identstart)
+            return identstart
         self._reset(_begin_pos)
-        if ((_1 := self._ranges(('0', '9')))):
+        if ((_1 := self._ranges(('0', '9'))) is not None):
             # [0-9]
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -544,15 +481,12 @@ class Parser:
     def _Literal(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._ranges(("'", "'")))
-            and (chars := self._loop(False, self._Literal__GEN_1))
-            and (_2 := self._ranges(("'", "'")))
-            and self._Spacing()
+            (_1 := self._ranges(("'", "'"))) is not None
+            and (chars := self._loop(False, self._Literal__GEN_1)) is not None
+            and (_2 := self._ranges(("'", "'"))) is not None
+            and self._Spacing() is not None
         ):
             # ['] Literal__GEN_1* ['] Spacing
-            _1 = _1.value
-            chars = chars.value
-            _2 = _2.value
 
             # Metarule: literal_action
             if len(chars) == 1:
@@ -560,15 +494,12 @@ class Parser:
             return String(chars)
         self._reset(_begin_pos)
         if (
-            (_1 := self._ranges(('"', '"')))
-            and (chars := self._loop(False, self._Literal__GEN_2))
-            and (_2 := self._ranges(('"', '"')))
-            and self._Spacing()
+            (_1 := self._ranges(('"', '"'))) is not None
+            and (chars := self._loop(False, self._Literal__GEN_2)) is not None
+            and (_2 := self._ranges(('"', '"'))) is not None
+            and self._Spacing() is not None
         ):
             # ["] Literal__GEN_2* ["] Spacing
-            _1 = _1.value
-            chars = chars.value
-            _2 = _2.value
 
             # Metarule: literal_action
             if len(chars) == 1:
@@ -581,15 +512,12 @@ class Parser:
     def _Class(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('['))
-            and (ranges := self._loop(False, self._Class__GEN_1))
-            and (_2 := self._expectc(']'))
-            and self._Spacing()
+            (_1 := self._expectc('[')) is not None
+            and (ranges := self._loop(False, self._Class__GEN_1)) is not None
+            and (_2 := self._expectc(']')) is not None
+            and self._Spacing() is not None
         ):
             # '[' Class__GEN_1* ']' Spacing
-            _1 = _1.value
-            ranges = ranges.value
-            _2 = _2.value
 
             # Metarule: class_action
             return Class(ranges)
@@ -600,21 +528,17 @@ class Parser:
     def _Range(self):
         _begin_pos = self._mark()
         if (
-            (beg := self._Char())
-            and (_1 := self._expectc('-'))
-            and (end := self._Char())
+            (beg := self._Char()) is not None
+            and (_1 := self._expectc('-')) is not None
+            and (end := self._Char()) is not None
         ):
             # Char '-' Char
-            beg = beg.value
-            _1 = _1.value
-            end = end.value
 
             # Metarule: range_2_action
             return Range(beg, end)
         self._reset(_begin_pos)
-        if ((beg := self._Char())):
+        if ((beg := self._Char()) is not None):
             # Char
-            beg = beg.value
 
             # Metarule: range_1_action
             return Range(beg)
@@ -625,12 +549,10 @@ class Parser:
     def _Char(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('\\'))
-            and (char := self._ranges(('n', 'n'), ('r', 'r'), ('t', 't'), ("'", "'"), ('"', '"'), ('[', '['), (']', ']'), ('\\', '\\')))
+            (_1 := self._expectc('\\')) is not None
+            and (char := self._ranges(('n', 'n'), ('r', 'r'), ('t', 't'), ("'", "'"), ('"', '"'), ('[', '['), (']', ']'), ('\\', '\\'))) is not None
         ):
             # '\\' [nrt'"[]\\]
-            _1 = _1.value
-            char = char.value
 
             # Metarule: esc_char_action
             chr_map = {
@@ -642,30 +564,23 @@ class Parser:
             return Char(chr_map.get(char, char))
         self._reset(_begin_pos)
         if (
-            (_1 := self._expectc('\\'))
-            and (char1 := self._ranges(('0', '2')))
-            and (char2 := self._ranges(('0', '7')))
-            and (char3 := self._ranges(('0', '7')))
+            (_1 := self._expectc('\\')) is not None
+            and (char1 := self._ranges(('0', '2'))) is not None
+            and (char2 := self._ranges(('0', '7'))) is not None
+            and (char3 := self._ranges(('0', '7'))) is not None
         ):
             # '\\' [0-2] [0-7] [0-7]
-            _1 = _1.value
-            char1 = char1.value
-            char2 = char2.value
-            char3 = char3.value
 
             # Metarule: oct_char_action_1
             string = ''.join((char1, char2, char3))
             return Char(int(string, base=8))
         self._reset(_begin_pos)
         if (
-            (_1 := self._expectc('\\'))
-            and (char1 := self._ranges(('0', '7')))
-            and (char2 := self._maybe(self._ranges, ('0', '7')))
+            (_1 := self._expectc('\\')) is not None
+            and (char1 := self._ranges(('0', '7'))) is not None
+            and (char2 := self._maybe(self._ranges, ('0', '7'))) is not None
         ):
             # '\\' [0-7] [0-7]?
-            _1 = _1.value
-            char1 = char1.value
-            char2 = char2.value
 
             # Metarule: oct_char_action_2
             char2 = char2 if isinstance(char2, str) else ''
@@ -673,23 +588,20 @@ class Parser:
             return Char(int(string, base=8))
         self._reset(_begin_pos)
         if (
-            (_1 := self._expects("\\u"))
-            and (chars := self._rep(4, None, self._HexDigit))
+            (_1 := self._expects("\\u")) is not None
+            and (chars := self._rep(4, None, self._HexDigit)) is not None
         ):
             # "\\u" HexDigit{4}
-            _1 = _1.value
-            chars = chars.value
 
             # Metarule: unicode_char_action
             string = ''.join(chars)
             return Char(int(string, base=16))
         self._reset(_begin_pos)
         if (
-            self._lookahead(False, self._expectc, '\\')
-            and (any := self._expectc())
+            self._lookahead(False, self._expectc, '\\') is not None
+            and (any := self._expectc()) is not None
         ):
             # !'\\' .
-            any = any.value
 
             # Metarule: any_char_action
             return Char(ord(any))
@@ -700,18 +612,15 @@ class Parser:
     def _Repetition(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('{'))
-            and (grp := self._Repetition__GEN_1())
-            and (_2 := self._expectc('}'))
-            and self._Spacing()
+            (_1 := self._expectc('{')) is not None
+            and (grp := self._Repetition__GEN_1()) is not None
+            and (_2 := self._expectc('}')) is not None
+            and self._Spacing() is not None
         ):
             # '{' Repetition__GEN_1 '}' Spacing
-            _1 = _1.value
-            grp = grp.value
-            _2 = _2.value
 
             # Metarule: rep_action
-            beg, end = grp if isinstance(grp, tuple) else (grp, None)
+            beg, end = grp if isinstance(grp, list) else (grp, None)
             return lambda item: Repetition(item, beg, end)
         self._reset(_begin_pos)
         return None
@@ -719,9 +628,8 @@ class Parser:
     @_memoize
     def _Number(self):
         _begin_pos = self._mark()
-        if ((chars := self._loop(True, self._ranges, ('0', '9')))):
+        if ((chars := self._loop(True, self._ranges, ('0', '9'))) is not None):
             # [0-9]+
-            chars = chars.value
 
             # Metarule: number_action
             string = ''.join(chars)
@@ -732,10 +640,9 @@ class Parser:
     @_memoize
     def _HexDigit(self):
         _begin_pos = self._mark()
-        if ((char := self._ranges(('a', 'f'), ('A', 'F'), ('0', '9')))):
+        if ((char := self._ranges(('a', 'f'), ('A', 'F'), ('0', '9'))) is not None):
             # [a-fA-F0-9]
-            char = char.value
-            return Success(char)
+            return char
         self._reset(_begin_pos)
         return None
 
@@ -743,12 +650,11 @@ class Parser:
     def _LEFTARROW(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expects("<-"))
-            and self._Spacing()
+            (_1 := self._expects("<-")) is not None
+            and self._Spacing() is not None
         ):
             # "<-" Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -756,12 +662,11 @@ class Parser:
     def _SLASH(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('/'))
-            and self._Spacing()
+            (_1 := self._expectc('/')) is not None
+            and self._Spacing() is not None
         ):
             # '/' Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -769,11 +674,10 @@ class Parser:
     def _AND(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('&'))
-            and self._Spacing()
+            (_1 := self._expectc('&')) is not None
+            and self._Spacing() is not None
         ):
             # '&' Spacing
-            _1 = _1.value
 
             # Metarule: and_action
             return And
@@ -784,11 +688,10 @@ class Parser:
     def _NOT(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('!'))
-            and self._Spacing()
+            (_1 := self._expectc('!')) is not None
+            and self._Spacing() is not None
         ):
             # '!' Spacing
-            _1 = _1.value
 
             # Metarule: not_action
             return Not
@@ -799,11 +702,10 @@ class Parser:
     def _QUESTION(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('?'))
-            and self._Spacing()
+            (_1 := self._expectc('?')) is not None
+            and self._Spacing() is not None
         ):
             # '?' Spacing
-            _1 = _1.value
 
             # Metarule: optional_action
             return ZeroOrOne
@@ -814,11 +716,10 @@ class Parser:
     def _STAR(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('*'))
-            and self._Spacing()
+            (_1 := self._expectc('*')) is not None
+            and self._Spacing() is not None
         ):
             # '*' Spacing
-            _1 = _1.value
 
             # Metarule: zero_or_more_action
             return ZeroOrMore
@@ -829,11 +730,10 @@ class Parser:
     def _PLUS(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('+'))
-            and self._Spacing()
+            (_1 := self._expectc('+')) is not None
+            and self._Spacing() is not None
         ):
             # '+' Spacing
-            _1 = _1.value
 
             # Metarule: one_or_more_action
             return OneOrMore
@@ -844,12 +744,11 @@ class Parser:
     def _OPEN(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('('))
-            and self._Spacing()
+            (_1 := self._expectc('(')) is not None
+            and self._Spacing() is not None
         ):
             # '(' Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -857,12 +756,11 @@ class Parser:
     def _CLOSE(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc(')'))
-            and self._Spacing()
+            (_1 := self._expectc(')')) is not None
+            and self._Spacing() is not None
         ):
             # ')' Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -870,11 +768,10 @@ class Parser:
     def _DOT(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('.'))
-            and self._Spacing()
+            (_1 := self._expectc('.')) is not None
+            and self._Spacing() is not None
         ):
             # '.' Spacing
-            _1 = _1.value
 
             # Metarule: dot_action
             return AnyChar()
@@ -885,12 +782,11 @@ class Parser:
     def _AT(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('@'))
-            and self._Spacing()
+            (_1 := self._expectc('@')) is not None
+            and self._Spacing() is not None
         ):
             # '@' Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -898,12 +794,11 @@ class Parser:
     def _SEMI(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc(':'))
-            and self._Spacing()
+            (_1 := self._expectc(':')) is not None
+            and self._Spacing() is not None
         ):
             # ':' Spacing
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -911,11 +806,10 @@ class Parser:
     def _Spacing(self):
         # Nullable
         _begin_pos = self._mark()
-        if ((_1 := self._loop(False, self._Spacing__GEN_1))):
+        if ((_1 := self._loop(False, self._Spacing__GEN_1)) is not None):
             # Nullable
             # Spacing__GEN_1*
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -923,56 +817,46 @@ class Parser:
     def _Comment(self):
         _begin_pos = self._mark()
         if (
-            (_1 := self._expectc('#'))
-            and (_2 := self._loop(False, self._Comment__GEN_1))
-            and (endofline := self._EndOfLine())
+            (_1 := self._expectc('#')) is not None
+            and (_2 := self._loop(False, self._Comment__GEN_1)) is not None
+            and (endofline := self._EndOfLine()) is not None
         ):
             # '#' Comment__GEN_1* EndOfLine
-            _1 = _1.value
-            _2 = _2.value
-            endofline = endofline.value
-            __tup = tuple(x for x in (_1, _2, endofline) if x is not None)
-            return Success(__tup)
+            return [_1, _2, endofline]
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Space(self):
         _begin_pos = self._mark()
-        if ((_1 := self._expectc(' '))):
+        if ((_1 := self._expectc(' ')) is not None):
             # ' '
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\t'))):
+        if ((_1 := self._expectc('\t')) is not None):
             # '\t'
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
-        if ((endofline := self._EndOfLine())):
+        if ((endofline := self._EndOfLine()) is not None):
             # EndOfLine
-            endofline = endofline.value
-            return Success(endofline)
+            return endofline
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _EndOfLine(self):
         _begin_pos = self._mark()
-        if ((_1 := self._expects("\r\n"))):
+        if ((_1 := self._expects("\r\n")) is not None):
             # "\r\n"
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\n'))):
+        if ((_1 := self._expectc('\n')) is not None):
             # '\n'
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\r'))):
+        if ((_1 := self._expectc('\r')) is not None):
             # '\r'
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -980,10 +864,10 @@ class Parser:
     def _EndOfFile(self):
         # Nullable
         _begin_pos = self._mark()
-        if (self._lookahead(False, self._expectc)):
+        if (self._lookahead(False, self._expectc) is not None):
             # Nullable
             # !.
-            return Success()
+            return []
         self._reset(_begin_pos)
         return None
 
@@ -991,67 +875,58 @@ class Parser:
     def _Expression__GEN_1(self):
         _begin_pos = self._mark()
         if (
-            self._SLASH()
-            and (sequence := self._Sequence())
+            self._SLASH() is not None
+            and (sequence := self._Sequence()) is not None
         ):
             # SLASH Sequence
-            sequence = sequence.value
-            return Success(sequence)
+            return sequence
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Prefix__GEN_1(self):
         _begin_pos = self._mark()
-        if ((_and := self._AND())):
+        if ((_and := self._AND()) is not None):
             # AND
-            _and = _and.value
-            return Success(_and)
+            return _and
         self._reset(_begin_pos)
-        if ((_not := self._NOT())):
+        if ((_not := self._NOT()) is not None):
             # NOT
-            _not = _not.value
-            return Success(_not)
+            return _not
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Suffix__GEN_1(self):
         _begin_pos = self._mark()
-        if ((question := self._QUESTION())):
+        if ((question := self._QUESTION()) is not None):
             # QUESTION
-            question = question.value
-            return Success(question)
+            return question
         self._reset(_begin_pos)
-        if ((star := self._STAR())):
+        if ((star := self._STAR()) is not None):
             # STAR
-            star = star.value
-            return Success(star)
+            return star
         self._reset(_begin_pos)
-        if ((plus := self._PLUS())):
+        if ((plus := self._PLUS()) is not None):
             # PLUS
-            plus = plus.value
-            return Success(plus)
+            return plus
         self._reset(_begin_pos)
-        if ((repetition := self._Repetition())):
+        if ((repetition := self._Repetition()) is not None):
             # Repetition
-            repetition = repetition.value
-            return Success(repetition)
+            return repetition
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaDefBody__GEN_1(self):
         _begin_pos = self._mark()
-        if ((esccurclose := self._EscCurClose())):
+        if ((esccurclose := self._EscCurClose()) is not None):
             # EscCurClose
-            esccurclose = esccurclose.value
-            return Success(esccurclose)
+            return esccurclose
         self._reset(_begin_pos)
-        if ((_1 := self._expectc())):
+        if ((_1 := self._expectc()) is not None):
             # .
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -1059,12 +934,11 @@ class Parser:
     def _MetaDefBody__GEN_2(self):
         _begin_pos = self._mark()
         if (
-            self._lookahead(False, self._expectc, '}')
-            and (_1 := self._MetaDefBody__GEN_1())
+            self._lookahead(False, self._expectc, '}') is not None
+            and (_1 := self._MetaDefBody__GEN_1()) is not None
         ):
             # !'}' MetaDefBody__GEN_1
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -1072,12 +946,11 @@ class Parser:
     def _Literal__GEN_1(self):
         _begin_pos = self._mark()
         if (
-            self._lookahead(False, self._ranges, ("'", "'"))
-            and (char := self._Char())
+            self._lookahead(False, self._ranges, ("'", "'")) is not None
+            and (char := self._Char()) is not None
         ):
             # !['] Char
-            char = char.value
-            return Success(char)
+            return char
         self._reset(_begin_pos)
         return None
 
@@ -1085,12 +958,11 @@ class Parser:
     def _Literal__GEN_2(self):
         _begin_pos = self._mark()
         if (
-            self._lookahead(False, self._ranges, ('"', '"'))
-            and (char := self._Char())
+            self._lookahead(False, self._ranges, ('"', '"')) is not None
+            and (char := self._Char()) is not None
         ):
             # !["] Char
-            char = char.value
-            return Success(char)
+            return char
         self._reset(_begin_pos)
         return None
 
@@ -1098,12 +970,11 @@ class Parser:
     def _Class__GEN_1(self):
         _begin_pos = self._mark()
         if (
-            self._lookahead(False, self._expectc, ']')
-            and (range := self._Range())
+            self._lookahead(False, self._expectc, ']') is not None
+            and (range := self._Range()) is not None
         ):
             # !']' Range
-            range = range.value
-            return Success(range)
+            return range
         self._reset(_begin_pos)
         return None
 
@@ -1111,35 +982,29 @@ class Parser:
     def _Repetition__GEN_1(self):
         _begin_pos = self._mark()
         if (
-            (number := self._Number())
-            and self._expectc(',')
-            and (number1 := self._Number())
+            (number := self._Number()) is not None
+            and self._expectc(',') is not None
+            and (number1 := self._Number()) is not None
         ):
             # Number ',' Number
-            number = number.value
-            number1 = number1.value
-            __tup = tuple(x for x in (number, number1) if x is not None)
-            return Success(__tup)
+            return [number, number1]
         self._reset(_begin_pos)
-        if ((number := self._Number())):
+        if ((number := self._Number()) is not None):
             # Number
-            number = number.value
-            return Success(number)
+            return number
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Spacing__GEN_1(self):
         _begin_pos = self._mark()
-        if ((space := self._Space())):
+        if ((space := self._Space()) is not None):
             # Space
-            space = space.value
-            return Success(space)
+            return space
         self._reset(_begin_pos)
-        if ((comment := self._Comment())):
+        if ((comment := self._Comment()) is not None):
             # Comment
-            comment = comment.value
-            return Success(comment)
+            return comment
         self._reset(_begin_pos)
         return None
 
@@ -1147,12 +1012,11 @@ class Parser:
     def _Comment__GEN_1(self):
         _begin_pos = self._mark()
         if (
-            self._lookahead(False, self._EndOfLine)
-            and (_1 := self._expectc())
+            self._lookahead(False, self._EndOfLine) is not None
+            and (_1 := self._expectc()) is not None
         ):
             # !EndOfLine .
-            _1 = _1.value
-            return Success(_1)
+            return _1
         self._reset(_begin_pos)
         return None
 
@@ -1174,5 +1038,5 @@ if __name__ == '__main__':
     if result is not None:
         print(result)
 
-    print("Parsing successful" if result else "Parsing failure")
-    exit(not result)  # Unix-style: 0 is success
+    print("Parsing successful" if result is not None else "Parsing failure")
+    exit(result is None)  # Unix-style: 0 is success

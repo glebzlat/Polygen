@@ -98,10 +98,6 @@ class Generator(GeneratorBase, GrammarVisitor):
                 items = ' '.join(str(i.item) for i in node.items.forward())
                 self.put(f"# {items}")
 
-            # Unpack values from Success wrappers
-            for var in variables:
-                self.put(f"{var} = {var}.value")
-
             if node.metarule:
                 self.emptyline()
 
@@ -111,15 +107,10 @@ class Generator(GeneratorBase, GrammarVisitor):
                 self.put(expr.strip('\n'), indent=0)
             else:
                 if len(variables) == 1:
-                    self.put(f"return Success({variables[0]})")
-                elif variables:
-                    # Remove empty successes
-                    return_value = ', '.join(variables)
-                    self.put(f"__tup = tuple(x for x in ({return_value}) "
-                             f"if x is not None)")
-                    self.put("return Success(__tup)")
+                    self.put(f"return {variables[0]}")
                 else:
-                    self.put("return Success()")
+                    items = ', '.join(variables)
+                    self.put(f"return [{items}]")
 
         self.put("self._reset(_begin_pos)")
 
@@ -141,6 +132,8 @@ class Generator(GeneratorBase, GrammarVisitor):
 
         if not ignore:
             call = f"({call})"
+
+        call = f"{call} is not None"
 
         self.put(call, indent=False, newline=False)
 

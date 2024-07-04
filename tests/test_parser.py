@@ -1,4 +1,5 @@
 import unittest
+import inspect
 
 from polygen.reader import Reader
 from polygen.parser import Parser
@@ -32,6 +33,7 @@ class ParserTestMetaclass(type):
         if name == 'ParserTest':
             return
 
+        lineno = inspect.getsourcelines(cls)[1]
         node_extractor = getattr(cls, 'node_extractor', lambda obj: obj)
 
         def test_successes(self):
@@ -42,10 +44,10 @@ class ParserTestMetaclass(type):
 
                 try:
                     self.assertIsNotNone(result)
-                    value = node_extractor(result.value)
+                    value = node_extractor(result)
                     self.assertEqual(value, clue)
                 except AssertionError as e:
-                    msg = f"Input string: {input!r}; What: {e}"
+                    msg = f"{lineno}: tnput string: {input!r}; what: {e}"
                     raise AssertionError(msg)
 
         def test_failures(self):
@@ -166,15 +168,15 @@ class TestRuleDirectives(unittest.TestCase):
         result = parser.parse()
 
         self.assertIsNotNone(result)
-        self.assertTrue(result.value.rules.begin.entry)
-        self.assertFalse(result.value.rules.begin.ignore)
+        self.assertTrue(result.rules.begin.entry)
+        self.assertFalse(result.rules.begin.ignore)
 
     def test_ignore(self):
         parser = Parser(Reader("@ignore A <- B"))
         result = parser.parse()
 
         self.assertIsNotNone(result)
-        self.assertTrue(result.value.rules.begin.ignore)
+        self.assertTrue(result.rules.begin.ignore)
 
 
 class TestMetaRule(ParserTest):
@@ -184,7 +186,7 @@ class TestMetaRule(ParserTest):
 
         self.assertIsNotNone(result)
 
-        rule = result.value.metarules.begin
+        rule = result.metarules.begin
         self.assertEqual(rule.id, Id('name'))
         self.assertEqual(rule.expr, 'expr')
 
