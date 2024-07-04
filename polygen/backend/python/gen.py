@@ -94,7 +94,9 @@ class Generator(GeneratorBase, GrammarVisitor):
             if node.nullable:
                 self.put("# Nullable")
 
-            self.put(f"# {str(node).replace('\n', ' ')}")
+            if node.items is not None:
+                items = ' '.join(str(i.item) for i in node.items.forward())
+                self.put(f"# {items}")
 
             # Unpack values from Success wrappers
             for var in variables:
