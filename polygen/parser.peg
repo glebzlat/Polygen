@@ -15,12 +15,12 @@ Primary     <- Identifier !LEFTARROW
              / OPEN Expression CLOSE
              / Literal / Class / DOT
 MetaName    <- Identifier SEMI
-MetaRule    <- '${' expr:(NestedBody / !'}' .)* '}' Spacing       $metarule_def_action
+MetaRule    <- '$' body:MetaDefBody                               $metarule_def_action
              / '$' Spacing Identifier !'{'                        $metarule_ref_action
 
 MetaDef     <- '$' Spacing Identifier expr:MetaDefBody            $metadef_action
-MetaDefBody <- '{' expr:(NestedBody / !'}' .)* '}' Spacing        $metadef_body_action
-NestedBody  <- '{' body:(NestedBody / !'}' .)* '}'                $nested_body_action
+MetaDefBody <- '{' expr:(!'}' (EscCurClose / .))* '}' Spacing     $metadef_body_action
+EscCurClose <- str:'\\}'                                          $esc_cur_close_action
 
 Identifier  <- start:IdentStart cont:IdentCont* Spacing           $ident_action
 IdentStart  <- [a-zA-Z_]
@@ -102,7 +102,7 @@ $suffix_action {
 }
 
 $metarule_def_action {
-  return MetaRule(None, ''.join(expr))
+  return MetaRule(None, body)
 }
 
 $metarule_ref_action {
@@ -117,9 +117,8 @@ $metadef_body_action {
   return ''.join(expr)
 }
 
-$nested_body_action {
-  string = ''.join(body)
-  return f"{{{string}}}"
+$esc_cur_close_action {
+  return '\}'
 }
 
 $ident_action {
@@ -149,7 +148,7 @@ $esc_char_action {
       'n': '\n',
       'r': '\r',
       't': '\t',
-  }
+  \}
 
   return Char(chr_map.get(char, char))
 }

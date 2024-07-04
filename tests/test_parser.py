@@ -111,7 +111,8 @@ class TestRuleMetaRef(ParserTest):
 
 class TestRuleMetaRule(ParserTest):
     metarule1 = MetaRule(None, expr="hello world")
-    metarule2 = MetaRule(None, expr="{nested}")
+    metarule2 = MetaRule(None, expr="{")
+    metarule3 = MetaRule(None, expr="}")
 
     successes = [
         ("A <- B ${hello world}", Grammar([
@@ -119,9 +120,14 @@ class TestRuleMetaRule(ParserTest):
                 Alt([NamedItem(None, Id('B'))], metarule=metarule1)
             ]))
         ])),
-        ("A <- B ${{nested}}", Grammar([
+        ("A <- B ${{}", Grammar([
             Rule(Id('A'), Expr([
                 Alt([NamedItem(None, Id('B'))], metarule=metarule2)
+            ]))
+        ])),
+        ("A <- B ${\\}}", Grammar([
+            Rule(Id('A'), Expr([
+                Alt([NamedItem(None, Id('B'))], metarule=metarule3)
             ]))
         ])),
         ("A <- B $name {expr}", Grammar([
@@ -135,7 +141,6 @@ class TestRuleMetaRule(ParserTest):
 
     failures = [
         "Id <- Expr ${invalid}}",
-        "Id <- Expr ${{invalid}",
         "Id <- Expr $ {invalid}"
         "Id <- Expr ${",
         "Id <- Expr }",

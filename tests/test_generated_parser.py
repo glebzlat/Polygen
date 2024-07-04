@@ -4,7 +4,7 @@ import inspect
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from polygen.codegen import CodeGenerator
+from polygen.codegen import CodeGenerator, CodeGeneratorError
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
 SKEL_FILE = (Path.cwd() / 'polygen' / 'parsing' /
@@ -54,8 +54,11 @@ class ParserTestMetaClass(type):
                         for name, value in capabilities.items()}
 
         module_file = tmpdir / 'parser.py'
-        gen.generate('python', tmpdir, modifier_options=capabilities,
-                     grammar=grammar)
+        try:
+            gen.generate('python', tmpdir, modifier_options=capabilities,
+                         grammar=grammar)
+        except CodeGeneratorError as e:
+            raise RuntimeError(f"{cls_name}:{idx}: {e}") from None
 
         namespace = {}
         with open(module_file, 'rb') as fin:
@@ -372,7 +375,7 @@ class TestMetaRule(ParserTest):
     $float_action {
         integer_part = ''.join(i)
         floating_part = ''.join(f)
-        return float(f'{integer_part}.{floating_part}')
+        return float(f'{integer_part\\}.{floating_part\\}')
     }
     """
 
