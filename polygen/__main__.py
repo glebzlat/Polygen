@@ -1,54 +1,40 @@
-from argparse import ArgumentParser, FileType, Namespace
 from pathlib import Path
 
-from .codegen import Generator
+import click
 
-argparser = ArgumentParser()
-subparsers = argparser.add_subparsers(help="commands", required=True)
-
-
-def generate_cmd_action(gen: Generator, ns: Namespace):
-    define = ns.define or []
-    options = {}
-    for defn in define:
-        opt, value = defn.split('=')
-        options[opt] = value
-    gen.generate(ns.backend, ns.output, options=options, grammar=ns.grammar)
+from polygen.main import generate_parser, BackendSearchError
+from polygen.generator.base import CodeGeneratorError
 
 
-generate_cmd = subparsers.add_parser(
-    "generate", help="generate parser from the grammar")
-generate_cmd.add_argument(
-    "-b", "--backend", type=str,
-    help="code generator")
-generate_cmd.add_argument(
-    "-g", "--grammar-file", type=FileType('r', encoding='utf-8'),
-    help="grammar file",
-    dest="grammar")
-generate_cmd.add_argument(
-    "-o", "--output", type=str, help="output directory")
-generate_cmd.add_argument("--define", "-D", action="append")
-generate_cmd.set_defaults(fn=generate_cmd_action)
-
-
-def list_backends_action(gen: Generator, ns: Namespace):
-    backends = gen.backends_info()
-    for name, (lang, ver) in backends.items():
-        print(f"{name}: {lang} {ver}")
-
-
-list_cmd = subparsers.add_parser(
-    "list-backends", help="list available code generators")
-list_cmd.set_defaults(fn=list_backends_action)
-
-
+@click.group()
 def main():
-    gen = Generator.setup()
-
-    ns = argparser.parse_args()
-    ns.fn(gen, ns)
-
-    return 0
+    pass
 
 
-exit(main())
+@main.command()
+@click.argument("grammar", required=True,
+                type=click.Path(exists=True, file_okay=True, readable=True,
+                                resolve_path=True, path_type=Path))
+@click.option("-b", "--backend", required=True, metavar="NAME",
+              help="code generator name")
+@click.option("-o", "--output", required=True,
+              type=click.Path(exists=True, file_okay=False, dir_okay=True))
+@click.option("-d", "--define", multiple=True)
+@click.option("-v", "--verbose", is_flag=True)
+def generate(backend, grammar, output, define, verbose):
+    generate_parser(grammar_file=grammar,
+                    backend=backend,
+                    output_directory=Path(output).resolve(),
+                    user_options=define,
+                    verbose=verbose)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BackendSearchError as e:
+        print(e)
+        exit(1)
+    except CodeGeneratorError as e:
+        print(e)
+        exit(1)

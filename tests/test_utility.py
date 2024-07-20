@@ -4,20 +4,41 @@ from polygen.utility import wrap_string, reindent
 
 
 class TestWrapString(unittest.TestCase):
-    def test_simple_case(self):
-        self.assertEqual(wrap_string('abc'), '"abc"')
+    def test_auto_wo_quotes(self):
+        self.assertEqual(wrap_string("abc", "auto"), "'abc'")
 
-    def test_single_quotes(self):
-        self.assertEqual(wrap_string('abc', double=False), "'abc'")
+    def test_auto_single_quotes(self):
+        self.assertEqual(wrap_string("'", "auto"), '"\'"')
 
-    def test_string_with_quote_single(self):
-        self.assertEqual(wrap_string("'", double=False), "'\\''")
+    def test_auto_single_double_quotes(self):
+        self.assertEqual(wrap_string("'\"", "auto"), "'\\'\"'")
 
-    def test_string_with_quote_double(self):
-        self.assertEqual(wrap_string('"'), '"\\""')
+    def test_single_mode_wo_quotes(self):
+        self.assertEqual(wrap_string("abc", "single"), "'abc'")
 
-    def test_backslash(self):
-        self.assertEqual(wrap_string('\\'), '"\\"')
+    def test_single_mode_w_single_quotes(self):
+        self.assertEqual(wrap_string("'", "single"), '"\'"')
+
+    def test_single_mode_w_single_double(self):
+        self.assertEqual(wrap_string("'\"", "single"), "'\\'\"'")
+
+    def test_double_mode_w_double_quotes(self):
+        self.assertEqual(wrap_string('"', "double"), "'\"'")
+
+    def test_double_mode_w_single_double(self):
+        self.assertEqual(wrap_string("'\"", "double"), '"\'\\""')
+
+    def test_force_single_wo_quotes(self):
+        self.assertEqual(wrap_string("abc", "force_single"), "'abc'")
+
+    def test_force_single_w_single(self):
+        self.assertEqual(wrap_string("'", "force_single"), "'\\''")
+
+    def test_force_double_wo_quotes(self):
+        self.assertEqual(wrap_string("abc", "force_double"), '"abc"')
+
+    def test_force_double_w_double(self):
+        self.assertEqual(wrap_string('"', "force_double"), '"\\""')
 
 
 class TestReindent(unittest.TestCase):

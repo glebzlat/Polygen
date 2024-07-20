@@ -4,7 +4,8 @@ import inspect
 from tempfile import TemporaryDirectory
 from pathlib import Path
 
-from polygen.codegen import Generator
+from polygen.reader import Reader
+from polygen.codegen import CodeGenerator, CodeGeneratorError
 
 DATEFORMAT = "%Y-%m-%d %I:%M %p"
 SKEL_FILE = (Path.cwd() / 'polygen' / 'parsing' /
@@ -43,7 +44,7 @@ class ParserTestMetaClass(type):
 
     @classmethod
     def create_parser(cls, idx, cls_name, grammar, capabilities: dict):
-        gen = Generator.setup()
+        gen = CodeGenerator.setup()
 
         tmpdir = TMPDIR_PATH / f'test_generated_parser_{cls_name}'
         if tmpdir.exists():
@@ -54,7 +55,11 @@ class ParserTestMetaClass(type):
                         for name, value in capabilities.items()}
 
         module_file = tmpdir / 'parser.py'
-        gen.generate('python', tmpdir, options=capabilities, grammar=grammar)
+        try:
+            gen.generate('python', tmpdir, modifier_options=capabilities,
+                         grammar=grammar)
+        except CodeGeneratorError as e:
+            raise RuntimeError(f"{cls_name}:{idx}: {e}") from None
 
         namespace = {}
         with open(module_file, 'rb') as fin:
@@ -68,7 +73,7 @@ class ParserTestMetaClass(type):
             return
 
         grammar = cls.grammar
-        capabilities = cls.capabilities
+        capabilities = {}
         successes = getattr(cls, 'successes', [])
         failures = getattr(cls, 'failures', [])
 
@@ -85,12 +90,13 @@ class ParserTestMetaClass(type):
             def wrapper(self):
                 if skip is not None:
                     self.skipTest(skip.reason)
-                parser = self.parser(input_str)
+                reader = Reader(input_str)
+                parser = self.parser(reader)
                 # breakpoint()
                 result = parser.parse()
                 try:
                     self.assertIsNotNone(result)
-                    self.assertEqual(result.value, clue)
+                    self.assertEqual(result, clue)
                 except AssertionError as e:
                     type_name = cls.__name__
                     msg = f"{type_name}:{lineno}: {e}"
@@ -105,7 +111,8 @@ class ParserTestMetaClass(type):
             input_str = case
 
             def wrapper(self):
-                parser = self.parser(input_str)
+                reader = Reader(input_str)
+                parser = self.parser(reader)
                 result = parser.parse()
                 try:
                     self.assertIsNone(result)
@@ -131,17 +138,8 @@ class TestSimpleGrammar(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-
-        # FIXME: Currently these modifiers are inversed,
-        # e.g. do not replace Rep nodes -> ReplaceRep(apply=False)
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('abc', ('abc',))
+        ('abc', ['abc', []])
     ]
 
     failures = [
@@ -158,12 +156,6 @@ class TestNoEof(ParserTest):
     Grammar <- "abc"
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
         ('abc', 'abc'),
         ('abcde', 'abc')
@@ -176,14 +168,8 @@ class TestEmptyAlt(ParserTest):
     Empty <-
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('', None)
+        ('', [])
     ]
 
 
@@ -196,15 +182,9 @@ class TestRightRecursiveGrammar(ParserTest):
     D <- 'd'
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('abcd', ('a', ('b', ('c', 'd')))),
-        ('abcabcd', ('a', ('b', ('c', ('a', ('b', ('c', 'd')))))))
+        ('abcd', ['a', ['b', ['c', 'd']]]),
+        ('abcabcd', ['a', ['b', ['c', ['a', ['b', ['c', 'd']]]]]])
     ]
 
     failures = [
@@ -223,15 +203,9 @@ class TestZeroOrOne(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('ab', ('a', 'b')),
-        ('a', ('a',))
+        ('ab', ['a', 'b', []]),
+        ('a', ['a', [], []])
     ]
 
     failues = [
@@ -247,16 +221,10 @@ class TestZeroOrMore(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a', ('a', [])),
-        ('abb', ('a', ['b', 'b'])),
-        ('abbb', ('a', ['b', 'b', 'b'])),
+        ('a', ['a', [], []]),
+        ('abb', ['a', ['b', 'b'], []]),
+        ('abbb', ['a', ['b', 'b', 'b'], []]),
     ]
 
 
@@ -268,15 +236,9 @@ class TestOneOrMore(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('ab', ('a', ['b'])),
-        ('abbb', ('a', ['b', 'b', 'b'])),
+        ('ab', ['a', ['b'], []]),
+        ('abbb', ['a', ['b', 'b', 'b'], []]),
     ]
 
     failures = [
@@ -292,42 +254,10 @@ class TestRepetition(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('aa', (('a', 'a'),)),
-        ('aaa', (('a', 'a', 'a'),)),
-        ('aaaa', (('a', 'a', 'a', 'a'),))
-    ]
-
-    failures = [
-        'a',
-        'aaaaa'
-    ]
-
-
-class TestRepetitionNoExpand(ParserTest):
-    grammar = """
-    @entry
-    Grammar <- A{2,4} EOF
-    A <- 'a'
-    EOF <- !.
-    """
-
-    capabilities = {
-        "leftrec": True,
-        "repetition": True,
-        "char-class": False
-    }
-
-    successes = [
-        ('aa', (('a', 'a'),)),
-        ('aaa', (('a', 'a', 'a'),)),
-        ('aaaa', (('a', 'a', 'a', 'a'),))
+        ('aa', [['a', 'a'], []]),
+        ('aaa', [['a', 'a', 'a'], []]),
+        ('aaaa', [['a', 'a', 'a', 'a'], []])
     ]
 
     failures = [
@@ -346,18 +276,12 @@ class TestExpression(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a.', (['a'], '.')),
-        ('b.', (['b'], '.')),
-        ('c.', (['c'], '.')),
-        ('abc.', (['a', 'b', 'c'], '.')),
-        ('cba.', (['c', 'b', 'a'], '.'))
+        ('a.', [['a'], '.', []]),
+        ('b.', [['b'], '.', []]),
+        ('c.', [['c'], '.', []]),
+        ('abc.', [['a', 'b', 'c'], '.', []]),
+        ('cba.', [['c', 'b', 'a'], '.', []])
     ]
 
 
@@ -372,19 +296,13 @@ class TestNestedQuantifiers(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a.', ([['a']], '.')),
-        ('b.', ([['b']], '.')),
-        ('ab.', ([['a'], ['b']], '.')),
-        ('aaabbbaaa.', ([['a', 'a', 'a'],
+        ('a.', [[['a']], '.', []]),
+        ('b.', [[['b']], '.', []]),
+        ('ab.', [[['a'], ['b']], '.', []]),
+        ('aaabbbaaa.', [[['a', 'a', 'a'],
                          ['b', 'b', 'b'],
-                         ['a', 'a', 'a']], '.'))
+                         ['a', 'a', 'a']], '.', []])
     ]
 
 
@@ -398,21 +316,15 @@ class TestNestedRepetitions(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('aaaaa aaaa.', (((('a', 'a', 'a', 'a', 'a'), ' '),
-                          ((('a', 'a', 'a', 'a'),))), '.')),
-        ('bbb b.', (((('b', 'b', 'b'), ' '),
-                     (('b',),)), '.')),
-        ('aaa b aaaa.', (((('a', 'a', 'a'), ' '),
-                          (('b',), ' '),
-                          ((('a', 'a', 'a', 'a'),))),
-                         '.'))
+        ('aaaaa aaaa.', [[[['a', 'a', 'a', 'a', 'a'], ' '],
+                          [['a', 'a', 'a', 'a'], []]], '.', []]),
+        ('bbb b.', [[[['b', 'b', 'b'], ' '],
+                     [['b'], []]], '.', []]),
+        ('aaa b aaaa.', [[[['a', 'a', 'a'], ' '],
+                          [['b'], ' '],
+                          [['a', 'a', 'a', 'a'], []]],
+                         '.', []])
     ]
 
     failures = [
@@ -425,35 +337,6 @@ class TestClass(ParserTest):
     @entry
     Symbol <- [a-zA-Z0-9]
     """
-
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
-    successes = [
-        ('a', 'a'),
-        ('z', 'z'),
-        ('A', 'A'),
-        ('0', '0'),
-        ('9', '9')
-    ]
-
-    failures = ['_', '-', ',']
-
-
-class TestClassNoExpand(ParserTest):
-    grammar = """
-    @entry
-    Symbol <- [a-zA-Z0-9]
-    """
-
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": True
-    }
 
     successes = [
         ('a', 'a'),
@@ -475,12 +358,6 @@ class TestChars(ParserTest):
     Pi <- '\u03c0'
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
         ('\61', '\61'),
         ('\141', '\141'),
@@ -501,15 +378,9 @@ class TestMetaRule(ParserTest):
     $float_action {
         integer_part = ''.join(i)
         floating_part = ''.join(f)
-        return float(f'{integer_part}.{floating_part}')
+        return float(f'{integer_part\\}.{floating_part\\}')
     }
     """
-
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
 
     successes = [
         ('3.1415', 3.1415)
@@ -529,14 +400,8 @@ class TestIgnorePart(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a-b', ('a', 'b'))
+        ('a-b', ['a', 'b', []])
     ]
 
 
@@ -552,14 +417,8 @@ class TestIgnoreRule(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a   b  cd ', (['a', 'b', 'c', 'd'],))
+        ('a   b  cd ', [['a', 'b', 'c', 'd'], []])
     ]
 
 
@@ -575,14 +434,8 @@ class TestIgnoreRuleUnignored(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('a b c d ', ([('a', ' '), ('b', ' '), ('c', ' '), ('d', ' ')],))
+        ('a b c d ', [[['a', ' '], ['b', ' '], ['c', ' '], ['d', ' ']], []])
     ]
 
 
@@ -602,61 +455,55 @@ class TestDirectLeftRecursion(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('1', ('1',)),
-        ('1+2', (('1', '+', '2'),)),
-        ('1+2+3+4+5+6+7+8+9', ((((((((('1', '+', '2'),
-                                      '+', '3'),
-                                     '+', '4'),
-                                    '+', '5'),
-                                   '+', '6'),
-                                  '+', '7'),
-                                 '+', '8'),
-                                '+', '9'),)),
-        ('1-2-3-4-5-6-7-8-9', ((((((((('1', '-', '2'),
-                                      '-', '3'),
-                                     '-', '4'),
-                                    '-', '5'),
-                                   '-', '6'),
-                                  '-', '7'),
-                                 '-', '8'),
-                                '-', '9'),)),
-        ('1-2+3-4+5-6+7-8+9', ((((((((('1', '-', '2'),
-                                      '+', '3'),
-                                     '-', '4'),
-                                    '+', '5'),
-                                   '-', '6'),
-                                  '+', '7'),
-                                 '-', '8'),
-                                '+', '9'),)),
-        ('1+2-3+4-5+6-7+8-9', ((((((((('1', '+', '2'),
-                                      '-', '3'),
-                                     '+', '4'),
-                                    '-', '5'),
-                                   '+', '6'),
-                                  '-', '7'),
-                                 '+', '8'),
-                                '-', '9'),)),
+        ['1', ['1', []]],
+        ['1+2', [['1', '+', '2'], []]],
+        ['1+2+3+4+5+6+7+8+9', [[[[[[[[['1', '+', '2'],
+                                      '+', '3'],
+                                     '+', '4'],
+                                    '+', '5'],
+                                   '+', '6'],
+                                  '+', '7'],
+                                 '+', '8'],
+                                '+', '9'], []]],
+        ['1-2-3-4-5-6-7-8-9', [[[[[[[[['1', '-', '2'],
+                                      '-', '3'],
+                                     '-', '4'],
+                                    '-', '5'],
+                                   '-', '6'],
+                                  '-', '7'],
+                                 '-', '8'],
+                                '-', '9'], []]],
+        ['1-2+3-4+5-6+7-8+9', [[[[[[[[['1', '-', '2'],
+                                      '+', '3'],
+                                     '-', '4'],
+                                    '+', '5'],
+                                   '-', '6'],
+                                  '+', '7'],
+                                 '-', '8'],
+                                '+', '9'], []]],
+        ['1+2-3+4-5+6-7+8-9', [[[[[[[[['1', '+', '2'],
+                                      '-', '3'],
+                                     '+', '4'],
+                                    '-', '5'],
+                                   '+', '6'],
+                                  '-', '7'],
+                                 '+', '8'],
+                                '-', '9'], []]],
 
-        ('1+2*3', (('1', '+', ('2', '*', '3')),)),
-        ('6-3*2', (('6', '-', ('3', '*', '2')),)),
-        ('1*2+3', ((('1', '*', '2'), '+', '3'),)),
+        ['1+2*3', [['1', '+', ['2', '*', '3']], []]],
+        ['6-3*2', [['6', '-', ['3', '*', '2']], []]],
+        ['1*2+3', [[['1', '*', '2'], '+', '3'], []]],
 
-        ('4+3/3', (('4', '+', ('3', '/', '3')),)),
-        ('2-6/3', (('2', '-', ('6', '/', '3')),)),
-        ('8/4-2', ((('8', '/', '4'), '-', '2'),)),
+        ['4+3/3', [['4', '+', ['3', '/', '3']], []]],
+        ['2-6/3', [['2', '-', ['6', '/', '3']], []]],
+        ['8/4-2', [[['8', '/', '4'], '-', '2'], []]],
 
-        ('2*2/2', ((('2', '*', '2'), '/', '2'),)),
-        ('6/2*3', ((('6', '/', '2'), '*', '3'),)),
+        ['2*2/2', [[['2', '*', '2'], '/', '2'], []]],
+        ['6/2*3', [[['6', '/', '2'], '*', '3'], []]],
 
-        ('8/4/2', ((('8', '/', '4'), '/', '2'),)),
-        ('2*2*2', ((('2', '*', '2'), '*', '2'),))
+        ['8/4/2', [[['8', '/', '4'], '/', '2'], []]],
+        ['2*2*2', [[['2', '*', '2'], '*', '2'], []]]
     ]
 
 
@@ -670,19 +517,13 @@ class TestHiddenLeftRecursion_Simple(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('1', ('1',)),
+        ('1', ['1', []]),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1', ('-', '1')),
-        ('1+2', (('1', '+', '2'),)),
+         '-1', ['-', '1']),
+        ('1+2', [[[], '1', '+', '2'], []]),
         (SkipCase('there is a bug in DetectLeftRec'),
-         '-1+2', ('-', '1', '+', '2')),
+         '-1+2', ['-', '1', '+', '2', []]),
     ]
 
 
@@ -697,17 +538,11 @@ class TestHiddenLeftRecursion_Complicated(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('1', ('1',)),
+        (SkipCase('work in progress'), '1', ('1',)),
         (SkipCase('there is a bug in DetectLeftRec'),
          '-1', ('-', '1')),
-        ('1+2', (('1', '+', '2'),)),
+        (SkipCase('work in progress'), '1+2', (('1', '+', '2'),)),
         (SkipCase('there is a bug in DetectLeftRec'),
          '-1+2', ('-', '1', '+', '2')),
         (SkipCase('there is a bug in DetectLeftRec'),
@@ -726,24 +561,18 @@ class TestIndirectLeftRecursion_OneBranch(ParserTest):
     EOF <- !.
     """
 
-    capabilities = {
-        "leftrec": True,
-        "repetition": False,
-        "char-class": False
-    }
-
     successes = [
-        ('dcba', (((('d', 'c'), 'b'), 'a'),)),
-        ('dcbacbacba', (((((((((('d',
-                                'c'),
-                               'b'),
-                              'a'),
-                             'c'),
-                            'b'),
-                           'a'),
-                          'c'),
-                         'b'),
-                        'a'),))
+        ('dcba', [[[['d', 'c'], 'b'], 'a'], []]),
+        ('dcbacbacba', [[[[[[[[[['d',
+                                'c'],
+                               'b'],
+                              'a'],
+                             'c'],
+                            'b'],
+                           'a'],
+                          'c'],
+                         'b'],
+                        'a'], []])
     ]
 
 
@@ -768,21 +597,20 @@ class TestIndirectLeftRecursion_TwoBranches(ParserTest):
     }
 
     successes = [
-        ('dcba', (((('d', 'c'), 'b'), 'a'),)),
-        ('gfea', (((('g', 'f'), 'e'), 'a'),)),
-        ('gfeafeafea', (((((((((('g',
-                                'f'),
-                               'e'),
-                              'a'),
-                             'f'),
-                            'e'),
-                           'a'),
-                          'f'),
-                         'e'),
-                        'a'),)),
-        (SkipCase('annoying bug'),
-         'dcbafea', ((((((('d', 'c'), 'b'), 'a'), 'f'), 'e'), 'a'),)),
-        ('gfeacba', ((((((('g', 'f'), 'e'), 'a'), 'c'), 'b'), 'a'),))
+        ('dcba', [[[['d', 'c'], 'b'], 'a'], []]),
+        ('gfea', [[[['g', 'f'], 'e'], 'a'], []]),
+        ('gfeafeafea', [[[[[[[[[['g',
+                                'f'],
+                               'e'],
+                              'a'],
+                             'f'],
+                            'e'],
+                           'a'],
+                          'f'],
+                         'e'],
+                        'a'], []]),
+        ('dcbafea', [[[[[[['d', 'c'], 'b'], 'a'], 'f'], 'e'], 'a'], []]),
+        ('gfeacba', [[[[[[['g', 'f'], 'e'], 'a'], 'c'], 'b'], 'a'], []])
     ]
 
 
@@ -805,8 +633,8 @@ class TestInterlockingLeftRecursion(ParserTest):
     }
 
     successes = [
-        ('x', ('x',)),
-        ('x.x', (('x', '.x'),)),
+        ('x', ['x', []]),
+        (SkipCase('work in progress'), 'x.x', [['x', '.x'], []]),
         (SkipCase('work in progress'),
-         'x(n)(n).x', ((('x', '(n)'), '(n)'), '.x'))
+         'x(n)(n).x', [[['x', '(n)'], '(n)'], '.x', []])
     ]

@@ -1,581 +1,282 @@
 import unittest
 
 from polygen.node import (
+    DLL,
     Grammar,
     Rule,
-    MetaRule,
     MetaRef,
-    Identifier,
-    Expression,
+    MetaRule,
+    Expr,
     Alt,
-    Part,
+    NamedItem,
+    Id,
+    String,
     Char,
     AnyChar,
-    String,
-    Range,
     Class,
+    Range,
     ZeroOrOne,
     ZeroOrMore,
     OneOrMore,
     Repetition,
     And,
     Not,
+    Item
 )
 
-from polygen.tree_modifier import (
-    TreeModifierError,
+from polygen.modifier.tree_modifier import TreeModifier
+from polygen.modifier.errors import (
     TreeModifierWarning,
-    InvalidRangeError,
-    InvalidRepetitionError,
     UndefRulesError,
     RedefRulesError,
+    UndefEntryError,
     RedefEntryError,
-    EntryNotDefinedError,
-    RedefMetaRulesError,
-    UndefMetaRefsError,
-    MetanameRedefError,
-    UnusedMetaRuleWarning,
-    LookaheadMetanameWarning,
-    ExpandClass,
-    ReplaceRep,
-    CheckUndefRedef,
-    SimplifyNestedExps,
-    ReplaceNestedExps,
-    CreateAnyCharRule,
+)
+from polygen.modifier.modifiers import (
+    CheckUndefinedRules,
+    CheckRedefinedRules,
+    ReplaceNestedExprs,
     FindEntryRule,
-    IgnoreRules,
-    GenerateMetanames,
-    SubstituteMetaRefs,
-    TreeModifier
+    CreateAnyChar,
+    # IgnoreRules,  ## TODO: test
+    # GenerateMetanames,
+    # AssignMetaRules,
+    # ValidateNodes
 )
 
+from polygen.modifier.leftrec import compute_lr
 
-class TreeModifierTestMetaClass(type):
-    """Metaclass for TreeModifier tests.
 
-    Test classes that inherit from this class define the following attributes:
-        modifier: Modifier class type to test. Required.
-        args: Positional arguments for the modifier class initialization.
-        kwargs: Keyword arguments for the modifier class initialization.
-        input_data: Input data. Required.
-        clue: Clue data to compare the result with. Required, if no `error`
-            attribute is specified.
-        error: A sequence of SemanticErrors. If specified, then the
-            TreeModifierError is expected to be raised.
-        warnings: A sequence of SemanticWarnings. If specified, then the
-            TreeModifierWarning is expected to be raised.
-        inspect_result: Optional method to inspect the resulting data.
-            Must take two positional arguments: self and the node.
-    """
+class TreeModifierTestMeta(type):
 
     def __init__(cls, name, bases, body):
-        if name == 'TreeModifierTest':
+        if name == "ModifierTest":
             return
 
-        modifier_cls = cls.modifier
-        args = getattr(cls, 'args', None) or []
-        kwargs = getattr(cls, 'kwargs', None) or {}
-
+        modifier = cls.modifier
         input_data = cls.input_data
         clue = getattr(cls, 'clue', None)
         error = getattr(cls, 'error', None)
         warnings = getattr(cls, 'warnings', [])
         assert clue is not None or error is not None
 
-        inspect_result = getattr(cls, 'inspect_result', None)
-
         if error is not None:
-            def test_raises(self):
-                modifier = modifier_cls(*args, **kwargs)
-                tree_visitor = TreeModifier([[modifier]])
-                result = input_data.copy()
+            def test_raises(self: unittest.TestCase):
+                vis = TreeModifier([modifier])
 
-                exc_args = error
-                with self.assertRaises(TreeModifierError) as context:
-                    tree_visitor.visit(result)
+                with self.assertRaises(Exception) as context:
+                    vis.apply(input_data)
 
-                exception = context.exception
-                for semantic_err, clue_exc in zip(exception.args, exc_args):
-                    self.assertEqual(semantic_err, clue_exc)
+                exc = context.exception
+                self.assertEqual(exc, error)
 
-            setattr(cls, 'test_raises', test_raises)
+            setattr(cls, 'test_failure', test_raises)
 
         elif clue is not None:
-            def test_success(self):
-                modifier = modifier_cls(*args, **kwargs)
-                tree_visitor = TreeModifier([[modifier]])
-                result = input_data.copy(deep=True)
+            def test_success(self: unittest.TestCase):
+                vis = TreeModifier([modifier])
 
                 if warnings:
                     with self.assertRaises(TreeModifierWarning) as context:
-                        tree_visitor.visit(result)
+                        vis.apply(input_data)
 
                     warn = context.exception
-                    sem_warns = warn.args
-                    for result_warn, clue_warn in zip(sem_warns, warnings):
+                    warns = warn.args
+                    for result_warn, clue_warn in zip(warns, warnings):
                         self.assertEqual(result_warn, clue_warn)
 
                 else:
-                    tree_visitor.visit(result)
+                    vis.apply(input_data)
 
-                if inspect_result:
-                    inspect_result(self, result)
-                self.assertEqual(result, clue)
+                self.assertEqual(input_data, clue)
 
             setattr(cls, 'test_success', test_success)
 
 
 bases = (unittest.TestCase,)
-TreeModifierTest = TreeModifierTestMetaClass('TreeModifierTest', bases, {})
+ModifierTest = TreeModifierTestMeta("ModifierTest", bases, {})
 
 
-class ExpandClass_SimpleTest(TreeModifierTest):
-    modifier = ExpandClass
+class Test_CheckUndefinedRules_Success(ModifierTest):
+    modifier = CheckUndefinedRules()
 
-    A, B, C = Char('a'), Char('b'), Char('c')
-    AltA, AltB, AltC = (Alt(Part(prime=i)) for i in (A, B, C))
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])])),
+        Rule(Id('B'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    ])
 
-    input_data = Part(Class(Range(A, C)))
-    clue = Part(Expression(AltA, AltB, AltC))
-
-
-class ExpandClass_ComplicatedCase(TreeModifierTest):
-    modifier = ExpandClass
-
-    A, B, C, _1, _2, _3 = (Char(i) for i in ('a', 'b', 'c', '1', '2', '3'))
-    AltA, AltB, AltC, Alt1, Alt2, Alt3 = (
-        Alt(Part(prime=i)) for i in (A, B, C, _1, _2, _3))
-
-    input_data = Part(Class(Range(A, C), Range(_1, _3)))
-    clue = Part(Expression(Alt1, Alt2, Alt3, AltA, AltB, AltC))
-
-
-class ExpandClass_InvalidRange(TreeModifierTest):
-    modifier = ExpandClass
-
-    A, B, C = Char('a'), Char('b'), Char('c')
-    Rng = Range(C, A)
-
-    input_data = Part(Class(Rng))
-    error = (InvalidRangeError(Range(Char("c"), Char("a"))),)
-
-
-class ReplaceRep_SimpleTest(TreeModifierTest):
-    modifier = ReplaceRep
-
-    E = Char('e')
-
-    input_data = Part(prime=E, quant=Repetition(2))
-    clue = Part(Expression(Alt(Part(prime=E), Part(prime=E))))
-
-
-class ReplaceRep_TwoBounds(TreeModifierTest):
-    modifier = ReplaceRep
-
-    E = Char('e')
-
-    input_data = Part(prime=E, quant=Repetition(2, 4))
-    clue = Part(Expression(
-        Alt(Part(prime=E),
-            Part(prime=E),
-            Part(prime=E, quant=ZeroOrOne()),
-            Part(prime=E, quant=ZeroOrOne()))))
-
-
-class ReplaceRep_InvalidRep(TreeModifierTest):
-    modifier = ReplaceRep
-
-    E = Char('e')
-    Rep = Repetition(3, 2)
-
-    input_data = Part(prime=E, quant=Rep)
-    error = (InvalidRepetitionError(Rep),)
-
-
-class CheckUndefRedef_RedefTest(TreeModifierTest):
-    modifier = CheckUndefRedef
-
-    Id = Identifier('A')
-    RuleA = Rule(Id, Expression())
-
-    input_data = Grammar(RuleA, RuleA)
-    error = (RedefRulesError({Id: [RuleA, RuleA]}),)
-
-
-class CheckUndefRedef_UndefTest(TreeModifierTest):
-    modifier = CheckUndefRedef
-
-    input_data = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('B'))))))
-    error = (UndefRulesError({Identifier('B'): Rule(
-        Identifier('A'),
-        Expression(Alt(Part(prime=Identifier('B')))))}),)
-
-
-class CheckUndefRedef_NoExc(TreeModifierTest):
-    modifier = CheckUndefRedef
-
-    input_data = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('A'))))),
-        Rule(Identifier('B'), Expression(Alt(Part(prime=Char('C'))))))
     clue = input_data
 
 
-class SimplifyNestedExps_SimpleTest(TreeModifierTest):
-    modifier = SimplifyNestedExps
+class Test_CheckUndefinedRules_Raises(ModifierTest):
+    modifier = CheckUndefinedRules()
 
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(prime=Nested)))
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))
+    ])
 
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Nested)
-
-
-class SimplifyNestedExps_NoEffect(TreeModifierTest):
-    modifier = SimplifyNestedExps
-
-    Id = Identifier('R')
-    Exp = Expression(Alt(Part(prime=Char('A'))))
-
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
+    error = UndefRulesError({Id('B'): [Id('B')]})
 
 
-class SimplifyNestedExps_OmitZeroOrOne(TreeModifierTest):
-    modifier = SimplifyNestedExps
+class Test_CheckRedefinedRules_Success(ModifierTest):
+    modifier = CheckRedefinedRules()
 
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(prime=Nested, quant=ZeroOrOne())))
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    ])
 
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
-
-
-class SimplifyNestedExps_OmitZeroOrMore(TreeModifierTest):
-    modifier = SimplifyNestedExps
-
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(prime=Nested, quant=ZeroOrMore())))
-
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
-
-
-class SimplifyNestedExps_OmitOneOrMore(TreeModifierTest):
-    modifier = SimplifyNestedExps
-
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(prime=Nested, quant=OneOrMore())))
-
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
-
-
-class SimplifyNestedExps_OmitAnd(TreeModifierTest):
-    modifier = SimplifyNestedExps
-
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(lookahead=And(), prime=Nested)))
-
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
-
-
-class SimplifyNestedExps_OmitNot(TreeModifierTest):
-    modifier = SimplifyNestedExps
-
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(lookahead=Not(), prime=Nested)))
-
-    input_data = Rule(Id, Exp)
-    clue = Rule(Id, Exp)
-
-
-class ReplaceNestedExps_SimpleTest(TreeModifierTest):
-    modifier = ReplaceNestedExps
-
-    Id = Identifier('R')
-    Nested = Expression(Alt(Part(prime=Char('A'))))
-    Exp = Expression(Alt(Part(prime=Nested)))
-
-    GenId = Identifier('R__GEN_1')
-    NewExp = Expression(Alt(Part(prime=GenId)))
-
-    input_data = Grammar(Rule(Id, Exp))
-    clue = Grammar(Rule(Id, NewExp), Rule(GenId, Nested))
-
-
-class ReplaceNestedExps_DeepNesting(TreeModifierTest):
-    modifier = ReplaceNestedExps
-
-    Id = Identifier('R')
-    Nested2 = Expression(Alt(Part(prime=Char('A'))))
-    Nested1 = Expression(Alt(Part(prime=Nested2)))
-    Exp = Expression(Alt(Part(prime=Nested1)))
-
-    GenId1 = Identifier('R__GEN_1')
-    GenId2 = Identifier('R__GEN_2')
-    NewExp = Expression(Alt(Part(prime=GenId2)))
-    NewNested1 = Expression(Alt(Part(prime=GenId1)))
-
-    input_data = Grammar(Rule(Id, Exp))
-    clue = Grammar(
-        Rule(Id, NewExp),
-        Rule(GenId1, Nested2),
-        Rule(GenId2, NewNested1))
-
-
-class ReplaceNestedExps_NoEffect(TreeModifierTest):
-    modifier = ReplaceNestedExps
-
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('A'))))))
     clue = input_data
 
 
-class CreateAnyCharRule_NoAnyChar(TreeModifierTest):
-    modifier = CreateAnyCharRule
+class Test_CheckRedefinedRules_Raises(ModifierTest):
+    modifier = CheckRedefinedRules()
 
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('A'))))))
+    rule1 = Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    rule2 = Rule(Id('A'), Expr([Alt([NamedItem(None, Char('b'))])]))
+
+    input_data = Grammar([rule1, rule2])
+
+    error = RedefRulesError({Id('A'): [rule1, rule2]})
+
+
+class Test_ReplaceNestedExpr(ModifierTest):
+    modifier = ReplaceNestedExprs()
+
+    input_data = Grammar([
+        Rule(Id('A'), Expr([
+            Alt([NamedItem(None, Expr([
+                Alt([NamedItem(None, AnyChar())])
+            ]))])
+        ]))
+    ])
+
+    clue = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, Id('A__GEN_1'))])])),
+        Rule(Id('A__GEN_1'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    ])
+
+
+class Test_FindEntryRule_Success(ModifierTest):
+    modifier = FindEntryRule()
+
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
+    ])
+
     clue = input_data
 
 
-class CreateAnyCharRule_SimpleTest(TreeModifierTest):
-    modifier = CreateAnyCharRule
+class Test_FindEntryRule_Undef(ModifierTest):
+    modifier = FindEntryRule()
 
-    Id = Identifier('R')
-    AnyCharId = Identifier('AnyChar__GEN')
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    ])
 
-    input_data = Grammar(
-        Rule(Id, Expression(Alt(Part(prime=AnyChar())))))
-    clue = Grammar(
-        Rule(Id, Expression(Alt(Part(prime=AnyCharId)))),
-        Rule(AnyCharId, Expression(Alt(Part(prime=AnyChar())))))
+    error = UndefEntryError(None)
 
 
-class FindEntryRule_Valid(TreeModifierTest):
-    modifier = FindEntryRule
+class Test_FindEntryRule_Redef(ModifierTest):
+    modifier = FindEntryRule()
 
-    input_data = Grammar(
-        Rule(Identifier('R'),
-             Expression(Alt(Part(prime=Char('A')))),
-             directives=['entry']))
+    rule1 = Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
+    rule2 = Rule(Id('B'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
+
+    input_data = Grammar([rule1, rule2])
+
+    error = RedefEntryError([rule1, rule2])
+
+
+class Test_CreateAnyChar_non_strict(ModifierTest):
+    modifier = CreateAnyChar()
+
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
+    ])
+
     clue = input_data
 
 
-class FindEntryRule_NotFound(TreeModifierTest):
-    modifier = FindEntryRule
+class Test_CreateAnyChar_strict(ModifierTest):
+    # Modifier collects characters from the grammar and creates
+    # artificial rule, which matches only characters that was found and
+    # nothing else
 
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('A'))))))
-    error = (EntryNotDefinedError(),)
+    modifier = CreateAnyChar(strict=True)
 
+    input_data = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])])),
+        Rule(Id('B'), Expr([
+            Alt([NamedItem(
+                None,
+                String([Char('a'), Char('b'), Char('c')]))])]))
+    ])
 
-class FindEntryRule_Redef(TreeModifierTest):
-    modifier = FindEntryRule
-
-    Redef = Rule(Identifier('B'),
-                 Expression(Alt()),
-                 directives=['entry'])
-
-    input_data = Grammar(
-        Rule(Identifier('A'),
-             Expression(Alt()),
-             directives=['entry']),
-        Redef)
-    error = (RedefEntryError(Redef),)
-
-
-class IgnoreRules_SimpleTest(TreeModifierTest):
-    modifier = IgnoreRules
-
-    input_data = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('B'))))),
-        Rule(Identifier('B'), Expression(Alt()), directives=['ignore']))
-    clue = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('B'),
-                                                  metaname='_')))),
-        Rule(Identifier('B'), Expression(Alt()), directives=['ignore']))
-
-    def inspect_result(self, node: Grammar):
-        rule = node.get(Identifier('A'))
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.expr.alts[0].parts[0].metaname, '_')
+    clue = Grammar([
+        Rule(Id('A'), Expr([Alt([NamedItem(None, Id('AnyChar__GEN'))])])),
+        Rule(Id('B'), Expr([
+            Alt([NamedItem(
+                None,
+                String([Char('a'), Char('b'), Char('c')]))])])),
+        Rule(Id('AnyChar__GEN'), Expr([
+            Alt([NamedItem(
+                None,
+                Class([Range(Char('a'), Char('c'))]))])]))
+    ])
 
 
-class IgnoreRules_MultipleRules(TreeModifierTest):
-    modifier = IgnoreRules
+class Test_compute_lr(unittest.TestCase):
 
-    input_data = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('C'))))),
-        Rule(Identifier('B'), Expression(Alt(Part(prime=Identifier('C'))))),
-        Rule(Identifier('C'), Expression(Alt()), directives=['ignore']),
-        Rule(Identifier('D'), Expression(Alt(Part(prime=Identifier('A'))))))
-    clue = Grammar(
-        Rule(Identifier('A'), Expression(Alt(Part(prime=Identifier('C'),
-                                                  metaname='_')))),
-        Rule(Identifier('B'), Expression(Alt(Part(prime=Identifier('C'),
-                                                  metaname='_')))),
-        Rule(Identifier('C'), Expression(Alt()), directives=['ignore']),
-        Rule(Identifier('D'), Expression(Alt(Part(prime=Identifier('A'))))))
+    def test_simple_lr(self):
+        rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('A'))])]))
+        tree = Grammar([rule])
+        tree.entry = rule
 
-    def inspect_result(self, node: Grammar):
-        rule = node.get(Identifier('A'))
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.expr.alts[0].parts[0].metaname, '_')
+        compute_lr(tree)
 
-        rule = node.get(Identifier('B'))
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.expr.alts[0].parts[0].metaname, '_')
+        self.assertTrue(rule.leftrec)
 
-        rule = node.get(Identifier('D'))
-        self.assertIsNotNone(rule)
-        self.assertIsNone(rule.expr.alts[0].parts[0].metaname)
+    def test_simple_nullable(self):
+        nullable_rule = Rule(
+            Id('A'), Expr([Alt([NamedItem(None, ZeroOrOne(Char('.')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([nullable_rule, rule])
+        tree.entry = rule
 
+        compute_lr(tree)
 
-class GenerateMetanames_Identifier(TreeModifierTest):
-    modifier = GenerateMetanames
+        self.assertTrue(rule.leftrec)
 
-    input_data = Alt(Part(prime=Identifier('Id')))
-    clue = Alt(Part(prime=Identifier('Id'), metaname='id'))
+    def test_complex_nullable(self):
+        nullable_rule = Rule(
+            Id('A'),
+            Expr([
+                Alt([NamedItem(None, Char('='))]),
+                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([nullable_rule, rule])
+        tree.entry = rule
 
+        compute_lr(tree)
 
-class GenerateMetanames_Indexed(TreeModifierTest):
-    modifier = GenerateMetanames
+        self.assertTrue(rule.leftrec)
 
-    input_data = Alt(
-        Part(prime=Char('a')),
-        Part(prime=String(Char('a'), Char('b'))))
-    clue = Alt(
-        Part(prime=Char('a'), metaname='_1'),
-        Part(prime=String(Char('a'), Char('b')), metaname='_2'))
+    def test_nullable_rule_after_rhs_id(self):
+        nullable_rule = Rule(
+            Id('A'),
+            Expr([
+                Alt([NamedItem(None, Char('='))]),
+                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+        rule = Rule(
+            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                                NamedItem(None, Id('B'))])]))
+        tree = Grammar([rule, nullable_rule])
+        tree.entry = rule
 
+        compute_lr(tree)
 
-class GenerateMetanames_Lookahead(TreeModifierTest):
-    modifier = GenerateMetanames
-
-    input_data = Alt(
-        Part(lookahead=And(), prime=Identifier('A')),
-        Part(lookahead=Not(), prime=Identifier('B')))
-    clue = Alt(
-        Part(lookahead=And(), prime=Identifier('A'), metaname='_'),
-        Part(lookahead=Not(), prime=Identifier('B'), metaname='_'))
-
-
-class GenerateMetanames_Redef(TreeModifierTest):
-    modifier = GenerateMetanames
-
-    Metaname = 'myvar'
-    Part1 = Part(prime=Identifier('A'), metaname=Metaname)
-    Part2 = Part(prime=Char('B'), metaname=Metaname)
-
-    input_data = Alt(Part1, Part2)
-    error = [MetanameRedefError(Part2)]
-
-
-class GenerateMetanames_IdenticalIds(TreeModifierTest):
-    modifier = GenerateMetanames
-
-    input_data = Alt(
-        Part(prime=Identifier('A')),
-        Part(prime=Identifier('A')))
-    clue = Alt(
-        Part(prime=Identifier('A'), metaname='a'),
-        Part(prime=Identifier('A'), metaname='a1'))
-
-
-class GenerateMetanames_PredefName(TreeModifierTest):
-    modifier = GenerateMetanames
-
-    input_data = Alt(
-        Part(prime=Identifier('A'), metaname='hello'),
-        Part(prime=Identifier('A'), metaname='world'))
-    clue = Alt(
-        Part(prime=Identifier('A'), metaname='hello'),
-        Part(prime=Identifier('A'), metaname='world'))
-
-
-class GenerateMetanames_LookaheadName(TreeModifierTest):
-    modifier = GenerateMetanames
-
-    Meta = Part(lookahead=And(), prime=Identifier('A'), metaname='a')
-
-    input_data = Alt(
-        Meta,
-        Part(lookahead=Not(), prime=Identifier('B')))
-    clue = Alt(
-        Part(lookahead=And(), prime=Identifier('A'), metaname='_'),
-        Part(lookahead=Not(), prime=Identifier('B'), metaname='_'))
-
-    warnings = [LookaheadMetanameWarning(Meta)]
-
-
-class SubstituteMetaRefs_Success(TreeModifierTest):
-    modifier = SubstituteMetaRefs
-
-    MetaId = Identifier('M')
-    MetaBody = 'hello world'
-    Meta = MetaRule(id=MetaId, expr=MetaBody)
-
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('E')),
-                                             metarule=MetaRef(MetaId)))),
-        Meta)
-    clue = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('E')),
-                                             metarule=Meta))))
-
-    def inspect_result(self, node: Grammar):
-        rule = node.get(Identifier('R'))
-        self.assertIsNotNone(rule)
-        self.assertEqual(rule.expr.alts[0].metarule, self.Meta)
-
-
-class SubstituteMetaRefs_UnusedMeta(TreeModifierTest):
-    modifier = SubstituteMetaRefs
-
-    MetaId = Identifier('M')
-    MetaBody = 'hello world'
-    Meta = MetaRule(id=MetaId, expr=MetaBody)
-
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('E'))))),
-        Meta)
-    clue = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('E'))))))
-
-    warnings = [UnusedMetaRuleWarning(Meta)]
-
-
-class SubstituteMetaRefs_RedefMeta(TreeModifierTest):
-    modifier = SubstituteMetaRefs
-
-    MetaId = Identifier('M')
-    MetaBody = 'hello world'
-    Meta1 = MetaRule(id=MetaId, expr=MetaBody)
-    Meta2 = MetaRule(id=MetaId, expr=MetaBody)
-
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(Alt(Part(prime=Char('E'))))),
-        Meta1, Meta2)
-    error = (RedefMetaRulesError({Identifier('M'): [Meta1, Meta2]}),)
-
-
-class SubstituteMetaRefs_UndefMeta(TreeModifierTest):
-    modifier = SubstituteMetaRefs
-
-    MetaId = Identifier('M')
-    MetaBody = 'hello world'
-    Meta = MetaRule(id=MetaId, expr=MetaBody)
-    A = Alt(Part(prime=Char('E')), metarule=MetaRef(MetaId))
-
-    input_data = Grammar(
-        Rule(Identifier('R'), Expression(A)))
-    error = (UndefMetaRefsError({Identifier('M'): [A]}),)
+        self.assertTrue(rule.leftrec)

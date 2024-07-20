@@ -1,612 +1,775 @@
 from __future__ import annotations
 
-import string
+from typing import Iterable, Optional, Union, Iterator, Any
+from dataclasses import dataclass
+from itertools import zip_longest
 
-from typing import Optional, Iterator
-from collections.abc import Iterable, Sized
-from abc import abstractmethod
-from itertools import chain
-
-from .attrholder import AttributeHolder, ArgsRepr
-from .utility import isiterable, wrap_string
+from .utility import code_to_char, wrap_string
 
 
-class Node(Iterable):
-    def __init__(self, begin_pos: int = 0):
-        self.begin_pos = begin_pos
+class GrammarVisitor:
+    # taken from pegen
+    # https://github.com/we-like-parsers/pegen/blob/main/src/pegen/grammar.py
 
-    @property
-    def descendants(self) -> Iterator[Node]:
-        yield self
-        for e in self:
-            yield from e.descendants
+    def visit(self, node, *args: Any, **kwargs: Any) -> Any:
+        """Visit a node."""
+        method = f"visit_{type(node).__name__}"
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node, *args, **kwargs)
 
-    @abstractmethod
-    def __iter__(self) -> Iterator[Node]:
-        ...
-
-    def copy(self, deep=False) -> Node:
-        nodes = []
-        for node in self:
-            if deep:
-                node = node.copy(deep=True)
-            nodes.append(node)
-
-        self_type = type(self)
-        return self_type(*nodes)
-
-    def to_dict(self, positions=True):
-        type_name = type(self).__name__
-        dct = {'type': type_name}
-        for k, v in self._get_kwargs():
-            if not positions and k in ('begin_pos'):
-                continue
-            if isinstance(v, Node):
-                v = v.to_dict()
-            elif isiterable(v):
-                v = [(i.to_dict() if isinstance(i, Node) else i) for i in v]
-            dct[k] = v
-        return dct
-
-    def __bool__(self):
-        return True
+    def generic_visit(self, node, *args: Any, **kwargs: Any) -> None:
+        for value in node:
+            self.visit(value, *args, **kwargs)
 
 
-class LeafNode(Node):
-    @property
-    def descendants(self) -> Iterator[LeafNode]:
-        yield self
-
-    def __iter__(self) -> Iterator[Node]:
-        yield from tuple()
-
-    def copy(self, deep=False) -> Node:
-        return type(self)()
+@dataclass
+class ParseInfo:
+    beg_pos: Optional[int] = None
+    end_pos: Optional[int] = None
+    filename: Optional[str] = None
 
 
-class Grammar(Node, ArgsRepr, Sized):
-    nodes: list[Rule | MetaRule]
-    entry: Optional[Rule]
+class DLL:
+    """Doubly linked list"""
 
-    def __init__(self, *rules, begin_pos=0):
-        self.nodes = list(rules)
-        self.entry = None
-        super().__init__(begin_pos)
+    left: Optional[DLL] = None
+    right: Optional[DLL] = None
 
-    def add(self, rule: Rule) -> bool:
-        if rule in self.nodes:
-            return False
-        self.nodes.append(rule)
-        return True
-
-    def get(self, id: Identifier
-            ) -> Optional[Rule | MetaRule | tuple[Rule | MetaRule, ...]]:
-        result = tuple(r for r in self.nodes if r.id == id)
-        if len(result) == 1:
-            return result[0]
-        if not result:
+    @classmethod
+    def from_iterable(cls, it: Iterable[DLL]) -> DLL | None:
+        """Create a linked list from a sequence."""
+        it = iter(it)
+        node = head = next(it, None)
+        if node is None:
             return None
-        return result
+        for n in it:
+            node.insert_after(n)
+            node = n
+        return head
 
-    def remove_metarules(self):
-        self.nodes = list(filter(lambda i: type(i) is not MetaRule, self.nodes))
+    def insert_after(self, node: DLL):
+        """Add a single node after this node.
 
-    def _get_args(self):
-        return self.nodes
+        Node will be removed from the list it is part of before being
+        inserted into the new list.
+        """
+        node.remove()
+        if self.right is not None:
+            self.right.left = node
+            node.right = self.right
+        node.left = self
+        self.right = node
 
-    def __eq__(self, other):
-        if not isinstance(other, Grammar):
-            return NotImplemented
-        if len(self.nodes) != len(other.nodes):
-            return False
-        for rule in self.nodes:
-            if rule not in other.nodes:
-                return False
-        return True
+    def insert_before(self, node: DLL):
+        """Add a single node before this node.
 
-    def __iter__(self):
-        yield from self.nodes
+        Node will be removed from the list it is part of before being
+        inserted into the new list.
+        """
+        node.remove()
+        if self.left is not None:
+            self.left.right = node
+            node.left = self.left
+        node.right = self
+        self.left = node
 
-    def __len__(self):
-        return len(self.nodes)
+    def emplace_after(self, node: DLL):
+        """Insert a list after this node
 
-    def __str__(self):
-        return '\n'.join(map(str, self.nodes))
+        If the node is a part of a list, then the whole list (from beginning
+        to end) will be inserted.
+        """
+        if self.right is not None:
+            end = node.end
+            self.right.left = end
+        beg = node.begin
+        beg.left = self
+        self.right = beg
 
+    def emplace_before(self, node: DLL):
+        """Insert a list before this node
 
-class Expression(Node, ArgsRepr, Sized):
-    alts: list[Alt]
+        If the node is a part of a list, then the whole list (from beginning
+        to end) will be inserted.
+        """
+        if self.left is not None:
+            beg = node.begin
+            self.left.right = beg
+        end = node.end
+        end.right = self
+        self.left = end
 
-    def __init__(self, *alts, begin_pos=0):
-        self.alts = list(alts)
-        super().__init__(begin_pos)
+    def forward(self) -> Iterator[DLL]:
+        """Iterate the linked list forward (to the right)."""
+        n = self
+        while n is not None:
+            yield n
+            n = n.right
 
-    def _get_args(self):
-        return self.alts
+    def backward(self) -> Iterator[DLL]:
+        """Iterate the linked list backward (to the left)."""
+        n = self
+        while n is not None:
+            yield n
+            n = n.left
 
-    def __iter__(self):
-        yield from self.alts
+    def replace(self, node: DLL):
+        """Replace current node in the list by the new node."""
+        if self.left is not None:
+            self.left.right = node
+        if self.right is not None:
+            self.right.left = node
 
-    def __eq__(self, other):
-        if not isinstance(other, Expression):
-            return NotImplemented
-        return self.alts == other.alts
+    def remove(self):
+        """Remove this node from the list."""
+        prev = self.left
+        if self.left is not None:
+            self.left.right = self.right
+        if self.right is not None:
+            self.right.left = prev
 
-    def __add__(self, other):
-        if not isinstance(other, Expression):
-            raise TypeError
-        return Expression(*chain(iter(self.alts), iter(other.alts)))
+    @property
+    def begin(self) -> DLL:
+        """Get the head node of a list."""
+        n = self
+        while n.left is not None:
+            n = n.left
+        return n
 
-    def __len__(self):
-        return len(self.alts)
+    @property
+    def end(self) -> DLL:
+        """Get the last node of a list."""
+        n = self
+        while n.right is not None:
+            n = n.right
+        return n
 
-    def __str__(self):
-        alts = ', '.join(map(str, self.alts))
-        return f"Expression({alts})"
+    def length(self) -> int:
+        """Get the length of the list [self; end]."""
+        return sum(1 for _ in DLL.forward(self))
 
-
-class Rule(Node, ArgsRepr, Sized):
-    id: Identifier
-    expr: Expression
-    directives: list[str]
-    leftrec: bool
-
-    def __init__(self, id, expr, directives=None,
-                 leftrec=False, begin_pos=0):
-        self.id = id
-        self.expr = expr
-        self.directives = [] if directives is None else directives
-        self.leftrec = leftrec
-        super().__init__(begin_pos)
-
-    def copy(self, deep=False):
-        cpy = super().copy(deep)
-        cpy.directives = self.directives
-        return cpy
-
-    def _get_args(self):
-        return [self.id, self.expr]
-
-    def __str__(self):
-        directives = ('[' + ', '.join(self.directives) + ']'
-                      if self.directives else '')
-        return f'Rule{directives}({self.id}, {self.expr})'
-
-    def __iter__(self):
-        yield from (self.id, self.expr)
-
-    def __len__(self):
-        return len(self.expr)
-
-    def __eq__(self, other):
-        if not isinstance(other, Rule):
-            return NotImplemented
-        return (self.id, self.expr) == (other.id, other.expr)
-
-    def __hash__(self):
-        return hash(self.id)
-
-
-class MetaRef(LeafNode, ArgsRepr):
-    id: Identifier
-
-    def __init__(self, id, begin_pos=0):
-        self.id = id
-        super().__init__(begin_pos)
-
-    def copy(self, deep=False):
-        return type(self)(self.id)
-
-    def _get_args(self):
-        return [self.id]
-
-    def _get_kwargs(self):
-        return [('id', self.id)]
-
-    def __eq__(self, other):
-        if not isinstance(other, MetaRef):
-            return NotImplemented
-        return self.id == other.id
-
-    def __hash__(self):
-        return hash(self.id)
+    def astuple(self) -> tuple[DLL, ...] | tuple[()]:
+        """Convert doubly linked list into a tuple of its elements."""
+        return tuple(DLL.forward(self))
 
 
-class MetaRule(Node, AttributeHolder):
-    expr: str
-    id: Optional[Identifier]
+class Grammar:
+    def __init__(self,
+                 rules: Iterable[Rule],
+                 metarules: Optional[Iterable[MetaRule]] = None,
+                 parse_info: Optional[ParseInfo] = None):
 
-    def __init__(self, expr, id=None, begin_pos=0):
-        self.expr = expr
-        self.id = id
-        super().__init__(begin_pos)
+        self.rules: Optional[Rule] = DLL.from_iterable(rules)
 
-    def copy(self, deep=False):
-        return MetaRule(id=self.id, expr=self.expr)
+        if metarules is not None:
+            metarules = DLL.from_iterable(metarules)
+        self.metarules: Optional[MetaRule] = metarules
 
-    def _get_kwargs(self):
-        return [('id', self.id), ('expr', self.expr)]
+        self.entry: Rule | None = None
+        self.parse_info = parse_info
 
-    def __iter__(self):
-        if self.id is not None:
-            yield self.id
+    def __repr__(self):
+        lines = ["Grammar("]
+        lines.append("  [")
+        for rule in DLL.forward(self.rules):
+            lines.append(f"    {repr(rule)},")
+        lines.append("  ],")
+        if self.metarules:
+            lines.append("  [")
+            for rule in DLL.forward(self.metarules):
+                lines.append(f"    {repr(rule)},")
+            lines.append("  ]")
         else:
-            yield from ()
+            lines.append("[]")
+        lines.append(")")
+        return '\n'.join(lines)
+
+    def __str__(self):
+        rules = (str(rule) for rule in DLL.forward(self.rules))
+        metarules = (str(rule) for rule in DLL.forward(self.metarules))
+        return '\n'.join(rules) + '\n\n' + '\n\n'.join(metarules)
+
+    def __iter__(self) -> Iterable[Rule]:
+        yield from (*DLL.forward(self.rules), *DLL.forward(self.metarules))
 
     def __eq__(self, other):
-        if not isinstance(other, MetaRule):
-            return NotImplemented
-        return (self.id, self.expr) == (other.id, other.expr)
-
-
-class Identifier(LeafNode, ArgsRepr):
-    string: str
-
-    def __init__(self, string, begin_pos=0):
-        self.string = string
-        super().__init__(begin_pos)
-
-    def _get_args(self):
-        return [self.string]
-
-    def __eq__(self, other):
-        if not isinstance(other, Identifier):
-            return NotImplemented
-        return self.string == other.string
-
-    def __lt__(self, other):
-        if not isinstance(other, Identifier):
-            return NotImplemented
-        return self.string < other.string
-
-    def copy(self, deep=False) -> Identifier:
-        return Identifier(self.string)
+        if type(other) is Grammar:
+            astuple = DLL.astuple
+            return (
+                (astuple(self.rules), astuple(self.metarules), self.entry) ==
+                (astuple(other.rules), astuple(other.metarules), other.entry))
+        return NotImplemented
 
     def __hash__(self):
-        return hash(self.string)
+        return hash(tuple(self.rules))
+
+
+class Rule(DLL):
+    def __init__(self,
+                 id: Id,
+                 expr: Expr,
+                 parse_info: Optional[ParseInfo] = None,
+                 *,
+                 ignore: bool = False,
+                 entry: bool = False):
+
+        self.id = id
+        self.expr = expr
+        self.ignore = ignore
+        self.entry = entry
+        self.head = False
+        self.leftrec: Optional[LR] = None
+        self.nullable = False
+        self.parse_info = parse_info
+
+    def __str__(self):
+        entry = "@entry\n" if self.entry else ""
+        ignore = "@ignore\n" if self.ignore else ""
+        return f"{entry}{ignore}{self.id} <- {self.expr}"
+
+    def __repr__(self):
+        parts = [repr(self.id), repr(self.expr)]
+        if self.ignore:
+            parts.append("ignore=True")
+        if self.entry:
+            parts.append("entry=True")
+        args = ', '.join(parts)
+        return f"Rule({args})"
+
+    def __iter__(self):
+        yield self.expr
+
+    def __eq__(self, other):
+        if type(other) is Rule:
+            return (self.id, self.expr) == (other.id, other.expr)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.id, self.expr))
 
 
 class LR:
+    def __init__(self, *chains: tuple[Id]):
+        self.chains = list(chains)
+
+    def __repr__(self):
+        return f"LR({self.chains!r})"
+
+    def __str__(self):
+        lines = []
+        for chain in self.chains:
+            tail = chain[0]
+            lines.append(' -> '.join(str(i) for i in (*chain, tail)))
+        return '\n'.join(lines)
+
+    @property
+    def heads(self):
+        yield from (c[0] for c in self.chains)
+
+    def copy(self):
+        return LR(*self.chains)
+
+
+class MetaRef:
+    def __init__(self, name: Id, parse_info: Optional[ParseInfo] = None):
+        self.name = name
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"MetaRef({self.name!r})"
+
+    def __str__(self):
+        return f"${self.name}"
+
+    def __iter__(self):
+        yield self.name
+
+    def __eq__(self, other):
+        if type(other) is MetaRef:
+            return self.name == other.name
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.name)
+
+
+class MetaRule(DLL):
     def __init__(self,
-                 head: Optional[Identifier] = None,
-                 involved_set: set[Identifier] = None):
-        self.head = head
-        self.involved_set = involved_set
-        if self.involved_set is None:
-            self.involved_set = set()
+                 id: Optional[Id],
+                 expr: str,
+                 parse_info: Optional[ParseInfo] = None):
+
+        self.id = id
+        self.expr = expr
+        self.parse_info = parse_info
 
     def __repr__(self):
-        return f"LR(head={self.head}, involved_set={self.involved_set})"
+        return f"MetaRule({self.id!r}, {self.expr!r})"
 
     def __str__(self):
-        return self.__repr__()
+        if self.id is None:
+            return f"{{{self.expr}}}"
+        return f"${self.id} {{{self.expr}}}"
+
+    def __iter__(self):
+        yield self.id
+
+    def __eq__(self, other):
+        if type(other) is MetaRule:
+            return self.id == other.id
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.id)
 
 
-class Alt(Node, ArgsRepr, Sized):
-    parts: Node
-    metarule: Optional[MetaRef | MetaRule]
-    leftrec: Optional[LR]
+class Expr:
+    def __init__(self,
+                 alts: Iterable[Alt],
+                 parse_info: Optional[ParseInfo] = None):
 
-    def __init__(self, *parts: Node, metarule=None, begin_pos=0, leftrec=None):
+        self.alts: Optional[Alt] = DLL.from_iterable(alts)
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        alts = ', '.join(repr(alt) for alt in DLL.forward(self.alts))
+        return f"Expr([{alts}])"
+
+    def __str__(self):
+        return ' / '.join(str(alt) for alt in DLL.forward(self.alts))
+
+    def __iter__(self):
+        yield from DLL.forward(self.alts)
+
+    def __eq__(self, other):
+        if type(other) is Expr:
+            return DLL.astuple(self.alts) == DLL.astuple(other.alts)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(tuple(DLL.forward(self.alts)))
+
+
+class Alt(DLL):
+    def __init__(self,
+                 items: Iterable[NamedItem],
+                 parse_info: Optional[ParseInfo] = None,
+                 *,
+                 metarule: MetaRef | MetaRule | None = None):
+
+        self.items: Optional[NamedItem] = DLL.from_iterable(items)
         self.metarule = metarule
-        self.parts = list(parts)
-        self.leftrec = leftrec
-        super().__init__(begin_pos)
-
-    def copy(self, deep=False) -> Node:
-        parts = (p.copy(deep) for p in self.parts)
-        metarule = None if self.metarule is None else self.metarule.copy(deep)
-        self_type = type(self)
-        return self_type(*parts, metarule=metarule, leftrec=self.leftrec)
-
-    def _get_args(self):
-        return self.parts
-
-    def _get_kwargs(self):
-        return [('metarule', self.metarule), ('parts', self.parts)]
-
-    def __str__(self):
-        metarule = (f'[{self.metarule.id.string}]'
-                    if self.metarule is not None else '')
-        parts = ', '.join(map(str, self.parts))
-        return f'Alt{metarule}({parts})'
-
-    def __eq__(self, other):
-        if not isinstance(other, Alt):
-            return NotImplemented
-        return (self.metarule, self.parts) == (other.metarule, other.parts)
-
-    def __iter__(self):
-        yield from self.parts
-        if self.metarule is not None:
-            yield self.metarule
-
-    def __len__(self):
-        return len(self.parts)
-
-    def __add__(self, other):
-        if not isinstance(other, Alt):
-            raise TypeError
-        return Alt(*chain(iter(self.parts), iter(other.parts)))
-
-
-class Part(Node, AttributeHolder):
-    lookahead: Optional[And | Not]
-    prime: Node
-    quant: Optional[ZeroOrOne | ZeroOrMore | OneOrMore | Repetition]
-    metaname: Optional[str]
-
-    def __init__(self, prime, *, lookahead=None, quant=None,
-                 metaname=None, begin_pos=0):
-        self.lookahead = lookahead
-        self.prime = prime
-        self.quant = quant
-        self.metaname = metaname
-        super().__init__(begin_pos)
-
-    def copy(self, deep=False):
-        if deep:
-            kwargs = {k: (v.copy() if isinstance(v, Node) else v)
-                      for k, v in self._get_kwargs()}
-        else:
-            kwargs = dict(self._get_kwargs())
-        return Part(**kwargs)
-
-    def _get_kwargs(self):
-        keys = ['metaname', 'lookahead', 'prime', 'quant']
-        return [(k, self.__dict__[k]) for k in keys]
-
-    def __eq__(self, other):
-        if not isinstance(other, Part):
-            return NotImplemented
-        return ((self.lookahead, self.prime, self.quant, self.metaname) ==
-                (other.lookahead, other.prime, other.quant, other.metaname))
-
-    def __iter__(self):
-        if self.lookahead:
-            yield self.lookahead
-        yield self.prime
-        if self.quant:
-            yield self.quant
-
-
-class AnyChar(LeafNode, ArgsRepr):
-    def __str__(self):
-        return type(self).__name__
-
-    def __eq__(self, other):
-        return True if isinstance(other, AnyChar) else NotImplemented
-
-
-class String(Node, ArgsRepr):
-    chars: list[Char]
-
-    def __init__(self, *chars: Char, begin_pos=0):
-        self.contents = chars  # type: ignore[assignment]
-        super().__init__(begin_pos)
-
-    @property
-    def contents(self) -> list[Char]:
-        return self.chars
-
-    @contents.setter
-    def contents(self, value: Iterable[Char] | Char) -> None:
-        if isiterable(value):
-            self.chars = list(value)
-        elif type(value) is Char:
-            self.chars = [value]
-        else:
-            raise TypeError(
-                f"expected Iterable[Char] | Char, got {type(value)}")
-
-    def _get_args(self):
-        return self.chars
-
-    def __eq__(self, other):
-        if not isinstance(other, String):
-            return NotImplemented
-        return self.chars == other.chars
-
-    def __len__(self):
-        return len(self.chars)
-
-    def __iter__(self) -> Iterator[Char]:
-        yield from self.chars
-
-    def __str__(self):
-        string = ''.join(map(lambda c: c._chr, self.chars))
-        return wrap_string(string)
-
-
-class Class(Node, ArgsRepr, Sized):
-    ranges: list[Range]
-
-    def __init__(self, *ranges: Range, begin_pos=0):
-        self.ranges = list(ranges)
-        super().__init__(begin_pos)
-
-    def _get_args(self):
-        return self.ranges
-
-    def __eq__(self, other):
-        if not isinstance(other, Class):
-            return NotImplemented
-        return self.ranges == other.ranges
-
-    def __len__(self):
-        return len(self.ranges)
-
-    def __iter__(self):
-        yield from self.ranges
-
-    def __hash__(self):
-        return hash(tuple(self.ranges))
-
-
-class Range(Node, ArgsRepr):
-    beg: Char
-    end: Optional[Char]
-
-    def __init__(self, beg, end=None, begin_pos=0):
-        self.beg = beg
-        self.end = end
-        super().__init__(begin_pos)
-
-    def _get_args(self):
-        return [self.beg, self.end] if self.end else [self.beg]
-
-    def _get_kwargs(self):
-        return (('beg', self.beg),
-                ('end', self.end),
-                ('begin_pos', self.begin_pos))
-
-    def __eq__(self, other):
-        if not isinstance(other, Range):
-            return NotImplemented
-        return (self.beg, self.end) == (other.beg, other.end)
-
-    def __iter__(self):
-        yield self.beg
-        if self.end:
-            yield self.end
-
-    def __hash__(self):
-        return hash((self.beg, self.end))
-
-
-class Lookahead(LeafNode):
-    def _get_kwargs(self):
-        return [('begin_pos', self.begin_pos)]
-
-    def __eq__(self, other):
-        return type(other) is type(self)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+        self.nullable = False
+        self.parse_info = parse_info
 
     def __repr__(self):
-        type_name = type(self).__name__
-        return f"{type_name}()"
+        items = ', '.join(repr(i) for i in DLL.forward(self.items))
+        metarule = "" if self.metarule is None else f", {self.metarule!r}"
+        return f"Alt([{items}]{metarule})"
 
     def __str__(self):
-        return type(self).__name__
+        items = ' '.join(str(i) for i in DLL.forward(self.items))
+        if self.metarule:
+            return ' '.join((items, str(self.metarule)))
+        return items
 
-
-class And(Lookahead):
-    pass
-
-
-class Not(Lookahead):
-    pass
-
-
-class Quantifier(LeafNode):
-    def _get_kwargs(self):
-        return [('begin_pos', self.begin_pos)]
+    def __iter__(self):
+        yield from DLL.forward(self.items)
 
     def __eq__(self, other):
-        return type(other) is type(self)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __repr__(self):
-        type_name = type(self).__name__
-        return f"{type_name}()"
-
-    def __str__(self):
-        return type(self).__name__
-
-
-class ZeroOrOne(Quantifier):
-    pass
-
-
-class ZeroOrMore(Quantifier):
-    pass
-
-
-class OneOrMore(Quantifier):
-    pass
-
-
-PredicateType = And | Not
-QuantifierType = ZeroOrOne | ZeroOrMore | OneOrMore
-
-
-class Repetition(LeafNode, ArgsRepr):
-    beg: int
-    end: Optional[int]
-
-    def __init__(self, beg, end=None, begin_pos=0):
-        self.beg = beg
-        self.end = end
-        super().__init__(begin_pos)
-
-    def copy(self, deep=False):
-        return type(self)(self.beg, self.end)
-
-    def _get_args(self):
-        if self.end:
-            return [self.beg, self.end]
-        else:
-            return [self.beg]
-
-    def __eq__(self, other):
-        if not isinstance(other, Repetition):
-            return NotImplemented
-        return (self.beg, self.end) == (other.beg, other.end)
+        if type(other) is Alt:
+            return ((DLL.astuple(self.items), self.metarule) ==
+                    (DLL.astuple(other.items), other.metarule))
+        return NotImplemented
 
     def __hash__(self):
-        return hash((self.beg, self.end))
+        return hash((self.metarule, self.items))
 
 
-_printable = set((*string.digits, *string.ascii_letters, *string.punctuation))
+class NamedItem(DLL):
 
+    IGNORE = "_"
 
-class Char(LeafNode, ArgsRepr):
-    code: int
+    def __init__(self,
+                 name: Optional[Id],
+                 item: Item,
+                 parse_info: Optional[ParseInfo] = None):
 
-    def __init__(self, code: int | str, begin_pos=0):
-        self.code = ord(code) if isinstance(code, str) else code
-        super().__init__(begin_pos)
+        self.name = name
+        self.item = item
+
+        assert type(self.item) is not NamedItem
+
+        self.nullable = False
+        self.parse_info = parse_info
 
     @property
-    def _chr(self):
-        if (c := chr(self.code)) and c in _printable:
-            return repr(c)[1:-1]
-        code = hex(self.code)[2:].rjust(4, '0')
-        return f'\\u{code}'
+    def inner_item(self) -> Item | str:
+        i = self.item
+        while islookahead(i) or isquant(i):
+            i = i.item
+        return i
 
-    def copy(self, deep=False):
-        return type(self)(self.code)
+    def __repr__(self):
+        return f"NamedItem({self.name!r}, {self.item!r})"
+
+    def __str__(self):
+        if self.name:
+            return f"{self.name}:{self.item}"
+        return str(self.item)
+
+    def __iter__(self):
+        yield self.item
 
     def __eq__(self, other):
-        if not isinstance(other, Char):
-            return NotImplemented
-        return self.code == other.code
+        if type(other) is NamedItem:
+            return (self.name, self.item) == (other.name, other.item)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.name, self.item))
+
+
+class Id:
+    def __init__(self, value: str, parse_info: Optional[ParseInfo] = None):
+        self.value = value
+        self.parse_info = parse_info
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return f"Id({self.value!r})"
+
+    def __iter__(self):
+        yield from ()
+
+    def __eq__(self, other):
+        if type(other) is Id:
+            return self.value == other.value
+        return NotImplemented
 
     def __lt__(self, other):
-        if not isinstance(other, Char):
-            return NotImplemented
-        return self.code < other.code
+        if type(other) is Id:
+            return self.value < other.value
+        return NotImplemented
 
-    def __gt__(self, other):
-        if not isinstance(other, Char):
-            return NotImplemented
-        return self.code > other.code
+    def __hash__(self):
+        return hash(self.value)
 
-    def __le__(self, other):
-        return self.__eq__(other) or self.__lt(other)
 
-    def __ge__(self, other):
-        return self.__eq__(other) or self.__gt__(other)
+class String:
+    def __init__(self,
+                 chars: Iterable[Char],
+                 parse_info: Optional[ParseInfo] = None):
+        self.chars: Optional[Char] = DLL.from_iterable(chars)
+        self.parse_info = parse_info
 
     def __repr__(self):
-        return f'Char({wrap_string(self._chr)})'
+        chars = ', '.join(repr(c) for c in DLL.forward(self.chars))
+        return f"String([{chars}])"
 
     def __str__(self):
-        return wrap_string(self._chr, double=False)
+        chars = ''.join(c.chr for c in DLL.forward(self.chars))
+        return wrap_string(chars, "double")
+
+    def __iter__(self):
+        yield from DLL.forward(self.chars)
+
+    def __eq__(self, other):
+        if isinstance(other, String):
+            return DLL.astuple(self.chars) == DLL.astuple(other.chars)
+        return NotImplemented
+
+    def __lt__(self, other):
+        if type(other) is not String:
+            return NotImplemented
+        for a, b in zip_longest(DLL.forward(self.chars), DLL.forward(other.chars)):
+            if a >= b or b is None:
+                return False
+        return True
+
+    def __hash__(self):
+        return hash(DLL.astuple(self.chars))
+
+
+class Char(DLL):
+    def __init__(self,
+                 code: int | str,
+                 parse_info: Optional[ParseInfo] = None):
+
+        if isinstance(code, str):
+            code = ord(code)
+        self.code = code
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"Char({str(self)})"
+
+    def __str__(self):
+        return wrap_string(self.chr, 'single')
+
+    @property
+    def chr(self):
+        char = code_to_char(self.code)
+        if char == '\\':
+            return '\\\\'
+        return char
+
+    def __iter__(self):
+        yield from ()
+
+    def __eq__(self, other):
+        if type(other) is Char:
+            return self.code == other.code
+        return NotImplemented
+
+    def __lt__(self, other):
+        if type(other) is Char:
+            return self.code < other.code
+        return NotImplemented
 
     def __hash__(self):
         return hash(self.code)
+
+
+class AnyChar:
+    def __init__(self, parse_info: Optional[ParseInfo] = None):
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return "AnyChar()"
+
+    def __str__(self):
+        return "."
+
+    def __iter__(self):
+        yield from ()
+
+    def __eq__(self, other):
+        return isinstance(other, AnyChar)
+
+    def __hash__(self):
+        return hash('.')
+
+
+class Class:
+    def __init__(self,
+                 ranges: Iterable[Range],
+                 parse_info: Optional[ParseInfo] = None):
+        self.ranges: Optional[Range] = DLL.from_iterable(ranges)
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        ranges = ', '.join(repr(r) for r in DLL.forward(self.ranges))
+        return f"Class([{ranges}])"
+
+    def __str__(self):
+        ranges = ''.join(str(r) for r in DLL.forward(self.ranges))
+        return f"[{ranges}]"
+
+    def __iter__(self):
+        yield from DLL.forward(self.ranges)
+
+    def __eq__(self, other):
+        if isinstance(other, Class):
+            return DLL.astuple(self.ranges) == DLL.astuple(self.ranges)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(DLL.astuple(self.ranges))
+
+
+class Range(DLL):
+    def __init__(self,
+                 first: Char,
+                 last: Optional[Char] = None,
+                 parse_info: Optional[ParseInfo] = None):
+        self.first = first
+        self.last = last
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"Range({self.first!r}, {self.last!r})"
+
+    def __str__(self):
+        if self.last is not None:
+            return f"{self.first.chr}-{self.last.chr}"
+        return self.first.chr
+
+    def __iter__(self):
+        if self.last is None:
+            yield self.first
+        else:
+            yield from (self.first, self.last)
+
+    def __eq__(self, other):
+        if isinstance(other, Range):
+            return (self.first, self.last) == (other.first, other.last)
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.first, self.last))
+
+
+class ZeroOrOne:
+    def __init__(self, item: Item, parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"ZeroOrOne({self.item!r})"
+
+    def __str__(self):
+        return f"{self.item}?"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if isinstance(other, ZeroOrOne):
+            return self.item == other.item
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.item)
+
+
+class ZeroOrMore:
+    def __init__(self, item: Item, parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"ZeroOrMore({self.item!r})"
+
+    def __str__(self):
+        return f"{self.item}*"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if isinstance(other, ZeroOrMore):
+            return self.item == other.item
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.item)
+
+
+class OneOrMore:
+    def __init__(self, item: Item, parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"OneOrMore({self.item!r})"
+
+    def __str__(self):
+        return f"{self.item}+"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if isinstance(other, OneOrMore):
+            return self.item == other.item
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.item)
+
+
+class Repetition:
+    def __init__(self,
+                 item: Item,
+                 first: int,
+                 last: Optional[int] = None,
+                 parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.first = first
+        self.last = last
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"Repetition({self.item!r}, {self.first}, {self.last})"
+
+    def __str__(self):
+        if self.last is not None:
+            rep = f"{{{self.first},{self.last}}}"
+        else:
+            rep = f"{{{self.first}}}"
+        return f"{self.item}{rep}"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if type(other) is Repetition:
+            return ((self.item, self.first, self.last)
+                    == (other.item, other.first, other.last))
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.item, self.first, self.last))
+
+
+class Not:
+    def __init__(self, item: Item, parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"Not({self.item!r})"
+
+    def __str__(self):
+        return f"!{self.item}"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if isinstance(other, Not):
+            return self.item == other.item
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.item)
+
+
+class And:
+    def __init__(self, item: Item, parse_info: Optional[ParseInfo] = None):
+        self.item = item
+        self.parse_info = parse_info
+
+    def __repr__(self):
+        return f"And({self.item!r})"
+
+    def __str__(self):
+        return f"&{self.item}"
+
+    def __iter__(self):
+        yield self.item
+
+    def __eq__(self, other):
+        if isinstance(other, And):
+            return self.item == other.item
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.item)
+
+
+def isquant(node: object) -> bool:
+    """Return True if an object is quantifier, False otherwise."""
+    return type(node) in (ZeroOrOne, ZeroOrMore, OneOrMore, Repetition)
+
+
+def islookahead(node: object) -> bool:
+    """Return True if an object is predicate, False otherwise."""
+    return type(node) in (Not, And)
+
+
+Item = Union[NamedItem, Id, Expr, Char, AnyChar, String, And, Not, ZeroOrOne,
+             ZeroOrMore, OneOrMore]
