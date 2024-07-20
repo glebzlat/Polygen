@@ -5,10 +5,10 @@ requires-python = ">= 3.11"
 dependencies = ["click"]
 authors = [{name = "Gleb Zlatanov"}]
 description = "A Packrat parser generator tool."
-# readme = "README.md"
-# license = {file = "LICENSE"}
+readme = "README.md"
+license = {file = "LICENSE"}
 classifiers = [
-  "Development Status :: 3 - Beta",
+  "Development Status :: 2 - Pre-Alpha",
   "Intended Audience :: Developers",
   "Topic :: Software Development :: Build Tools"
 ]
