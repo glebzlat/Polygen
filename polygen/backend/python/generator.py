@@ -1,9 +1,10 @@
-from io import TextIOBase
+from io import StringIO
+from typing import Any
 
 from polygen.utility import reindent
 
-from polygen.gen_base import GeneratorBase
-from polygen.node import GrammarVisitor
+from polygen.generator.base import CodeGeneratorBase
+from polygen.generator.config import Option
 
 from polygen.node import (
     DLL,
@@ -28,17 +29,57 @@ from polygen.node import (
 )
 
 
-class Generator(GeneratorBase, GrammarVisitor):
-    def __init__(self, grammar: Grammar, stream: TextIOBase, config):
-        self.grammar = grammar
-        self.config = config
-        super().__init__(stream)
+POLYGEN_IMPORTS = """
+from polygen.node import (
+    Grammar,
+    Rule,
+    MetaRef,
+    MetaRule,
+    Expr,
+    Alt,
+    NamedItem,
+    Id,
+    String,
+    Char,
+    AnyChar,
+    Class,
+    Range,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
+    Repetition,
+    And,
+    Not
+)
+"""
 
-    def generate(self):
-        self.visit(self.grammar)
+
+class CodeGenerator(CodeGeneratorBase):
+
+    NAME = "python"
+    LANGUAGE = "Python"
+    VERSION = "0.0.1"
+    FILES = ["parser.py.in"]
+    OPTIONS = {
+        "polygen_imports": Option(bool, default=False)
+    }
+
+    def generate(self,
+                 grammar: Grammar,
+                 options: dict[str, Any]) -> dict[str, str | StringIO]:
+        with self.directive("imports"):
+            if options["polygen_imports"]:
+                self.put(POLYGEN_IMPORTS, newline=False)
+
+        with self.directive("entry"):
+            self.put(grammar.entry.id.value, newline=False)
+
+        with self.directive("body"):
+            self.visit(grammar)
+        return self._directives
 
     def visit_Grammar(self, node: Grammar):
-        for i, r in enumerate(self.grammar):
+        for i, r in enumerate(node):
             self.visit(r, i)
 
     def visit_Rule(self, node: Rule, index: int):

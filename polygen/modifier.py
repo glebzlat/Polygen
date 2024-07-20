@@ -1,50 +1,171 @@
 from __future__ import annotations
 
+import logging
+
 from collections import defaultdict, Counter
 from keyword import iskeyword
 
-from ..node import (
+from .node import (
+    GrammarVisitor,
     islookahead,
     DLL,
     Grammar,
     Rule,
+    LR,
     MetaRef,
     MetaRule,
     Expr,
     Alt,
     NamedItem,
     Id,
+    String,
     Char,
     AnyChar,
     Class,
     Range,
     Repetition,
+    ZeroOrOne,
+    ZeroOrMore,
+    OneOrMore,
     And,
     Not
 )
 
-from .errors import (
-    UndefRulesError,
-    RedefRulesError,
-    UndefMetaRulesError,
-    RedefMetaRulesError,
-    UndefEntryError,
-    RedefEntryError,
-    LookaheadMetanameWarning,
-    MetanameRedefError,
-    UnusedMetaRuleWarning,
-    InvalidRangesError,
-    InvalidRepetitionsError,
-    GatheredSemanticErrors
-)
+
+from typing import Iterator, TypeVar, Hashable, OrderedDict
+
+logger = logging.getLogger("polygen.modifier")
+
+
+class TreeModifierWarning(Warning):
+    """Gathers multiple semantic warnings."""
+
+    def __init__(self, warnings: list[SemanticWarning]):
+        self.warnings = warnings
+
+    def __repr__(self):
+        return f"TreeModifierWarning({self.warnings})"
+
+    def __str__(self):
+        return '\n'.join(self.warnings)
+
+
+class ModifierVisitor:
+    def __init__(self, modifiers):
+        self.modifiers = modifiers
+        self.warnings = []
+
+    def apply(self, tree: Grammar):
+        for m in self.modifiers:
+            while not m.done:
+                self._visit(tree, [], m)
+                m.apply()
+
+        if self.warnings:
+            raise TreeModifierWarning(self.warnings)
+
+    def _visit(self, node, parents, modifier):
+        if modifier.done:
+            return
+        parents.append(node)
+        for child in node:
+            self._visit(child, parents, modifier)
+        parents.pop()
+        self._visit_post(node, parents, modifier)
+
+    def _visit_post(self, node, parents, modifier):
+        node_type_name = type(node).__name__
+        method_name = f"visit_{node_type_name}"
+        visitor = getattr(modifier, method_name, None)
+        if visitor is not None:
+            try:
+                visitor(node, parents)
+
+            except SemanticWarning as warn:
+                self.warnings.append(warn)
+
+
+class SemanticWarning(Warning):
+    pass
+
+
+class LookaheadMetanameWarning(SemanticWarning):
+    """Raised by GenerateMetanames if lookahead node has metaname.
+
+    Contains one And / Not node.
+    """
+
+
+class UnusedMetaRuleWarning(SemanticWarning):
+    """Metarule was defined but not applied to any rule's alternative.
+
+    Contains one MetaRule node.
+    """
+
+
+class SemanticError(Exception):
+    """Base class for exceptions raised by modifiers."""
+
+
+class UndefEntryError(SemanticError):
+    """Entry rule not defined."""
+
+
+class RedefEntryError(SemanticError):
+    """There are more than one rule with '@entry' directive.
+
+    Contains two Rule nodes: first defined entry and redefined entry.
+    """
+
+
+class UndefRulesError(SemanticError):
+    """Rule mentioned in an expression but not found in the grammar."""
+
+
+class RedefRulesError(SemanticError):
+    """Rule defined more than once.
+
+    Contains a dictionary of redefined rules: `dict[Id, Rule]`.
+    """
+
+
+class UndefMetaRulesError(SemanticError):
+    """Metarule mentioned in an expression but not found in the grammar."""
+
+
+class RedefMetaRulesError(SemanticError):
+    """Metarule defined more than once.
+
+    Contains a dictionary of redefined rules: `dict[Id, MetaRule]`.
+    """
+
+
+class MetanameRedefError(SemanticError):
+    """Multiple nodes in one alternative has the same metaname.
+
+    Redefinition of the metaname will probably lead to compiler/interpreter
+    errors (redefined variable) or at least to malfunctioning parser.
+
+    Contains two nodes with the same metaname.
+    """
+
+
+class RangeRepError(SemanticError):
+    """Invalid repetition and range nodes.
+
+    Contains two lists: a list of ranges and a list of repetitions. Range and
+    repetition nodes have `beg` and `end` boundaries. If `end` is greater
+    than `beg`, node considered invalid.
+    """
 
 
 class CheckUndefinedRules:
     """Finds rules, that are referenced but not found in the grammar."""
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.named_items: defaultdict[list[Id]] = defaultdict(list)
         self.rule_names: set[Id] = set()
+        self.verbose = verbose
         self.done = False
 
     def visit_Rule(self, node: Rule, parents):
@@ -66,8 +187,9 @@ class CheckUndefinedRules:
 class CheckRedefinedRules:
     """Finds rules that are defined more than once."""
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.rules = defaultdict(list)
+        self.verbose = verbose
         self.done = False
 
     def visit_Rule(self, node: Rule, parents):
@@ -102,9 +224,10 @@ class ReplaceNestedExprs:
     ```
     """
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.created_exprs: dict[Expr, Id] = {}
         self.id_count: Counter[Id] = Counter()
+        self.verbose = verbose
         self.done = False
 
     def _get_rule_id(self, parents) -> Id | None:
@@ -147,8 +270,9 @@ class ReplaceNestedExprs:
 class FindEntryRule:
     """Tries to find the rule marked as `@entry`."""
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.entry: Rule | None = None
+        self.verbose = verbose
         self.done = False
 
     def visit_Grammar(self, node: Grammar, parents):
@@ -180,10 +304,11 @@ class CreateAnyChar:
     > class containing all of the terminals in [the set of terminal symbols].
     """
 
-    def __init__(self, strict=False):
+    def __init__(self, strict=False, verbose=False):
         self.strict = strict
         self.chars: set[Char] = set()
         self.rule_id = Id("AnyChar__GEN")
+        self.verbose = verbose
         self.done = False
 
     def visit_Char(self, node: Char, parents):
@@ -197,6 +322,9 @@ class CreateAnyChar:
     def visit_Grammar(self, node: Grammar, parents):
         if self.strict:
             cls = charset_to_class(self.chars)
+
+            logger.info("AnyChar class: %s", cls)
+
             rule = Rule(self.rule_id, Expr([Alt([NamedItem(None, cls)])]))
             if DLL.length(node.rules):
                 node.rules.end.insert_after(rule)
@@ -212,8 +340,9 @@ class IgnoreRules:
     `NamedItem.IGNORE` value should not return any values.
     """
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.items: defaultdict[str, list[NamedItem]] = defaultdict(list)
+        self.verbose = verbose
         self.done = False
 
     def visit_NamedItem(self, node: NamedItem, parents):
@@ -233,10 +362,11 @@ class IgnoreRules:
 class GenerateMetanames:
     """Generates metanames which will be used by semantic actions."""
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.index = 1
-        self.metanames = set()
+        self.metanames = {}
         self.id_names = Counter()
+        self.verbose = verbose
         self.done = False
 
     def visit_NamedItem(self, node: NamedItem, parents):
@@ -258,9 +388,8 @@ class GenerateMetanames:
 
             # Names assigned by the user must be original
             if metaname in self.metanames:
-                print(self.metanames)
-                raise MetanameRedefError(node)
-            self.metanames.add(metaname)
+                raise MetanameRedefError(self.metanames[metaname], node)
+            self.metanames[metaname] = node
             return
 
         if type(node.item) in (And, Not):
@@ -293,9 +422,9 @@ class GenerateMetanames:
             self.index += 1
 
         if metaname in self.metanames:
-            raise MetanameRedefError(node)
+            raise MetanameRedefError(self.metanames[metaname], node)
         node.name = Id(metaname)
-        self.metanames.add(metaname)
+        self.metanames[metaname] = node
 
     def visit_Alt(self, node: Alt, parents):
         self.index = 1
@@ -309,7 +438,7 @@ class GenerateMetanames:
 class AssignMetaRules:
     """Finds metarules and assigns them to alts that references to them."""
 
-    def __init__(self):
+    def __init__(self, verbose=False):
 
         # Alts that hold references to the metarule
         self.refs: defaultdict[Id, list[Alt]] = defaultdict(list)
@@ -324,6 +453,7 @@ class AssignMetaRules:
         #   1: Collects references
         #   2: Searches metarules and assigns them to alts
         self.stage = 0
+        self.verbose = verbose
         self.done = False
 
     def visit_Alt(self, node: Alt, parents):
@@ -368,10 +498,11 @@ class AssignMetaRules:
             self.done = True
 
 
-class ValidateNodes:
-    def __init__(self):
+class ValidateRangesAndReps:
+    def __init__(self, verbose=False):
         self.ranges: list[Range] = []
         self.reps: list[Repetition] = []
+        self.verbose = verbose
         self.done = False
 
     def visit_Range(self, node: Range, parents):
@@ -383,11 +514,8 @@ class ValidateNodes:
             self.reps.append(node)
 
     def apply(self):
-        rng_exc = InvalidRangesError(self.ranges) if self.ranges else None
-        rep_exc = InvalidRepetitionsError(self.reps) if self.reps else None
-
-        if rng_exc or rep_exc:
-            raise GatheredSemanticErrors([rng_exc, rep_exc])
+        if self.ranges or self.reps:
+            raise RangeRepError(self.ranges, self.reps)
 
         self.done = True
 
@@ -415,3 +543,225 @@ def charset_to_class(chars: set[Char]) -> Class:
         ranges.append(Range(beg, end))
 
     return Class(ranges)
+
+
+class NullableVisitor(GrammarVisitor):
+    def __init__(self, grammar: Grammar):
+        self.grammar = grammar
+        self.visited: set[Id] = set()
+        self.nullables: set[Id] = set()
+
+    def visit_Grammar(self, node: Grammar):
+        for r in node:
+            self.visit(r)
+
+        self.visited.clear()
+        for r in node:
+            self.visit(r)
+
+    def visit_Rule(self, node: Rule) -> bool:
+        if node.id in self.visited:
+            return False
+        self.visited.add(node.id)
+        if self.visit(node.expr):
+            node.nullable = True
+            self.nullables.add(node.id)
+        return node.nullable
+
+    def visit_Expr(self, node: Expr) -> bool:
+        for alt in node:
+            if self.visit(alt):
+                return True
+        return False
+
+    def visit_Alt(self, node: Alt) -> bool:
+        for item in node:
+            if not self.visit(item):
+                return False
+        node.nullable = True
+        return True
+
+    def visit_NamedItem(self, node: NamedItem) -> bool:
+        if self.visit(node.item):
+            node.nullable = True
+        return node.nullable
+
+    def visit_Id(self, node: Id) -> bool:
+        return node in self.nullables
+
+    def visit_Not(self, node: Not) -> bool:
+        return True
+
+    def visit_And(self, node: And) -> bool:
+        return True
+
+    def visit_ZeroOrOne(self, node: ZeroOrOne) -> bool:
+        return True
+
+    def visit_ZeroOrMore(self, node: ZeroOrMore) -> bool:
+        return True
+
+    def visit_OneOrMore(self, node: OneOrMore) -> bool:
+        return False
+
+    def visit_Repetition(self, node: Repetition) -> bool:
+        return node.first == 0
+
+    def visit_String(self, node: String) -> bool:
+        return not node.chars
+
+    def visit_Char(self, node: Char) -> bool:
+        return False
+
+    def visit_AnyChar(self, node: AnyChar) -> bool:
+        return False
+
+    def visit_Class(self, node: Class) -> bool:
+        return not node.ranges
+
+
+def compute_nullables(tree: Grammar):
+    vis = NullableVisitor(tree)
+    vis.visit(tree)
+
+
+class FirstGraphVisitor(GrammarVisitor):
+    def visit_Grammar(self, node: Grammar):
+        graph: dict[Id, list[Id]] = {}
+        for r in node:
+            if isinstance(r, MetaRule):
+                continue
+            key, val = self.visit(r)
+            graph[key] = val
+        return graph
+
+    def visit_Rule(self, node: Rule):
+        return node.id, self.visit(node.expr)
+
+    def visit_Expr(self, node: Expr):
+        names, added = [], set()
+        for n in node:
+            for n in self.visit(n):
+                if n in added:
+                    continue
+                names.append(n)
+                added.add(n)
+        return names
+
+    def visit_Alt(self, node: Alt):
+        names, added = [], set()
+        for i in node:
+            assert type(i) is NamedItem
+            for n in (self.visit(i) or []):
+                if n in added:
+                    continue
+                names.append(n)
+                added.add(n)
+            if not i.nullable:
+                break
+        return names
+
+    def visit_NamedItem(self, node: NamedItem):
+        return self.visit(node.item)
+
+    def visit_ZeroOrOne(self, node: ZeroOrOne):
+        return self.visit(node.item)
+
+    def visit_ZeroOrMore(self, node: ZeroOrMore):
+        return self.visit(node.item)
+
+    def visit_OneOrMore(self, node: OneOrMore):
+        return self.visit(node.item)
+
+    def visit_Id(self, node: Id):
+        return [node]
+
+    def visit_String(self, node: String):
+        return []
+
+    def visit_Char(self, node: Char):
+        return []
+
+    def visit_And(self, node: And):
+        return []
+
+    def visit_Not(self, node: Not):
+        return []
+
+
+def make_first_graph(grammar: Grammar) -> dict[str, list[str]]:
+    vis = FirstGraphVisitor()
+    return vis.visit(grammar)
+
+
+Vertex = TypeVar("Vertex", bound=Hashable)
+
+
+def strongly_connected_components(
+    graph: dict[Vertex, list[Vertex]], start: Vertex
+) -> Iterator[tuple[Vertex, ...]]:
+    """Find strongly connected components in a graph.
+
+    Yields tuples of strongly connected components, where the first element
+    is always the head of a chain.
+
+    Args:
+        graph: Directed graph.
+        start: The start node.
+
+    Returns:
+        iterator
+    """
+    stack: OrderedDict[str, int] = {}
+
+    def dfs(v):
+        if v in stack:
+            beg = stack[v]
+            yield tuple(stack.keys())[beg:]
+            return
+        stack[v] = len(stack)
+        for u in graph[v]:
+            yield from dfs(u)
+        stack.popitem()
+
+    yield from dfs(start)
+
+
+class ComputeLR:
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+        self.done = False
+
+    def visit_Grammar(self, node: Grammar, parents):
+        rules: dict[str, Rule] = {r.id: r for r in node}
+
+        compute_nullables(node)
+        graph = make_first_graph(node)
+
+        if logger.isEnabledFor(logging.INFO):
+            lines = []
+            for k, v in graph.items():
+                if not v:
+                    continue
+                strs = ', '.join(str(i) for i in v)
+                lines.append(f"  {k}: [{strs}]")
+            logger.info("first graph:\n%s", '\n'.join(lines))
+
+        for scc in strongly_connected_components(graph, node.entry.id):
+            lr = LR(scc)
+
+            logger.info("lr chain: %s", lr)
+
+            head_rule = rules[lr.chains[0][0]]
+            head_rule.head = True
+            for involved in scc:
+                rule = rules[involved]
+                if rule.leftrec is None:
+                    rule.leftrec = lr.copy()
+                else:
+                    rule.leftrec.chains.extend(lr.chains)
+
+        self.done = True
+
+    def apply(self):
+        self.done = True

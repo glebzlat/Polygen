@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import sys
-
-from collections import ChainMap, defaultdict
 from typing import Any, Callable, GenericAlias, Iterable, Optional, Iterator
-from os import PathLike
-
-FS_ENCODING = sys.getfilesystemencoding() or sys.getdefaultencoding()
+from collections import ChainMap, defaultdict
 
 
 class ConfigError(Exception):
@@ -414,38 +409,3 @@ class Config:
 
     def __str__(self):
         return repr(self)
-
-
-def read_file(schema: dict[str, Option], filename: str | PathLike[str]):
-    """Create Config object from configuration file."""
-    namespace = eval_config_file(filename)
-
-    options = {attr: val for attr, val in namespace.items()
-               if not attr.startswith('__')}
-
-    cfg = Config(schema)
-    cfg.override(options)
-    cfg.validate()
-
-    # print(dict(cfg.items()))
-
-    return cfg
-
-
-def eval_config_file(filename: str | PathLike[str]) -> dict[str, Any]:
-    namespace = {}
-
-    try:
-        with open(filename, 'rb') as fin:
-            code = compile(fin.read(), filename, 'exec')
-            exec(code, namespace)
-    except SyntaxError as e:
-        raise ConfigError(f'syntax error in the config file: {e}') from e
-    except SystemExit as e:
-        raise ConfigError('the configuration file called sys.exit()') from e
-    except ConfigError:
-        raise
-    except Exception as e:
-        raise ConfigError(f'an exception in the config file: {e}') from e
-
-    return namespace
