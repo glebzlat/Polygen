@@ -1,6 +1,6 @@
 import unittest
 
-from polygen.config import Config, Option, Enum, ConfigError
+from polygen.generator.config import Config, Option, Enum, ConfigError
 
 
 class TestOption(unittest.TestCase):
