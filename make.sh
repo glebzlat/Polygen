@@ -26,7 +26,8 @@ function run_tests {
 function run_generate {
   if [ "$1" = "polygen" ];
   then
-    python -m polygen generate polygen/parser.peg -b python -o polygen
+    python -m polygen generate polygen/parser.peg -b python -o polygen \
+      -d polygen_imports=true
     exit $?
   fi
 
