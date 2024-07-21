@@ -21,18 +21,18 @@ class Token(str):
                 end: int,
                 filename: Optional[str] = None):
         self = super().__new__(cls, value)
-        self.value = value
         self.line = line
         self.start = start
         self.end = end
         self.filename = filename
         return self
 
+    @property
+    def value(self):
+        return str(self)
+
     def __repr__(self):
         return f"Token({self.value!r}, {self.line}, {self.start}, {self.end})"
-
-    def __str__(self):
-        return repr(self.value)
 
 
 class Reader:
@@ -77,13 +77,14 @@ class Reader:
             except IndexError:
                 self.eof = True
                 raise StopIteration
+        tok = Token(char, self.line, self.column, self.column + 1, self.name)
         if char in '\r\n':
             self.line += 1
             self.column = 0
         else:
             self.column += 1
         self.pointer += 1
-        return Token(char, self.line, self.pointer - 1, self.pointer, self.name)
+        return tok
 
     def update(self, length: int = 1) -> None:
         assert self.stream
