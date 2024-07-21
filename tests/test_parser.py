@@ -1,8 +1,7 @@
 import unittest
 import inspect
 
-from polygen.reader import Reader
-from polygen.parser import Parser
+from polygen.parser import Reader, Parser
 from polygen.node import (
     DLL,
     Grammar,
