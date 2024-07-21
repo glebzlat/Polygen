@@ -89,6 +89,8 @@ into the grammar file.
     - [ ] Write cross-backend unit tests
 - [ ] Grammar file preprocessor
     - [ ] `include` directive
+- [ ] Preprocessor definitions from grammar file (e.g. imports)
+- [ ] Parser error handling mechanism
 - [ ] Documentation
     - [ ] Language reference
     - [ ] Backends documentation and API
