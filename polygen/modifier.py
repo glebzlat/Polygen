@@ -277,7 +277,7 @@ class FindEntryRule:
 
     def visit_Grammar(self, node: Grammar, parents):
         if self.entry is None:
-            raise UndefEntryError(None)
+            raise UndefEntryError
         node.entry = self.entry
 
     def visit_Rule(self, node: Rule, parents):

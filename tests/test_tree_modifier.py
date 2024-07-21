@@ -1,11 +1,10 @@
 import unittest
 
+from typing import Optional
+
 from polygen.node import (
-    DLL,
     Grammar,
     Rule,
-    MetaRef,
-    MetaRule,
     Expr,
     Alt,
     NamedItem,
@@ -15,36 +14,29 @@ from polygen.node import (
     AnyChar,
     Class,
     Range,
-    ZeroOrOne,
-    ZeroOrMore,
-    OneOrMore,
-    Repetition,
-    And,
-    Not,
-    Item
+    ZeroOrOne
 )
 
-from polygen.modifier.tree_modifier import TreeModifier
-from polygen.modifier.errors import (
+from polygen.modifier import ModifierVisitor as TreeModifier
+from polygen.modifier import (
     TreeModifierWarning,
     UndefRulesError,
     RedefRulesError,
     UndefEntryError,
     RedefEntryError,
 )
-from polygen.modifier.modifiers import (
+from polygen.modifier import (
     CheckUndefinedRules,
     CheckRedefinedRules,
     ReplaceNestedExprs,
     FindEntryRule,
     CreateAnyChar,
+    ComputeLR
     # IgnoreRules,  ## TODO: test
     # GenerateMetanames,
     # AssignMetaRules,
     # ValidateNodes
 )
-
-from polygen.modifier.leftrec import compute_lr
 
 
 class TreeModifierTestMeta(type):
@@ -58,7 +50,7 @@ class TreeModifierTestMeta(type):
         clue = getattr(cls, 'clue', None)
         error = getattr(cls, 'error', None)
         warnings = getattr(cls, 'warnings', [])
-        assert clue is not None or error is not None
+        validate = getattr(cls, 'validate', None)
 
         if error is not None:
             def test_raises(self: unittest.TestCase):
@@ -68,11 +60,14 @@ class TreeModifierTestMeta(type):
                     vis.apply(input_data)
 
                 exc = context.exception
-                self.assertEqual(exc, error)
+                self.assertEqual(exc.args, error.args)
+
+                if validate:
+                    validate(self)
 
             setattr(cls, 'test_failure', test_raises)
 
-        elif clue is not None:
+        else:
             def test_success(self: unittest.TestCase):
                 vis = TreeModifier([modifier])
 
@@ -88,13 +83,21 @@ class TreeModifierTestMeta(type):
                 else:
                     vis.apply(input_data)
 
-                self.assertEqual(input_data, clue)
+                if clue:
+                    self.assertEqual(input_data, clue)
+
+                if validate:
+                    validate(self)
 
             setattr(cls, 'test_success', test_success)
 
 
-bases = (unittest.TestCase,)
-ModifierTest = TreeModifierTestMeta("ModifierTest", bases, {})
+class ModifierTest(unittest.TestCase, metaclass=TreeModifierTestMeta):
+    modifier: object
+    input_data: Grammar
+    clue: Optional[Grammar]
+    error: Optional[Exception]
+    warnings: Optional[list[Warning]]
 
 
 class Test_CheckUndefinedRules_Success(ModifierTest):
@@ -173,7 +176,7 @@ class Test_FindEntryRule_Undef(ModifierTest):
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
     ])
 
-    error = UndefEntryError(None)
+    error = UndefEntryError()
 
 
 class Test_FindEntryRule_Redef(ModifierTest):
@@ -225,58 +228,75 @@ class Test_CreateAnyChar_strict(ModifierTest):
     ])
 
 
-class Test_compute_lr(unittest.TestCase):
+class Test_ComputeLR_direct(ModifierTest):
 
-    def test_simple_lr(self):
-        rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('A'))])]))
-        tree = Grammar([rule])
-        tree.entry = rule
+    rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('A'))])]))
+    tree = Grammar([rule])
+    tree.entry = rule
 
-        compute_lr(tree)
+    input_data = tree
 
-        self.assertTrue(rule.leftrec)
+    modifier = ComputeLR()
 
-    def test_simple_nullable(self):
-        nullable_rule = Rule(
-            Id('A'), Expr([Alt([NamedItem(None, ZeroOrOne(Char('.')))])]))
-        rule = Rule(
-            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
-                                NamedItem(None, Id('B'))])]))
-        tree = Grammar([nullable_rule, rule])
-        tree.entry = rule
+    def validate(self):
+        self.assertTrue(self.rule.leftrec)
 
-        compute_lr(tree)
 
-        self.assertTrue(rule.leftrec)
+class Test_ComputeLR_direct_nullable(ModifierTest):
 
-    def test_complex_nullable(self):
-        nullable_rule = Rule(
-            Id('A'),
-            Expr([
-                Alt([NamedItem(None, Char('='))]),
-                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
-        rule = Rule(
-            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
-                                NamedItem(None, Id('B'))])]))
-        tree = Grammar([nullable_rule, rule])
-        tree.entry = rule
+    nullable_rule = Rule(
+        Id('A'), Expr([Alt([NamedItem(None, ZeroOrOne(Char('.')))])]))
+    rule = Rule(
+        Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                            NamedItem(None, Id('B'))])]))
+    tree = Grammar([nullable_rule, rule])
+    tree.entry = rule
 
-        compute_lr(tree)
+    input_data = tree
 
-        self.assertTrue(rule.leftrec)
+    modifier = ComputeLR()
 
-    def test_nullable_rule_after_rhs_id(self):
-        nullable_rule = Rule(
-            Id('A'),
-            Expr([
-                Alt([NamedItem(None, Char('='))]),
-                Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
-        rule = Rule(
-            Id('B'), Expr([Alt([NamedItem(None, Id('A')),
-                                NamedItem(None, Id('B'))])]))
-        tree = Grammar([rule, nullable_rule])
-        tree.entry = rule
+    def validate(self):
+        self.assertTrue(self.rule.leftrec)
 
-        compute_lr(tree)
 
-        self.assertTrue(rule.leftrec)
+class Test_ComputeLR_direct_nullable_alt(ModifierTest):
+
+    nullable_rule = Rule(
+        Id('A'),
+        Expr([
+            Alt([NamedItem(None, Char('='))]),
+            Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+    rule = Rule(
+        Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                            NamedItem(None, Id('B'))])]))
+    tree = Grammar([nullable_rule, rule])
+    tree.entry = rule
+
+    input_data = tree
+
+    modifier = ComputeLR()
+
+    def validate(self):
+        self.assertTrue(self.rule.leftrec)
+
+
+class Test_ComputeLR_direct_nullable_swap_rules(ModifierTest):
+
+    nullable_rule = Rule(
+        Id('A'),
+        Expr([
+            Alt([NamedItem(None, Char('='))]),
+            Alt([NamedItem(None, ZeroOrOne(Char('-')))])]))
+    rule = Rule(
+        Id('B'), Expr([Alt([NamedItem(None, Id('A')),
+                            NamedItem(None, Id('B'))])]))
+    tree = Grammar([rule, nullable_rule])
+    tree.entry = rule
+
+    input_data = tree
+
+    modifier = ComputeLR()
+
+    def validate(self):
+        self.assertTrue(self.rule.leftrec)
