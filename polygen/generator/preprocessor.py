@@ -23,8 +23,8 @@ class PreprocessorDirective(NamedTuple):
     filename: Optional[str] = None
 
     def __str__(self) -> str:
-        return (f"file {self.filename}:{self.position}: {self.string!r} "
-                f"on line {self.line!r}")
+        return (f"{self.filename}:{self.line}:{self.position}: "
+                f"{self.string!r} ")
 
 
 def check_undefined_directives(
@@ -48,7 +48,7 @@ def check_undefined_directives(
             if m := DIRECTIVE_LINE_RE.match(line):
                 name = m.group(2)
                 if name not in directives:
-                    undefined.append(Dir(name, line, m.pos, filename))
+                    undefined.append(Dir(name, i, m.start(2), filename))
     finally:
         istream.seek(0)
 
@@ -83,11 +83,15 @@ def insert(content: str | TextIOBase,
         istream = content
 
     try:
+        written = 0
         for line in istream:
-            if not NEWLINE_RE.match(line):
+            if line.strip():
                 # if line is not empty
                 ostream.write(prefix)
-            ostream.write(line)
+            written += ostream.write(line)
+
+        if written == 0:
+            ostream.write(prefix)
     finally:
         istream.seek(0)
 
@@ -146,6 +150,9 @@ def process_file(directives: dict[str, str | TextIOBase],
 
     if output_file is None:
         output_file = input_file.parent / create_output_filename(input_file)
+
+    if not output_file.parent.exists():
+        raise FileNotFoundError(f"No such directory: {output_file.parent}")
 
     with open(input_file, 'r') as fin, open(output_file, 'w') as fout:
         process_stream(directives, fin, fout)

@@ -1,361 +1,257 @@
-import os
 import unittest
-import shutil
 
 from io import StringIO
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import TemporaryDirectory
+from pathlib import Path
+from contextlib import contextmanager
 
-from polygen.preprocessor import (
-    NoSuchDirective,
-    FilePreprocessorError,
-    Preprocessor,
-    FilePreprocessor
+from polygen.generator.preprocessor import (
+    create_output_filename,
+    insert,
+
+    check_undefined_directives,
+    process_stream,
+
+    check_undefined_directives_file,
+    process_file,
+
+    check_undefined_directives_batch
 )
 
-TEST_DIR = os.path.join(os.getcwd(), 'tests', 'preprocessor_tests')
+TMP_DIR = TemporaryDirectory()
+TEST_DIR = Path.cwd() / 'tests' / 'preprocessor_tests'
 
 
-class PreprocessorTestMetaClass(type):
-    """
-    Metaclass for Preprocessor testing.
+class Test_create_output_filename(unittest.TestCase):
 
-    Preprocessor test classes must define the following attributes:
-        input_data: Input data string.
-        directives: dict[DirectiveName, SubstitutionString]
+    def test_replace_in_out(self):
+        clue = "file.out"
+        output = create_output_filename("file.in")
+        self.assertEqual(output, clue)
+        output = create_output_filename("file.input")
+        self.assertEqual(output, clue)
 
-    The following attributes are interchangable:
-        output_data: The expected result.
-        error: tuple[ExceptionType, dict[AttributeName, Value]].
-            If defined, then a fact, that exception with type ExceptionType
-            and the exact attribute values as defined in a dict, is raised,
-            will be tested.
+    def test_remove_in(self):
+        output = create_output_filename("file.in", add_stem=False)
+        self.assertEqual(output, "file")
 
-    If `error` attribute is defined, then `output_data` is not necessary,
-    because the preprocessing result is invalid and will not be tested.
-    """
+    def test_does_not_change_parents(self):
+        file = Path("dir.in/parent.input/file.in")
+        output = Path(create_output_filename("dir.in/parent.input/file.in"))
+        self.assertEqual(output, file.parent / "file.out")
 
-    def __init__(cls, name, bases, body):
-        if name == 'PreprocessorTestBase':
+
+class Test_insert(unittest.TestCase):
+
+    def test_insert_appends_content_to_stream(self):
+        content = "hello\nworld"
+        ostream = StringIO()
+        prefix = ">>> "
+        ending = ";"
+
+        insert(content, ostream, prefix, ending)
+
+        clue = ">>> hello\n>>> world;"
+        self.assertEqual(ostream.getvalue(), clue)
+
+        ostream.seek(0)
+        content = StringIO(content)
+        insert(content, ostream, prefix, ending)
+        self.assertEqual(ostream.getvalue(), clue)
+
+    def test_do_not_write_prefix_on_empty_lines(self):
+        content = "hello\n\nworld"
+        ostream = StringIO()
+        prefix = ">>> "
+        ending = ";"
+
+        insert(content, ostream, prefix, ending)
+
+        clue = ">>> hello\n\n>>> world;"
+        self.assertEqual(ostream.getvalue(), clue)
+
+    def test_write_prefix_if_no_content(self):
+        content = ""
+        ostream = StringIO()
+        prefix = ">>> "
+        ending = ";"
+
+        insert(content, ostream, prefix, ending)
+
+        clue = ">>> ;"
+        self.assertEqual(ostream.getvalue(), clue)
+
+
+class Test_check_undefined_in_stream(unittest.TestCase):
+
+    def test_collect_undefined(self):
+        data = """%% directive_1 %%
+123%% directive_2 %%
+        """
+        istream = StringIO(data)
+        undef = check_undefined_directives({}, istream)
+
+        self.assertEqual(len(undef), 2)
+
+        dir1, dir2 = undef
+        self.assertEqual(dir1.string, "directive_1")
+        self.assertEqual(dir1.line, 1)
+        self.assertEqual(dir1.position, 3)
+        self.assertEqual(dir1.filename, "<stream>")
+        self.assertEqual(dir2.string, "directive_2")
+        self.assertEqual(dir2.line, 2)
+        self.assertEqual(dir2.position, 6)
+
+    def test_ignore_defined(self):
+        data = """
+            %% message %%
+            %% greeting %%
+            %% farewell %%
+        """
+        istream = StringIO(data)
+        directives = {"greeting": "Hello, World"}
+        undef = check_undefined_directives(directives, istream)
+
+        self.assertEqual(len(undef), 2)
+        self.assertEqual(undef[0].string, "message")
+        self.assertEqual(undef[1].string, "farewell")
+
+    def test_ignore_escaped(self):
+        data = r"\%% message %%"
+        istream = StringIO(data)
+        undef = check_undefined_directives({}, istream)
+
+        self.assertEqual(len(undef), 0)
+
+
+class Test_process_stream(unittest.TestCase):
+
+    def test_ignore_undefined(self):
+        data = """
+            1st line begin %% d1 %% end
+            2nd line begin %% d2 %% end
+            3rd line begin %% d3 %% end
+        """
+        istream = StringIO(data)
+        ostream = StringIO()
+        directives = {"d1": "Hello", "d3": "Goodbye"}
+
+        process_stream(directives, istream, ostream)
+
+        clue = """
+            1st line begin Hello end
+            2nd line begin  end
+            3rd line begin Goodbye end
+        """
+        self.assertEqual(ostream.getvalue(), clue)
+
+
+class FileSystemManager:
+    def __init__(self, root_directory):
+        self.root = Path(root_directory)
+        self.root.mkdir(exist_ok=True)
+
+    @contextmanager
+    def directory(self, name: str) -> Path:
+        save = self.root
+        try:
+            self.root = self.root / name
+            self.root.mkdir(exist_ok=True)
+            yield self.root
+        finally:
+            self.root = save
+
+    def copy_files(self,
+                   source: Path,
+                   files: str | list[str]) -> list[Path] | Path:
+        if not source.exists():
             return
 
-        def test_preprocess(self):
-            istream = StringIO(self.input_data)
-            ostream = StringIO()
+        if files == "*":
+            paths = []
+            for f in source.iterdir():
+                if not f.is_file():
+                    continue
+                dest = self.root / f.name
+                dest.touch()
+                dest.write_bytes(f.read_bytes())
+                paths.append(dest)
+            return paths
 
-            p = Preprocessor(directives=self.directives)
+        if isinstance(files, list):
+            paths = []
+            for f in map(source.joinpath, files):
+                if not f.is_file():
+                    continue
+                dest = self.root / f.name
+                dest.touch()
+                dest.write_bytes(f.read_bytes())
+                paths.append(dest)
+            return paths
 
-            error = getattr(self, 'error', None)
-            if error is None:
-                p.process_stream(istream, ostream)
-
-                ostream.seek(0)
-                result = ostream.read()
-                self.assertEqual(result, self.output_data)
-
-            else:
-                exc_type, attrs = error
-                with self.assertRaises(exc_type) as context:
-                    p.process_stream(istream, ostream)
-
-                exception = context.exception
-                for name, value in attrs.items():
-                    attr_value = getattr(exception, name)
-                    self.assertEqual(attr_value, value)
-
-        setattr(cls, 'test_preprocess', test_preprocess)
-
-
-bases = (unittest.TestCase,)
-PreprocessorTestBase = (
-    PreprocessorTestMetaClass('PreprocessorTestBase', bases, {}))
-
-
-class TestWithoutDirectives(PreprocessorTestBase):
-    data = "hello world"
-
-    input_data = data
-    output_data = data
-    directives = {}
-
-
-class TestMultilineWODirectives(PreprocessorTestBase):
-    data = """
-first line
-second line
-"""
-    input_data = data
-    output_data = data
-    directives = {}
-
-
-class TestNoReplace(PreprocessorTestBase):
-    data = "text without directives"
-    input_data = data
-    output_data = data
-    directives = {
-        'mydirective': 'Hello, World!'
-    }
-
-
-class TestNotADirective_1(PreprocessorTestBase):
-    data = "This is not a directive: % greeting %"
-    input_data = data
-    output_data = data
-    directives = {
-        'greeting': 'Hello World'
-    }
-
-
-class TestNotADirective_2(PreprocessorTestBase):
-    data = "This is not a directive: %% greeting %"
-    input_data = data
-    output_data = data
-    directives = {
-        'greeting': 'Hello World'
-    }
-
-
-class TestNotADirective_3(PreprocessorTestBase):
-    data = "This is not a directive: % greeting %%"
-    input_data = data
-    output_data = data
-    directives = {
-        'greeting': 'Hello World'
-    }
-
-
-class TestNotADirective_4(PreprocessorTestBase):
-    data = "This is not a directive: %%\ngreeting %%"
-    input_data = data
-    output_data = data
-    directives = {
-        'greeting': 'Hello World'
-    }
-
-
-class TestReplace(PreprocessorTestBase):
-    directive_name = "mydirective"
-    directive = f"%% {directive_name} %%"
-    substitution = "Hello, World"
-
-    data = "Substitute here: {dir}!"
-    input_data = data.format(dir=directive)
-    output_data = data.format(dir=substitution)
-
-    directives = {
-        directive_name: substitution
-    }
-
-
-class TestDirectiveNotFoundOneLine(PreprocessorTestBase):
-    input_data = "Well, try to substitute this: %% greting %%"
-    directives = {
-        'greeting': "Hello, World"
-    }
-    error = (NoSuchDirective, {'directive': 'greting', 'lineno': 1})
-
-
-class TestDirectiveNotFound(PreprocessorTestBase):
-    input_data = """
-        Well,
-        try to substitute this:
-        %% greting %%
-    """
-    directives = {
-        'greeting': "Hello, World"
-    }
-    error = (NoSuchDirective, {
-        'directive': 'greting', 'lineno': 4, 'filename': '<stream>'})
-
-
-class TestPreservePrefix(PreprocessorTestBase):
-    input_data = """
-    # %% comment %%
-    """
-    output_data = """
-    # multi
-    # line
-    # comment
-    """
-    directives = {
-        'comment': "multi\nline\ncomment"
-    }
-
-
-class TestPreservePrefixAndPostfix(PreprocessorTestBase):
-    input_data = """
-    # %% comment %%  # at the end
-    """
-    output_data = """
-    # multi
-    # line
-    # comment  # at the end
-    """
-    directives = {
-        'comment': "multi\nline\ncomment"
-    }
-
-
-class FilePreprocessorTestMetaClass(type):
-    """Metaclass for FilePreprocessor testing.
-
-    Test class must define the following attributes:
-        input_files: List of filenames. Files must be placed in `TEST_DIR`
-            directory.
-        directives: A substitutions mapping.
-
-    Optional attributes:
-        error: A tuple[ExceptionType, dict[AttributeName, AttributeValue]].
-            See PreprocessorTestMetaClass for the description.
-    """
-
-    def __init__(cls, name, bases, body):
-        if name == 'FilePreprocessorTest':
-            return
-
-        tests_path = TEST_DIR
-
-        def input_to_clue(s: str):
-            name = s.split('.')[0]
-            return os.path.join(tests_path, f'{name}.clue')
-
-        input_files = cls.input_files
-        clue_files = (input_to_clue(i) for i in input_files)
-        input_files = (os.path.join(tests_path, i) for i in input_files)
-
-        def test_process(self):
-            files = {i: NamedTemporaryFile('r+t') for i in input_files}
-            files_names = {i: tmp.name for i, tmp in files.items()}
-
-            try:
-                p = FilePreprocessor(self.directives)
-                p.process(files_names)
-
-                for tmp, clue in zip(files.values(), clue_files):
-                    tmp.seek(0)
-                    with open(clue, 'r', encoding='utf-8') as clue_file:
-                        result = tmp.read()
-                        clue = clue_file.read()
-                        self.assertEqual(result, clue)
-
-            finally:
-                for tmp in files.values():
-                    tmp.close()
-
-        def test_raises(self):
-            files = {i: NamedTemporaryFile('r+t') for i in input_files}
-            files_names = {i: tmp.name for i, tmp in files.items()}
-
-            try:
-                p = FilePreprocessor(self.directives)
-
-                exc_type, attrs = self.error
-                with self.assertRaises(exc_type) as context:
-                    p.process(files_names)
-
-                exception = context.exception
-                for name, value in attrs.items():
-                    attr_value = getattr(exception, name)
-                    self.assertEqual(attr_value, value)
-
-                for tmp in files.values():
-                    self.assertEqual(tmp.tell(), 0)
-
-            finally:
-                for tmp in files.values():
-                    tmp.close()
-
-        if getattr(cls, 'error', None) is not None:
-            setattr(cls, 'test_raises', test_raises)
         else:
-            setattr(cls, 'test_process', test_process)
+            f = source / files
+            if not f.is_file():
+                return
+            dest = self.root / f.name
+            dest.touch()
+            dest.write_bytes(f.read_bytes())
+            return dest
 
 
-FilePreprocessorTest = (
-    FilePreprocessorTestMetaClass('FilePreprocessorTest', bases, {}))
+fs = FileSystemManager(TMP_DIR.name)
 
 
-class ProcessSingleFileTest(FilePreprocessorTest):
-    input_files = ['single_file.input']
-    directives = {
-        'greeting': "Hello, World"
-    }
+class Test_check_undefined_file(unittest.TestCase):
+
+    def test_filename(self):
+        with fs.directory("check_undefined_file_1"):
+            input = fs.copy_files(TEST_DIR, "file_a.input")
+
+            undef = check_undefined_directives_file({}, input)
+
+            self.assertEqual(len(undef), 1)
+            self.assertEqual(undef[0].filename, str(input))
 
 
-class ProcessTwoFilesTest(FilePreprocessorTest):
-    input_files = ['file_a.input', 'file_b.input']
-    directives = {
-        'greeting': "Hello, World"
-    }
+class Test_process_file(unittest.TestCase):
+
+    def test_auto_create_output_file(self):
+        with fs.directory("process_file_1") as path:
+            input, clue = fs.copy_files(TEST_DIR,
+                                        ["file_a.input", "file_a.clue"])
+            output = path / "file_a.out"
+
+            directives = {"greeting": "Hello, World"}
+            process_file(directives, input)
+
+            self.assertTrue(output.exists())
+            self.assertEqual(output.read_bytes(), clue.read_bytes())
+
+    def test_create_given_filename(self):
+        with fs.directory("process_file_2") as path:
+            input, clue = fs.copy_files(TEST_DIR,
+                                        ["file_a.input", "file_a.clue"])
+            output_dir = path / "output"
+            output_dir.mkdir()
+            output = output_dir / "file_a.out"
+
+            directives = {"greeting": "Hello, World"}
+            process_file(directives, input, output)
+
+            self.assertTrue(output.exists())
 
 
-class MultipleErroneousFilesTest(FilePreprocessorTest):
+class Test_check_undefined_batch(unittest.TestCase):
 
-    file_c = 'file_c.skel'
-    file_d = 'file_d.skel'
-    file_c_full = os.path.join(TEST_DIR, file_c)
-    file_d_full = os.path.join(TEST_DIR, file_d)
+    def test_batch(self):
+        with fs.directory("check_undefined_batch_1"):
+            files = fs.copy_files(
+                TEST_DIR, ["file_c.input", "file_d.input", "file_e.input"])
 
-    input_files = [file_c, file_d]
-    directives = {
-        'greeting': "Hello, World"
-    }
-    error = (FilePreprocessorError, {'errors': (
-        NoSuchDirective('foo', 1, file_c_full),
-        NoSuchDirective('bar', 1, file_d_full)
-    )})
+            undef = check_undefined_directives_batch({}, files)
 
-    def test_no_file_created(self):
-        file_list = os.listdir(TEST_DIR)
-        self.assertNotIn('file_c', file_list)
-        self.assertNotIn('file_d', file_list)
+            self.assertEqual(len(undef), 3)
 
-
-class OneErroneousFileTest(FilePreprocessorTest):
-    """Error happens in the second file in the list, and no file is created."""
-
-    file_e = 'file_e.skel'
-    file_f = 'file_f.skel'
-    file_f_full = os.path.join(TEST_DIR, file_f)
-
-    input_files = [file_e, file_f]
-    directives = {
-        'greeting': "Hello, World"
-    }
-
-    error = (FilePreprocessorError, {'errors': (
-        NoSuchDirective('foo', 1, file_f_full),
-    )})
-
-    def test_no_file_created(self):
-        file_list = os.listdir(TEST_DIR)
-        self.assertNotIn('file_e', file_list)
-        self.assertNotIn('file_f', file_list)
-
-
-class InheritFilenamesTest(unittest.TestCase):
-
-    def test_filenames(self):
-        directives = {
-            'greeting': "Hello, World"
-        }
-        p = FilePreprocessor(directives)
-
-        input_files = ['file_g.skel', 'file_h.test.skel']
-        clue_files = ['file_g', 'file_h.test']
-
-        with TemporaryDirectory() as tmpdir:
-
-            # Copy files from test files directory to the destination,
-            # because FilePreprocessor uses input file's path for output
-            # file
-            orig_files = [os.path.join(TEST_DIR, f) for f in input_files]
-            input_files = [os.path.join(tmpdir, f) for f in input_files]
-            for orig, dest in zip(orig_files, input_files):
-                shutil.copy(orig, dest)
-
-            p.process([(f, None) for f in input_files])
-
-            file_list = os.listdir(tmpdir)
-            for clue_file in clue_files:
-                self.assertIn(clue_file, file_list)
+            for input_file, directive in zip(files, undef):
+                self.assertEqual(str(input_file), directive.filename)
