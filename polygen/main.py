@@ -2,7 +2,7 @@ import sys
 import logging
 
 from pathlib import Path
-from typing import Iterable, Any, Optional
+from typing import Iterable, Any, Optional, Iterator, Type
 
 from polygen.parser import Reader, Parser
 
@@ -21,6 +21,8 @@ from polygen.modifier import (
 )
 
 from polygen.generator.config import Config
+from polygen.generator.base import CodeGeneratorBase
+from polygen.generator.runner import RunnerBase
 
 logging.basicConfig(format="{name}: {message}", style="{")
 logger = logging.getLogger("polygen")
@@ -30,12 +32,26 @@ CWD = Path(__file__).resolve().parent
 BACKEND_DIRECTORY = CWD / "backend"
 
 
-class FileEvalError(Exception):
+class PolygenError(Exception):
+    pass
+
+
+class FileEvalError(PolygenError):
     """Error occured in the file evaluation process."""
 
 
-class BackendSearchError(Exception):
-    """Raised if backend is not found or found several backends."""
+class BackendNotFound(PolygenError):
+    pass
+
+
+class Backend:
+    def __init__(self,
+                 generator: CodeGeneratorBase,
+                 runner: RunnerBase,
+                 config: Config):
+        self.generator = generator
+        self.runner = runner
+        self.config = config
 
 
 def create_modifier(*, verbose: bool) -> ModifierVisitor:
@@ -62,7 +78,7 @@ def create_modifier(*, verbose: bool) -> ModifierVisitor:
 def generate_parser(*,
                     grammar_file: Optional[Path] = None,
                     grammar: Optional[str] = None,
-                    backend: str,
+                    backend: Backend,
                     output_directory: Path,
                     user_options: Optional[Iterable[str]] = None,
                     verbose=False):
@@ -74,14 +90,6 @@ def generate_parser(*,
 
     if verbose:
         logger.setLevel(logging.INFO)
-
-    backends = find_backend_file(backend, [BACKEND_DIRECTORY])
-
-    if not backends:
-        raise BackendSearchError(f"backend not found: {backend}")
-    if len(backends) > 1:
-        paths = ', '.join(backends)
-        raise BackendSearchError(f"multiple backends found: {paths}")
 
     if grammar_file:
         with open(grammar_file, 'r', encoding="UTF-8") as fin:
@@ -96,45 +104,59 @@ def generate_parser(*,
     modifier = create_modifier(verbose=verbose)
     modifier.apply(tree)
 
-    generator_module = eval_file(backends[0])
-    generator_class = generator_module["CodeGenerator"]
-    generator_class.backend_dir = backends[0].parent
-
-    config = Config(getattr(generator_class, "OPTIONS", {}),
-                    unknown_options="error")
-    config.parse(user_options or [])
-
-    gen = generator_class(verbose=verbose)
-    gen.generate(tree, config)
-    gen.create_files(output_directory)
-
-
-def bootstrap():
-    generate_parser(grammar_file=CWD / "parser.peg",
-                    backend="python",
-                    output_directory=CWD,
-                    user_options=["polygen_imports=true"])
-
-
-def read_file(filename: Path) -> str:
-    with open(filename, 'r', encoding='UTF-8') as fin:
-        return fin.read()
+    backend.generator.generate(tree, backend.config)
+    output_files = backend.generator.create_files(output_directory)
+    backend.runner.output_files = output_files
+    backend.generator.cleanup()
 
 
 def find_backend_file(
     name: str, directories: Iterable[Path]
-) -> list[Path]:
-    found = []
+) -> Path:
+    searched = []
     for d in directories:
         if not d.exists():
             continue
         backend_dir = d / name
         if not backend_dir.exists():
+            searched.append(d)
             continue
-        generator_file = backend_dir / "generator.py"
-        if generator_file.exists() and generator_file.is_file():
-            found.append(generator_file)
-    return found
+        generator_file = backend_dir / "backend.py"
+        if not (generator_file.exists() and generator_file.is_file()):
+            searched.append(d)
+            continue
+        return generator_file
+
+    paths = "\n".join(map(str, searched))
+    raise BackendNotFound(f"backend {name} not found in:\n{paths}")
+
+
+def init_backend(file: Path,
+                 config_options: Iterable[str],
+                 verbose=False) -> Backend:
+    namespace: dict[str, Any] = eval_file(file)
+
+    gen_class: Type[CodeGeneratorBase] = namespace["CodeGenerator"]
+    runner_class: Type[RunnerBase] = namespace["Runner"]
+    gen_class.backend_dir = file.parent
+    config = Config(gen_class.OPTIONS)
+
+    config.parse(config_options)
+    backend = Backend(gen_class(verbose=verbose), runner_class(), config)
+
+    return backend
+
+
+def iterate_backend_files(directories: Iterable[Path]) -> Iterator[Path]:
+    for d in directories:
+        if not d.exists():
+            continue
+        for sub in d.iterdir():
+            if not sub.exists() or not sub.is_dir():
+                continue
+            generator_file = sub / "backend.py"
+            if generator_file.exists() and generator_file.is_file():
+                yield generator_file
 
 
 def eval_file(filename: Path) -> dict[str, Any]:

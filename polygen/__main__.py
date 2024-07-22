@@ -2,7 +2,13 @@ from pathlib import Path
 
 import click
 
-from polygen.main import generate_parser, BackendSearchError
+from polygen.main import (
+    BACKEND_DIRECTORY,
+    PolygenError,
+    find_backend_file,
+    init_backend,
+    generate_parser
+)
 from polygen.generator.base import CodeGeneratorError
 
 
@@ -22,8 +28,10 @@ def main():
 @click.option("-d", "--define", multiple=True)
 @click.option("-v", "--verbose", is_flag=True)
 def generate(backend, grammar, output, define, verbose):
+    file = find_backend_file(backend, [BACKEND_DIRECTORY])
+    backend_info = init_backend(file, config_options=define, verbose=verbose)
     generate_parser(grammar_file=grammar,
-                    backend=backend,
+                    backend=backend_info,
                     output_directory=Path(output).resolve(),
                     user_options=define,
                     verbose=verbose)
@@ -32,9 +40,6 @@ def generate(backend, grammar, output, define, verbose):
 if __name__ == "__main__":
     try:
         main()
-    except BackendSearchError as e:
-        print(e)
-        exit(1)
-    except CodeGeneratorError as e:
+    except (PolygenError, CodeGeneratorError) as e:
         print(e)
         exit(1)

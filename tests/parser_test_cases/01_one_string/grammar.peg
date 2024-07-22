@@ -1,0 +1,3 @@
+@entry
+Grammar <- "abc" EOF
+EOF <- !.

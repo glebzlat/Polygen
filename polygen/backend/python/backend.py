@@ -1,9 +1,11 @@
 from io import StringIO
 from typing import Any
+from pathlib import Path
 
 from polygen.utility import reindent
 
 from polygen.generator.base import CodeGeneratorBase
+from polygen.generator.runner import RunnerBase, Executable
 from polygen.generator.config import Option
 
 from polygen.node import (
@@ -220,3 +222,20 @@ class CodeGenerator(CodeGeneratorBase):
     def visit_Range(self, node: Range) -> str:
         last = node.last or node.first
         return f"({node.first}, {last})"
+
+
+class Runner(RunnerBase):
+
+    DEPENDENCIES = ["python3"]
+
+    def run(self, file: Path) -> tuple[int, str]:
+        python = self["python3"]
+        exitcode, output = python.run(self.parser_file, file,
+                                      capture_output=True, timeout=5)
+        return exitcode, output
+
+    def setup(self):
+        self.parser_file = self.output_files[0]
+
+    def setdown(self):
+        pass

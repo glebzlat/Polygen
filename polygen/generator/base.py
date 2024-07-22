@@ -113,7 +113,7 @@ class CodeGeneratorBase(GrammarVisitor):
     def generate(self, grammar: Grammar, options: dict[str, Any]):
         raise NotImplementedError
 
-    def create_files(self, directory: Path):
+    def create_files(self, directory: Path) -> list[Path]:
         input_files = {
             self.backend_dir / f:
             directory / create_output_filename(f, add_stem=False)
@@ -131,3 +131,8 @@ class CodeGeneratorBase(GrammarVisitor):
             message = f"undefined directives:\n{lines}"
             raise CodeGeneratorError(message)
         process_batch(self._directives, input_files)
+
+        return list(input_files.values())
+
+    def cleanup(self):
+        self._directives.clear()
