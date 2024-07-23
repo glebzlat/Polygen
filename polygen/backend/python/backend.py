@@ -2,6 +2,7 @@ from io import StringIO
 from typing import Any
 from pathlib import Path
 
+from polygen.__version__ import __version__
 from polygen.utility import reindent
 
 from polygen.generator.base import CodeGeneratorBase
@@ -69,6 +70,8 @@ class CodeGenerator(CodeGeneratorBase):
     def generate(self,
                  grammar: Grammar,
                  options: dict[str, Any]) -> dict[str, str | StringIO]:
+        super().__init__()
+
         with self.directive("imports"):
             if options["polygen_imports"]:
                 self.put(POLYGEN_IMPORTS, newline=False)
@@ -235,7 +238,7 @@ class Runner(RunnerBase):
         return exitcode, output
 
     def setup(self):
-        self.parser_file = self.output_files[0]
+        self.parser_file = self.parser_files["parser.py.in"]
 
     def setdown(self):
         pass

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Optional
 
+from polygen.__version__ import __version__
 from polygen.node import Grammar, GrammarVisitor
 from .preprocessor import (
     check_undefined_directives_batch,
@@ -36,14 +37,19 @@ class CodeGeneratorBase(GrammarVisitor):
     def __init__(self, line_ending="", newline="\n", verbose=False):
         self._indentation = ''
         self._indent_level = 0
-        self._directives: dict[str, StringIO] = {
-            "version": self.VERSION
-        }
+        self._directives: dict[str, StringIO] = {}
         self._directive: str | None = None
 
         self.line_ending = line_ending
         self.newline = newline
         self.verbose = verbose
+
+        with self.directive("polygen_version"):
+            self.put(__version__)
+        with self.directive("generator"):
+            self.put(self.NAME)
+        with self.directive("gen_version"):
+            self.put(self.VERSION)
 
     @contextmanager
     def directive(self, name: str):
@@ -113,7 +119,7 @@ class CodeGeneratorBase(GrammarVisitor):
     def generate(self, grammar: Grammar, options: dict[str, Any]):
         raise NotImplementedError
 
-    def create_files(self, directory: Path) -> list[Path]:
+    def create_files(self, directory: Path) -> dict[str, Path]:
         input_files = {
             self.backend_dir / f:
             directory / create_output_filename(f, add_stem=False)
@@ -132,7 +138,7 @@ class CodeGeneratorBase(GrammarVisitor):
             raise CodeGeneratorError(message)
         process_batch(self._directives, input_files)
 
-        return list(input_files.values())
+        return {fin.name: fout for fin, fout in input_files.items()}
 
     def cleanup(self):
         self._directives.clear()

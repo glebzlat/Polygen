@@ -81,15 +81,13 @@ class RunnerBase(AbstractContextManager):
     python_exe = self["python3"]
     ```
 
-    Parser source code is guaranteed to placed in `parser_directory`.
-    Filenames can be retrieved from CodeGenerator, placed in the same module
-    as Runner.
+    Parser source files are placed in `parser_files` variable.
     """
 
     DEPENDENCIES: list[str]
 
     def __init__(self):
-        self.output_files: Optional[list[Path]] = None
+        self.parser_files: Optional[dict[str, Path]] = None
         self.logger = logger
         self._deps: dict[str, Executable] = {}
 

@@ -105,8 +105,8 @@ def generate_parser(*,
     modifier.apply(tree)
 
     backend.generator.generate(tree, backend.config)
-    output_files = backend.generator.create_files(output_directory)
-    backend.runner.output_files = output_files
+    files = backend.generator.create_files(output_directory)
+    backend.runner.parser_files = files
     backend.generator.cleanup()
 
 
