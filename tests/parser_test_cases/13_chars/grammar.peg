@@ -1,0 +1,5 @@
+@entry
+Char <- A / One / Pi
+A <- '\141'
+One <- '\61'
+Pi <- '\u03c0'

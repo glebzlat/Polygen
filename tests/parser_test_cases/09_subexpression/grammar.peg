@@ -1,0 +1,7 @@
+@entry
+Grammar <- (A / (B / C)*)+ EOF
+A <- 'a' (((D){2,4}))+
+B <- 'b'
+C <- 'c'
+D <- 'd'
+EOF <- !.

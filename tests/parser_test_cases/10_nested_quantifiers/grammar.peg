@@ -1,0 +1,7 @@
+# If A is placed before B, then B will never succeed, because a*
+# succeeds even if no input was consumed.
+@entry
+Grammar <- (B / A)+ EOF
+A <- 'a'*
+B <- 'b'+
+EOF <- !.

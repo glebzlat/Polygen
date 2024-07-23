@@ -1,0 +1,7 @@
+@entry
+Grammar <- 'a' s:Space 'b' EOF
+
+@ignore
+Space <- ' '
+
+EOF <- !.

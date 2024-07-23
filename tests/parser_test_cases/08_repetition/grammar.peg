@@ -1,0 +1,4 @@
+@entry
+Grammar <- A{2,4} EOF
+A <- 'a'
+EOF <- !.

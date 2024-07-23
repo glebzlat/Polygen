@@ -1,0 +1,3 @@
+@entry
+Grammar <- 'a' _:'-' 'b' EOF
+EOF <- !.

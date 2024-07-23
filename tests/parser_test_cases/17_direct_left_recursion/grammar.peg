@@ -1,0 +1,7 @@
+@entry
+Grammar <- Expr EOF
+Expr <- Expr '+' Term / Expr '-' Term / Term
+Term <- Term '*' Number / Term '/' Number / Number
+Number <- [0-9]
+
+EOF <- !.

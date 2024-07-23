@@ -16,7 +16,10 @@ from polygen.parser import Token
 CWD = Path.cwd() / "tests"
 TEST_CASES_DIR = CWD / "parser_test_cases"
 
-TEST_CASES = sorted(TEST_CASES_DIR.iterdir(), key=lambda path: path.name)
+# Add cases in reverse order, because it seems that unittest picks up
+# the last added test first
+TEST_CASES = sorted(TEST_CASES_DIR.iterdir(), key=lambda path: path.name,
+                    reverse=True)
 
 TMP_DIR = None
 TEST_DIR = os.environ.get("POLYGEN_TEST_DIR")
@@ -47,54 +50,99 @@ def normalize_name(s: str) -> str:
     return s.replace(".", "_").replace("-", "_")
 
 
+def test_case(self,
+              backend: Backend,
+              backend_name: str,
+              backend_output_dir: Path,
+              test_case: Path):
+    backend.runner.find_deps()
+
+    tc_output_dir = backend_output_dir / test_case.name
+    tc_output_dir.mkdir(exist_ok=True)
+
+    grammar_file = test_case / "grammar.peg"
+    generate_parser(grammar_file=grammar_file,
+                    backend=backend,
+                    output_directory=tc_output_dir)
+
+    skip: dict[str, str]  # case file name -> reason
+    skip_cases_file = test_case / "skip.py"
+    if skip_cases_file.exists():
+        skip = get_data(skip_cases_file)
+    else:
+        skip = {}
+
+    with backend.runner as runner:
+        for success_file in test_case.glob("*.success"):
+            reason = skip.get(success_file.name)
+            if reason:
+                # log this
+                continue
+
+            clue_file = test_case / f"{success_file.name}.clue"
+            clue_data = get_data(clue_file)
+            exitcode, output = runner.run(success_file)
+
+            msg = (
+                f"test={test_case.name} "
+                f"case={success_file.name}; "
+                f"{exitcode=}; "
+                f"{output=};"
+            )
+            self.assertEqual(exitcode, 0, msg=msg)
+
+            try:
+                result = evaluate(output)
+            except Exception as e:
+                msg = (
+                    f"Error: "
+                    f"backend {backend_name}; "
+                    f"test_case {test_case.name}; "
+                    f"file {success_file.name}; "
+                    f"exception_type {type(e).__name__}; "
+                    f"message {str(e)!r}"
+                )
+                raise AssertionError(msg) from e
+
+            self.assertEqual(result, clue_data, msg=msg)
+
+        for failure_file in test_case.glob("*.failure"):
+            reason = skip.get(failure_file.name)
+            if reason:
+                # log this
+                continue
+
+            exitcode, output = backend.runner.run(failure_file)
+            self.assertNotEqual(exitcode, 0)
+
+
 class EquivalencyTestMeta(type):
 
-    # Flip words in the name "test_case" because otherwise unittest thinks
-    # that it is a test method and tries to call it.
-    @staticmethod
-    def case_test(self,
-                  backend: Backend,
-                  backend_name: str,
-                  backend_output_dir: Path,
-                  test_case: Path):
-        backend.runner.find_deps()
-
-        tc_output_dir = backend_output_dir / test_case.name
-        tc_output_dir.mkdir(exist_ok=True)
-
-        grammar_file = test_case / "grammar.peg"
-        generate_parser(grammar_file=grammar_file,
-                        backend=backend,
-                        output_directory=tc_output_dir)
-
-        with backend.runner as runner:
-            for success_file in test_case.glob("*.success"):
-                clue_file = test_case / f"{success_file.name}.clue"
-                clue_data = get_data(clue_file)
-                exitcode, output = runner.run(success_file)
-                self.assertEqual(exitcode, 0, msg=f"Error: {output!r}")
-
-                try:
-                    result = evaluate(output)
-                except Exception as e:
-                    msg = (
-                        f"Error: "
-                        f"backend {backend_name}; "
-                        f"test_case {test_case.name}; "
-                        f"file {success_file.name}; "
-                        f"exception_type {type(e).__name__}; "
-                        f"message {str(e)!r}"
-                    )
-                    raise AssertionError(msg) from e
-
-                self.assertEqual(clue_data, result)
-
-            for failure_file in test_case.glob("*.failure"):
-                exitcode, output = backend.runner.run(failure_file)
-                self.assertNotEqual(exitcode, 0)
-
     def __init__(self, name, bases, namespace):
-        setattr(self, "case_test", EquivalencyTestMeta.case_test)
+
+        # TestAdder is just a capture for variables
+        class TestAdder:
+            def __init__(self, backend, backend_name, output_dir, tc):
+                self.backend = backend
+                self.backend_name = backend_name
+                self.output_dir = output_dir
+                self.tc = tc
+
+            def add_test(self, obj):
+                def wrapper(_self):
+                    test_case(
+                        _self,
+                        self.backend,
+                        self.backend_name,
+                        self.output_dir,
+                        self.tc
+                    )
+
+                test_name = (
+                    f"test_{self.tc.name}_{normalize_name(self.backend_name)}"
+                )
+                setattr(obj, test_name, wrapper)
+                wrapper.__name__ = test_name
 
         for backend in backends():
 
@@ -104,14 +152,8 @@ class EquivalencyTestMeta(type):
             backend_output_dir.mkdir(parents=True, exist_ok=True)
 
             for tc in TEST_CASES:
-                test_name = f"test_{tc.name}_{normalize_name(backend_name)}"
-
-                def wrapper(self):
-                    self.case_test(
-                        backend, backend_name, backend_output_dir, tc)
-
-                setattr(self, test_name, wrapper)
-                wrapper.__name__ = test_name
+                (TestAdder(backend, backend_name, backend_output_dir, tc)
+                 .add_test(self))
 
 
 class EquivalencyTest(unittest.TestCase, metaclass=EquivalencyTestMeta):
