@@ -74,7 +74,8 @@ into the grammar file.
 ## Todo
 
 - [x] Bootstrap a parser
-- [ ] Write unit tests
+- [x] Write unit tests
+- [ ] Test Polygen with older Python versions
 - [ ] Left recursion support[^lr-jrdouglass1]
     - [ ] direct
     - [ ] indirect
@@ -89,6 +90,9 @@ into the grammar file.
     - [ ] Write cross-backend unit tests
 - [ ] Grammar file preprocessor
     - [ ] `include` directive
+- [ ] Enhanced skeleton file preprocessor
+    - [ ] Allow consequtive directives
+    - [ ] Directive default value
 - [ ] Preprocessor definitions from grammar file (e.g. imports)
 - [ ] Parser error handling mechanism
 - [ ] Documentation
