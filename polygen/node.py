@@ -1,10 +1,148 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Union, Iterator, Any
+from typing import Iterable, Optional, TypeVar, Union, Iterator, Any
 from dataclasses import dataclass
 from itertools import zip_longest
 
 from .utility import code_to_char, wrap_string
+
+
+DoublyLinked = TypeVar("DoublyLinked", bound="DLL")
+
+
+class DLL:
+    """Doubly linked list"""
+
+    left: Optional[DoublyLinked] = None
+    right: Optional[DoublyLinked] = None
+
+    @classmethod
+    def from_iterable(cls, it: Iterable[DoublyLinked]) -> DoublyLinked | None:
+        """Create a linked list from a sequence."""
+        it = iter(it)
+        node = head = next(it, None)
+        if node is None:
+            return None
+        for n in it:
+            node.insert_after(n)
+            node = n
+        return head
+
+    def insert_after(self, node: DoublyLinked):
+        """Add a single node after this node.
+
+        Node will be removed from the list it is part of before being
+        inserted into the new list.
+        """
+        node.remove()
+        if self.right is not None:
+            self.right.left = node
+            node.right = self.right
+        node.left = self
+        self.right = node
+
+    def insert_before(self, node: DoublyLinked):
+        """Add a single node before this node.
+
+        Node will be removed from the list it is part of before being
+        inserted into the new list.
+        """
+        node.remove()
+        if self.left is not None:
+            self.left.right = node
+            node.left = self.left
+        node.right = self
+        self.left = node
+
+    def emplace_after(self, node: DoublyLinked):
+        """Insert a list after this node
+
+        If the node is a part of a list, then the whole list (from beginning
+        to end) will be inserted.
+        """
+        if self.right is not None:
+            end = node.end
+            self.right.left = end
+        beg = node.begin
+        beg.left = self
+        self.right = beg
+
+    def emplace_before(self, node: DoublyLinked):
+        """Insert a list before this node
+
+        If the node is a part of a list, then the whole list (from beginning
+        to end) will be inserted.
+        """
+        if self.left is not None:
+            beg = node.begin
+            self.left.right = beg
+        end = node.end
+        end.right = self
+        self.left = end
+
+    def forward(self) -> Iterator[DoublyLinked]:
+        """Iterate the linked list forward (to the right)."""
+        n = self
+        while n is not None:
+            yield n
+            n = n.right
+
+    def backward(self) -> Iterator[DoublyLinked]:
+        """Iterate the linked list backward (to the left)."""
+        n = self
+        while n is not None:
+            yield n
+            n = n.left
+
+    def replace(self, node: DoublyLinked):
+        """Replace current node in the list by the new node."""
+        if self.left is not None:
+            self.left.right = node
+        if self.right is not None:
+            self.right.left = node
+
+    def remove(self):
+        """Remove this node from the list."""
+        prev = self.left
+        if self.left is not None:
+            self.left.right = self.right
+        if self.right is not None:
+            self.right.left = prev
+
+    @property
+    def begin(self) -> DoublyLinked:
+        """Get the head node of a list."""
+        n = self
+        while n.left is not None:
+            n = n.left
+        return n
+
+    @property
+    def end(self) -> DoublyLinked:
+        """Get the last node of a list."""
+        n = self
+        while n.right is not None:
+            n = n.right
+        return n
+
+    def iter(self, *, forward: bool = True) -> DoublyLinked:
+        node = self
+        if forward:
+            while node is not None:
+                yield node
+                node = node.right
+        else:
+            while node is not None:
+                yield node
+                node = node.left
+
+    def length(self) -> int:
+        """Get the length of the list [self; end]."""
+        return sum(1 for _ in DLL.forward(self))
+
+    def astuple(self) -> tuple[DoublyLinked, ...] | tuple[()]:
+        """Convert doubly linked list into a tuple of its elements."""
+        return tuple(DLL.forward(self))
 
 
 class GrammarVisitor:
@@ -27,130 +165,6 @@ class ParseInfo:
     beg_pos: Optional[int] = None
     end_pos: Optional[int] = None
     filename: Optional[str] = None
-
-
-class DLL:
-    """Doubly linked list"""
-
-    left: Optional[DLL] = None
-    right: Optional[DLL] = None
-
-    @classmethod
-    def from_iterable(cls, it: Iterable[DLL]) -> DLL | None:
-        """Create a linked list from a sequence."""
-        it = iter(it)
-        node = head = next(it, None)
-        if node is None:
-            return None
-        for n in it:
-            node.insert_after(n)
-            node = n
-        return head
-
-    def insert_after(self, node: DLL):
-        """Add a single node after this node.
-
-        Node will be removed from the list it is part of before being
-        inserted into the new list.
-        """
-        node.remove()
-        if self.right is not None:
-            self.right.left = node
-            node.right = self.right
-        node.left = self
-        self.right = node
-
-    def insert_before(self, node: DLL):
-        """Add a single node before this node.
-
-        Node will be removed from the list it is part of before being
-        inserted into the new list.
-        """
-        node.remove()
-        if self.left is not None:
-            self.left.right = node
-            node.left = self.left
-        node.right = self
-        self.left = node
-
-    def emplace_after(self, node: DLL):
-        """Insert a list after this node
-
-        If the node is a part of a list, then the whole list (from beginning
-        to end) will be inserted.
-        """
-        if self.right is not None:
-            end = node.end
-            self.right.left = end
-        beg = node.begin
-        beg.left = self
-        self.right = beg
-
-    def emplace_before(self, node: DLL):
-        """Insert a list before this node
-
-        If the node is a part of a list, then the whole list (from beginning
-        to end) will be inserted.
-        """
-        if self.left is not None:
-            beg = node.begin
-            self.left.right = beg
-        end = node.end
-        end.right = self
-        self.left = end
-
-    def forward(self) -> Iterator[DLL]:
-        """Iterate the linked list forward (to the right)."""
-        n = self
-        while n is not None:
-            yield n
-            n = n.right
-
-    def backward(self) -> Iterator[DLL]:
-        """Iterate the linked list backward (to the left)."""
-        n = self
-        while n is not None:
-            yield n
-            n = n.left
-
-    def replace(self, node: DLL):
-        """Replace current node in the list by the new node."""
-        if self.left is not None:
-            self.left.right = node
-        if self.right is not None:
-            self.right.left = node
-
-    def remove(self):
-        """Remove this node from the list."""
-        prev = self.left
-        if self.left is not None:
-            self.left.right = self.right
-        if self.right is not None:
-            self.right.left = prev
-
-    @property
-    def begin(self) -> DLL:
-        """Get the head node of a list."""
-        n = self
-        while n.left is not None:
-            n = n.left
-        return n
-
-    @property
-    def end(self) -> DLL:
-        """Get the last node of a list."""
-        n = self
-        while n.right is not None:
-            n = n.right
-        return n
-
-    def length(self) -> int:
-        """Get the length of the list [self; end]."""
-        return sum(1 for _ in DLL.forward(self))
-
-    def astuple(self) -> tuple[DLL, ...] | tuple[()]:
-        """Convert doubly linked list into a tuple of its elements."""
-        return tuple(DLL.forward(self))
 
 
 class Grammar:
