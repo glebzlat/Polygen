@@ -52,7 +52,7 @@ class CodeGeneratorBase(GrammarVisitor):
             self.put(self.VERSION)
 
     @contextmanager
-    def directive(self, name: str):
+    def directive(self, name: str, indent_level: int = 0):
         """Redirect data to directive.
 
         `put` methods, called in the body of the `directive` context manager,
@@ -64,12 +64,18 @@ class CodeGeneratorBase(GrammarVisitor):
             name: Directive name
         """
         save = self._directive
+        indent_save = self._indentation
+        level_save = self._indent_level
         try:
             self._directive = name
             self._directives.setdefault(self._directive, StringIO())
+            self._indentation = '    ' * indent_level
+            self._indent_level = indent_level
             yield
         finally:
             self._directive = save
+            self._indentation = indent_save
+            self._indent_level = level_save
 
     def put(self,
             *args: Any,
