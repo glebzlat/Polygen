@@ -1,5 +1,5 @@
 from io import StringIO
-from typing import Any
+from typing import Any, Optional
 from pathlib import Path
 
 from polygen.__version__ import __version__
@@ -12,6 +12,7 @@ from polygen.generator.config import Option
 from polygen.node import (
     DLL,
     Grammar,
+    LR,
     Rule,
     MetaRule,
     Expr,
@@ -76,6 +77,9 @@ class CodeGenerator(CodeGeneratorBase):
             if options["polygen_imports"]:
                 self.put(POLYGEN_IMPORTS, newline=False)
 
+        with self.directive("grow_rules"):
+            pass
+
         with self.directive("entry"):
             self.put(grammar.entry.id.value, newline=False)
 
@@ -92,7 +96,7 @@ class CodeGenerator(CodeGeneratorBase):
             # Place empty line between rules, but not before the first rule
             self.emptyline()
 
-        if node.leftrec is not None:
+        if node.leftrec:
             if node.head:
                 self.put("@_memoize_lr")
         else:
@@ -108,13 +112,49 @@ class CodeGenerator(CodeGeneratorBase):
                 for line in str(node.leftrec).split('\n'):
                     self.put(f"#   {line}")
 
-            self.put("_begin_pos = self._mark()")
-            self.visit(node.expr)
+            if not node.head:
+                self.put("_begin_pos = self._mark()")
+            self.visit(node.expr, node)
             self.put("return None")
 
-    def visit_Expr(self, node: Expr):
-        for i, alt in enumerate(node):
-            self.visit(alt, i)
+        lr_alts = f"_lr_alts_{node.id}"
+        if lr_alts in self._directives:
+            self.emptyline()
+            self.put(self._directives[lr_alts].getvalue(), newline=False,
+                     line_ending=False)
+            del self._directives[lr_alts]
+
+    def visit_Expr(self, node: Expr, rule: Rule):
+        if rule.head:
+            alts, seeds, growers = [], [], []
+            for i, alt in enumerate(node, 1):
+                name = f"_{rule.id}_Alt_{i}"
+                alts.append(name)
+                self.put(f"if (alt := self.{alts[-1]}()) is not None:")
+                with self.indent():
+                    self.put("return alt")
+
+                if alt.grower:
+                    growers.append(name)
+                else:
+                    seeds.append(name)
+
+            with self.directive("grow_rules"):
+                seeds_str = ', '.join(f"self.{i}" for i in seeds)
+                growers_str = ', '.join(f"self.{i}" for i in growers)
+                self.put(f'"_{rule.id}": ([{seeds_str}], [{growers_str}]),')
+
+            with self.directive(f"_lr_alts_{rule.id}"):
+                for i, alt in enumerate(node):
+                    self.put(f"def {alts[i]}(self):")
+                    with self.indent():
+                        self.put("_begin_pos = self._mark()")
+                        self.visit(alt, i)
+                    if alt.right is not None:
+                        self.emptyline()
+        else:
+            for i, alt in enumerate(node):
+                self.visit(alt, i)
 
     def visit_Alt(self, node: Alt, index: int):
         variables = []

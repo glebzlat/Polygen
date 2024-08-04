@@ -263,8 +263,8 @@ class Rule(DLL):
 
 
 class LR:
-    def __init__(self, *chains: tuple[Id]):
-        self.chains = list(chains)
+    def __init__(self, chains: list[tuple[Id]]):
+        self.chains = chains
 
     def __repr__(self):
         return f"LR({self.chains!r})"
@@ -281,7 +281,7 @@ class LR:
         yield from (c[0] for c in self.chains)
 
     def copy(self):
-        return LR(*self.chains)
+        return LR(self.chains)
 
 
 class MetaRef:
@@ -375,6 +375,7 @@ class Alt(DLL):
         self.metarule = metarule
         self.nullable = False
         self.parse_info = parse_info
+        self.grower = False
 
     def __repr__(self):
         items = ', '.join(repr(i) for i in DLL.forward(self.items))

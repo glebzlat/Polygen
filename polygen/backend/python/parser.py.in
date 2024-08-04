@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 
 from functools import wraps
-from typing import Optional, Union, Any, List
+from typing import Optional, Union, Any, Tuple, List, Callable
 
 %% imports %%
 
@@ -131,35 +131,54 @@ def _memoize(fn):
 
 def _memoize_lr(fn):
 
+    context = fn.__name__
+
     @wraps(fn)
-    def wrapper_lr(self, *args):
+    def wrapper(self, *args):
         pos = self._mark()
         key = (fn, args, pos)
         memo = self._memos.get(key)
-        if memo is None:
+
+        # Memo entry can be created during the seed planting and can be
+        # wrong for the given position, so treat entry with None result
+        # as no memo entry.
+        if memo is None or memo.result is None:
+            seeds, growers = self._grow_rules[context]
+
             self._memos[key] = memo = _MemoEntry(None, pos)
 
-            while True:
-                self._reset(memo.pos)
-                result = fn(self, *args)
-                endpos = self._mark()
-                if endpos <= memo.pos:
+            # First plant the seed
+            result = None
+            for seed in seeds:
+                result = seed()
+                if result is not None:
                     break
+            if result is None:
+                return None
+            memo.result, memo.pos = result, self._pos
 
-                memo.value, memo.pos = result, endpos
-                new_key = (fn, args, endpos)
-                self._memos[new_key] = memo
-
-            result = memo.value
-            self._reset(memo.pos)
+            # Then grow the LR, repeatedly calling recursive alternatives
+            # until there is no improvement
+            while True:
+                self._pos = pos
+                for alt in growers:
+                    # Ordered choice
+                    result = alt()
+                    if result is not None:
+                        break
+                    self._pos = pos
+                if self._pos <= memo.pos:
+                    # No improvement
+                    self._pos = memo.pos
+                    return memo.result
+                memo.result = result
+                memo.pos = self._pos
 
         else:
-            result = memo.value
-            self._reset(memo.pos)
+            self._pos = memo.pos
+            return memo.result
 
-        return result
-
-    return wrapper_lr
+    return wrapper
 
 
 class Parser:
@@ -170,6 +189,10 @@ class Parser:
         self._reader = reader
         self._tokens: List[Token] = []
         self._pos = 0
+
+        self._grow_rules: Dict[str, Tuple[List[Callable], List[Callable]]] = {
+            %% grow_rules %%
+        }
 
     @_memoize
     def _expectc(self, char: Optional[str] = None) -> Optional[Token]:

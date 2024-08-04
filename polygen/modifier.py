@@ -628,12 +628,14 @@ def compute_nullables(tree: Grammar):
 class FirstGraphVisitor(GrammarVisitor):
     def visit_Grammar(self, node: Grammar):
         graph: dict[Id, list[Id]] = {}
+        rules: dict[Id, Rule] = {}
         for r in node:
             if isinstance(r, MetaRule):
                 continue
             key, val = self.visit(r)
             graph[key] = val
-        return graph
+            rules[key] = r
+        return graph, rules
 
     def visit_Rule(self, node: Rule):
         return node.id, self.visit(node.expr)
@@ -712,7 +714,7 @@ def strongly_connected_components(
     Returns:
         iterator
     """
-    stack: OrderedDict[str, int] = {}
+    stack: OrderedDict[Vertex, int] = {}
 
     def dfs(v):
         if v in stack:
@@ -727,16 +729,42 @@ def strongly_connected_components(
     yield from dfs(start)
 
 
+class AlternativeVisitor(GrammarVisitor):
+    def visit_Alt(self, node: Alt):
+        items = set()
+        for i in node:
+            items.add(self.visit(i))
+            if not i.nullable:
+                return items
+        return items
+
+    def visit_NamedItem(self, node: NamedItem):
+        return self.visit(node.item)
+
+    def visit_ZeroOrOne(self, node: ZeroOrOne):
+        return self.visit(node.item)
+
+    def visit_ZeroOrMore(self, node: ZeroOrMore):
+        return self.visit(node.item)
+
+    def visit_OneOrMore(self, node: OneOrMore):
+        return self.visit(node.item)
+
+    def visit_Id(self, node: Id):
+        return node
+
+
 class ComputeLR:
+
+    # Improved left recusion: https://github.com/glebzlat/packrat-improved-lr
+
     def __init__(self, verbose=False):
         self.verbose = verbose
         self.done = False
 
     def visit_Grammar(self, node: Grammar, parents):
-        rules: dict[str, Rule] = {r.id: r for r in node}
-
         compute_nullables(node)
-        graph = make_first_graph(node)
+        graph, rules = make_first_graph(node)
 
         if logger.isEnabledFor(logging.INFO):
             lines = []
@@ -747,19 +775,39 @@ class ComputeLR:
                 lines.append(f"  {k}: [{strs}]")
             logger.info("first graph:\n%s", '\n'.join(lines))
 
+        heads: list[Rule] = []
         for scc in strongly_connected_components(graph, node.entry.id):
-            lr = LR(scc)
+            lr = LR([scc])
 
             logger.info("lr chain: %s", lr)
 
             head_rule = rules[lr.chains[0][0]]
             head_rule.head = True
+            heads.append(head_rule)
+
             for involved in scc:
                 rule = rules[involved]
                 if rule.leftrec is None:
                     rule.leftrec = lr.copy()
                 else:
                     rule.leftrec.chains.extend(lr.chains)
+
+        # This algorithm has extremely bad time complexion:
+        # compute nullables,
+        # make first graph,
+        # compute and iterate SCCs,
+        # find growers
+        # results in roughly O(n^5)
+        alt_visitor = AlternativeVisitor()
+        for head in heads:
+            for alt in head.expr:
+                items = alt_visitor.visit(alt)
+                if not items:
+                    continue
+                for n in head.leftrec.chains:
+                    i = n[1] if len(n) > 1 else n[0]
+                    if i in items:
+                        alt.grower = True
 
         self.done = True
 
