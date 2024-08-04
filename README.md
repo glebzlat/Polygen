@@ -77,7 +77,7 @@ into the grammar file.
 - [x] Write unit tests
 - [ ] Test Polygen with older Python versions
 - [ ] Left recursion support[^lr-jrdouglass1]
-    - [ ] direct
+    - [x] direct
     - [ ] indirect
     - [ ] diverging
     - [ ] merging
@@ -85,9 +85,9 @@ into the grammar file.
     - [ ] nested
 - [ ] Cut operator[^cuts1]
 - [ ] Add backend for another language
-    - [ ] Write backend runner module
+    - [x] Write backend runner module
     - [ ] Approve an API for backends
-    - [ ] Write cross-backend unit tests
+    - [x] Write cross-backend unit tests
 - [ ] Grammar file preprocessor
     - [ ] `include` directive
 - [ ] Enhanced skeleton file preprocessor
@@ -99,6 +99,7 @@ into the grammar file.
     - [ ] Language reference
     - [ ] Backends documentation and API
     - [ ] Developer's documentation (the core)
+- [ ] Add examples
 
 ## License
 
