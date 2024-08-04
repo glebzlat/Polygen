@@ -78,11 +78,11 @@ into the grammar file.
 - [ ] Test Polygen with older Python versions
 - [ ] Left recursion support[^lr-jrdouglass1]
     - [x] direct
-    - [ ] indirect
-    - [ ] diverging
-    - [ ] merging
+    - [x] indirect
+    - [x] diverging
+    - [x] merging
     - [ ] mutual
-    - [ ] nested
+    - [x] nested
 - [ ] Cut operator[^cuts1]
 - [ ] Add backend for another language
     - [x] Write backend runner module

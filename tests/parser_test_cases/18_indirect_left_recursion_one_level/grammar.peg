@@ -1,0 +1,16 @@
+@entry
+Grammar <- Primary EOF
+
+Primary <- MethodInvocation / FieldAccess / ArrayAccess / This
+
+MethodInvocation <- Primary _:'.' MethodName "()" / MethodName "()"
+FieldAccess <- Primary _:'.' Identifier
+ArrayAccess <- Primary '[' Expression ']'
+
+This <- "this"
+
+MethodName <- 'm' / 'n'
+Identifier <- 'a' / 'b'
+Expression <- 'i' / 'j'
+
+EOF <- !.
