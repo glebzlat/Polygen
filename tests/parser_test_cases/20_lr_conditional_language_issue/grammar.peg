@@ -1,0 +1,29 @@
+@entry
+Grammar <- If EOF
+
+If     <- IF LBRACE Condition RBRACE Spacing Exp ElseIf? Else?
+ElseIf <- ELSE Spacing IF
+Else   <- ELSE OptSpacing Exp
+Exp    <- "{}" OptSpacing
+
+Condition   <- Disjunction
+Disjunction <- Disjunction OR Conjunction / Conjunction
+Conjunction <- Conjunction AND Negation / Negation
+Negation    <- NOT? Term
+Term        <- Operator / LBRACE Disjunction RBRACE
+
+Operator    <- "True" Spacing
+
+IF     <- "if" Spacing
+ELSE   <- "else"
+OR     <- "or" Spacing
+NOT    <- "not" Spacing
+AND    <- "and" Spacing
+LBRACE <- '(' OptSpacing
+RBRACE <- ')' OptSpacing
+
+Spacing     <- WS+
+OptSpacing  <- WS*
+WS          <- ' ' / '\n'
+
+EOF <- !.
