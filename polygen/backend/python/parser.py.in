@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 
 from functools import wraps
-from typing import Optional, Union, Any, Tuple, List, Callable
+from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 
 %% imports %%
 
