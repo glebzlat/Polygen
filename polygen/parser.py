@@ -646,9 +646,10 @@ class Parser:
         if (
             (beg := self._Char()) is not None
             and (_1 := self._expectc('-')) is not None
+            and self._lookahead(False, self._expectc, ']') is not None
             and (end := self._Char()) is not None
         ):
-            # Char '-' Char
+            # Char '-' !']' Char
 
             # Metarule: range_2_action
             return Range(beg, end)

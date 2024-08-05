@@ -29,7 +29,7 @@ IdentCont   <- IdentStart / [0-9]
 Literal     <- ['] chars:(!['] Char)* ['] Spacing                 $literal_action
              / ["] chars:(!["] Char)* ["] Spacing                 $literal_action
 Class       <- '[' ranges:(!']' Range)* ']' Spacing               $class_action
-Range       <- beg:Char '-' end:Char                              $range_2_action
+Range       <- beg:Char '-' !']' end:Char                         $range_2_action
              / beg:Char                                           $range_1_action
 Char        <- '\\' char:[nrt'"\[\]\\]                            $esc_char_action
              / '\\' char1:[0-2] char2:[0-7] char3:[0-7]           $oct_char_action_1

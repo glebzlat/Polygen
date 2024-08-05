@@ -1,0 +1,9 @@
+@entry
+Grammar <- A Char1 B Char2 EOF
+
+A <- 'a' / 'b'
+Char1 <- [0-9_-]
+B <- 'c' / 'd'
+Char2 <- [x-z]
+
+EOF <- !.
