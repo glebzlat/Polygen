@@ -20,6 +20,11 @@ function usage {
 
 function run_tests {
   python -m unittest discover "$@" tests
+  local exitcode=$1
+  if [[ $exitcode -ne 0 ]]; then
+    exit $exitcode
+  fi
+  python tests/test_equivalency.py
   exit $?
 }
 
