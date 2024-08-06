@@ -715,8 +715,10 @@ def strongly_connected_components(
         iterator
     """
     stack: OrderedDict[Vertex, int] = {}
+    visited: set[Vertex] = set()
 
     def dfs(v):
+        visited.add(v)
         if v in stack:
             beg = stack[v]
             yield tuple(stack.keys())[beg:]
@@ -726,7 +728,9 @@ def strongly_connected_components(
             yield from dfs(u)
         stack.popitem()
 
-    yield from dfs(start)
+    for i in graph:
+        if i not in visited:
+            yield from dfs(i)
 
 
 class AlternativeVisitor(GrammarVisitor):
@@ -776,6 +780,7 @@ class ComputeLR:
             logger.info("first graph:\n%s", '\n'.join(lines))
 
         heads: list[Rule] = []
+        # breakpoint()
         for scc in strongly_connected_components(graph, node.entry.id):
             lr = LR([scc])
 
