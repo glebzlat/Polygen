@@ -76,12 +76,12 @@ into the grammar file.
 - [x] Bootstrap a parser
 - [x] Write unit tests
 - [ ] Test Polygen with older Python versions
-- [ ] Left recursion support[^lr-jrdouglass1]
+- [x] Left recursion support[^lr-jrdouglass1]
     - [x] direct
     - [x] indirect
     - [x] diverging
     - [x] merging
-    - [ ] mutual
+    - [x] mutual
     - [x] nested
 - [ ] Cut operator[^cuts1]
 - [ ] Add backend for another language
@@ -90,16 +90,16 @@ into the grammar file.
     - [x] Write cross-backend unit tests
 - [ ] Grammar file preprocessor
     - [ ] `include` directive
+- [ ] Source code preprocessor definitions from grammar file (e.g. imports)
 - [ ] Enhanced skeleton file preprocessor
     - [ ] Allow consequtive directives
     - [ ] Directive default value
-- [ ] Preprocessor definitions from grammar file (e.g. imports)
 - [ ] Parser error handling mechanism
 - [ ] Documentation
     - [ ] Language reference
     - [ ] Backends documentation and API
     - [ ] Developer's documentation (the core)
-- [ ] Add examples
+    - [ ] Examples
 
 ## License
 
