@@ -1,5 +1,8 @@
 import sys
 import logging
+import tracemalloc
+import linecache
+import time
 
 from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
@@ -91,6 +94,10 @@ def generate_parser(*,
     if verbose:
         logger.setLevel(logging.INFO)
 
+    if logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.INFO):
+        tracemalloc.start()
+        t1 = time.perf_counter()
+
     if grammar_file:
         with open(grammar_file, 'r', encoding="UTF-8") as fin:
             reader = Reader(fin)
@@ -108,6 +115,13 @@ def generate_parser(*,
     files = backend.generator.create_files(output_directory)
     backend.runner.parser_files = files
     backend.generator.cleanup()
+
+    if logger.isEnabledFor(logging.DEBUG) or logger.isEnabledFor(logging.INFO):
+        t2 = time.perf_counter()
+        dt = t2 - t1
+        logger.info(f"total time: {dt:.3f} sec")
+        snapshot = tracemalloc.take_snapshot()
+        display_memory_usage(snapshot)
 
 
 def find_backend_file(
@@ -175,3 +189,36 @@ def eval_file(filename: Path) -> dict[str, Any]:
 
     return namespace
 
+
+def display_memory_usage(snapshot: tracemalloc.Snapshot, lines_limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>")
+    ))
+
+    if logger.isEnabledFor(logging.DEBUG):
+        top_stats = snapshot.statistics("lineno")
+        lines = [f"top {lines_limit} memory consumptive lines:"]
+        for index, stat in enumerate(top_stats[:lines_limit], 1):
+            frame, size = stat.traceback[0], stat.size / 1024
+            s = f"# {index}: {frame}:{frame.lineno}: {size:.1f} KiB"
+            lines.append(s)
+            line = linecache.getline(frame.filename, frame.lineno).strip()
+            if line:
+                lines.append(f"  {line}")
+
+        other = top_stats[lines_limit:]
+        if other:
+            size = sum(stat.size for stat in other) / 1024
+            lines.append(f"{len(other)} other: {size:.1f} KiB")
+
+        total = sum(stat.size for stat in top_stats) / 1024
+        lines.append(f"total allocated size: {total:.1f} KiB")
+
+        message = '\n'.join(lines)
+        logger.debug(message)
+
+    elif logger.isEnabledFor(logging.INFO):
+        stats = snapshot.statistics("filename")
+        size = sum(stat.size for stat in stats) / 1024
+        logger.info(f"allocated memory: {size:.1f} KiB")
