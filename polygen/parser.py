@@ -7,7 +7,7 @@ from __future__ import annotations
 import io
 
 from functools import wraps
-from typing import Optional, Union, Any, Tuple, List, Callable
+from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 
 
 from polygen.node import (
@@ -144,7 +144,8 @@ def _memoize(fn):
         key = (fn, args, pos)
         memo = self._memos.get(key)
         if memo is None:
-            self._memos[key] = memo = _MemoEntry(fn(self, *args), self._mark())
+            result = fn(self, *args)
+            self._memos[key] = memo = _MemoEntry(result, self._mark())
         else:
             self._reset(memo.pos)
         return memo.value
@@ -266,7 +267,9 @@ class Parser:
             tokens.append(tok)
             lastpos = self._mark()
             count += 1
-        if count >= beg and count <= end:
+            if count == end:
+                return tokens
+        if count >= beg:
             return tokens
         self._reset(pos)
         return None
