@@ -35,6 +35,7 @@ from polygen.node import (
 
 POLYGEN_IMPORTS = """
 from polygen.node import (
+    ParseInfo,
     Grammar,
     Rule,
     MetaRef,

@@ -10,6 +10,8 @@ from typing import Iterable, Any, Optional, Iterator, Type
 from polygen.parser import Reader, Parser
 
 from polygen.modifier import (
+    TreeModifierWarning,
+    SemanticError,
     ModifierVisitor,
     CheckUndefinedRules,
     CheckRedefinedRules,
@@ -108,8 +110,14 @@ def generate_parser(*,
         parser = Parser(reader)
         tree = parser.parse()
 
-    modifier = create_modifier(verbose=verbose)
-    modifier.apply(tree)
+    try:
+        modifier = create_modifier(verbose=verbose)
+        modifier.apply(tree)
+    except TreeModifierWarning as w:
+        logger.warn(str(w))
+    except SemanticError as e:
+        logger.error(str(e))
+        return
 
     backend.generator.generate(tree, backend.config)
     files = backend.generator.create_files(output_directory)

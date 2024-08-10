@@ -11,6 +11,7 @@ from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 
 
 from polygen.node import (
+    ParseInfo,
     Grammar,
     Rule,
     MetaRef,
@@ -427,7 +428,11 @@ class Parser:
             # MetaName? Prefix__GEN_1? Suffix
 
             # Metarule: prefix_action
-            obj = lookahead(suffix) if lookahead else suffix
+            if lookahead:
+                lookahead.item = suffix
+                obj = lookahead
+            else:
+                obj = suffix
             metaname = metaname or None
             return NamedItem(metaname, obj)
         self._reset(_begin_pos)
@@ -443,7 +448,10 @@ class Parser:
             # Primary Suffix__GEN_1?
 
             # Metarule: suffix_action
-            return q(primary) if q else primary
+            if q:
+                q.item = primary
+                return q
+            return primary
         self._reset(_begin_pos)
         return None
 
@@ -501,7 +509,8 @@ class Parser:
             # '$' MetaDefBody
 
             # Metarule: metarule_def_action
-            return MetaRule(None, body)
+            expr, info = body
+            return MetaRule(None, expr, info)
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('$')) is not None
@@ -528,7 +537,8 @@ class Parser:
             # '$' Spacing Identifier MetaDefBody
 
             # Metarule: metadef_action
-            return MetaRule(identifier, expr)
+            expr, info = expr
+            return MetaRule(identifier, expr, info)
         self._reset(_begin_pos)
         return None
 
@@ -544,7 +554,7 @@ class Parser:
             # '{' MetaDefBody__GEN_2* '}' Spacing
 
             # Metarule: metadef_body_action
-            return ''.join(expr)
+            return ''.join(expr), ParseInfo(expr)
         self._reset(_begin_pos)
         return None
 
@@ -570,7 +580,7 @@ class Parser:
             # IdentStart IdentCont* Spacing
 
             # Metarule: ident_action
-            return Id(''.join((start, *cont)))
+            return Id(''.join((start, *cont)), ParseInfo([start, *cont]))
         self._reset(_begin_pos)
         return None
 
@@ -676,12 +686,12 @@ class Parser:
 
             # Metarule: esc_char_action
             chr_map = {
-                'n': '\n',
-                'r': '\r',
-                't': '\t',
+              'n': '\n',
+              'r': '\r',
+              't': '\t',
             }
 
-            return Char(chr_map.get(char, char))
+            return Char(chr_map.get(char, char), ParseInfo(char))
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('\\')) is not None
@@ -693,7 +703,7 @@ class Parser:
 
             # Metarule: oct_char_action_1
             string = ''.join((char1, char2, char3))
-            return Char(int(string, base=8))
+            return Char(int(string, base=8), ParseInfo([char1, char2, char3]))
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('\\')) is not None
@@ -705,7 +715,8 @@ class Parser:
             # Metarule: oct_char_action_2
             char2 = char2 if isinstance(char2, str) else ''
             string = ''.join((char1, char2))
-            return Char(int(string, base=8))
+            return Char(int(string, base=8),
+                        ParseInfo(list(filter(None, (char1, char2)))))
         self._reset(_begin_pos)
         if (
             (_1 := self._expects("\\u")) is not None
@@ -715,7 +726,7 @@ class Parser:
 
             # Metarule: unicode_char_action
             string = ''.join(chars)
-            return Char(int(string, base=16))
+            return Char(int(string, base=16), ParseInfo(chars))
         self._reset(_begin_pos)
         if (
             self._lookahead(False, self._expectc, '\\') is not None
@@ -724,7 +735,7 @@ class Parser:
             # !'\\' .
 
             # Metarule: any_char_action
-            return Char(ord(any))
+            return Char(ord(any), ParseInfo(any))
         self._reset(_begin_pos)
         return None
 
@@ -740,8 +751,9 @@ class Parser:
             # '{' Repetition__GEN_1 '}' Spacing
 
             # Metarule: rep_action
-            beg, end = grp if isinstance(grp, list) else (grp, None)
-            return lambda item: Repetition(item, beg, end)
+            beg, end = grp if isinstance(grp, list) else (grp, (None, None))
+            infos = list(filter(None, (beg[1], end[1])))
+            return Repetition(None, beg[0], end[0], ParseInfo(infos))
         self._reset(_begin_pos)
         return None
 
@@ -753,7 +765,7 @@ class Parser:
 
             # Metarule: number_action
             string = ''.join(chars)
-            return int(string)
+            return int(string), ParseInfo(chars)
         self._reset(_begin_pos)
         return None
 
@@ -800,7 +812,7 @@ class Parser:
             # '&' Spacing
 
             # Metarule: and_action
-            return And
+            return And(None)
         self._reset(_begin_pos)
         return None
 
@@ -814,7 +826,7 @@ class Parser:
             # '!' Spacing
 
             # Metarule: not_action
-            return Not
+            return Not(None)
         self._reset(_begin_pos)
         return None
 
@@ -828,7 +840,7 @@ class Parser:
             # '?' Spacing
 
             # Metarule: optional_action
-            return ZeroOrOne
+            return ZeroOrOne(None)
         self._reset(_begin_pos)
         return None
 
@@ -842,7 +854,7 @@ class Parser:
             # '*' Spacing
 
             # Metarule: zero_or_more_action
-            return ZeroOrMore
+            return ZeroOrMore(None)
         self._reset(_begin_pos)
         return None
 
@@ -856,7 +868,7 @@ class Parser:
             # '+' Spacing
 
             # Metarule: one_or_more_action
-            return OneOrMore
+            return OneOrMore(None)
         self._reset(_begin_pos)
         return None
 

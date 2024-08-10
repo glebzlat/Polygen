@@ -4,6 +4,7 @@ import logging
 
 from collections import defaultdict, Counter
 from keyword import iskeyword
+from typing import Iterator, TypeVar, Hashable, OrderedDict, Optional
 
 from .node import (
     GrammarVisitor,
@@ -31,8 +32,7 @@ from .node import (
     Not
 )
 
-
-from typing import Iterator, TypeVar, Hashable, OrderedDict
+from .utility import reindent
 
 logger = logging.getLogger("polygen.modifier")
 
@@ -40,14 +40,53 @@ logger = logging.getLogger("polygen.modifier")
 class TreeModifierWarning(Warning):
     """Gathers multiple semantic warnings."""
 
-    def __init__(self, warnings: list[SemanticWarning]):
-        self.warnings = warnings
-
-    def __repr__(self):
-        return f"TreeModifierWarning({self.warnings})"
-
     def __str__(self):
-        return '\n'.join(self.warnings)
+        return '\n'.join(str(a) for a in self.args)
+
+
+class Context:
+    def __init__(self):
+        self._stack = []
+
+        self.grammar: Optional[Grammar] = None
+        self.rule: Optional[Rule] = None
+        self.alt: Optional[Alt] = None
+        self.named_item: Optional[NamedItem] = None
+
+    def __getitem__(self, idx):
+        return self._stack[idx]
+
+    def __len__(self) -> int:
+        return len(self._stack)
+
+    def append(self, item):
+        self._add_node(item)
+        self._stack.append(item)
+
+    def pop(self, idx=-1):
+        item = self._stack.pop(idx)
+        self._remove_node(type(item))
+        return item
+
+    def _add_node(self, node):
+        if isinstance(node, Grammar):
+            self.grammar = node
+        elif isinstance(node, Rule):
+            self.rule = node
+        elif isinstance(node, Alt):
+            self.alt = node
+        elif isinstance(node, NamedItem):
+            self.named_item = node
+
+    def _remove_node(self, type):
+        if isinstance(self.grammar, type):
+            self.grammar = None
+        elif isinstance(self.rule, type):
+            self.rule = None
+        elif isinstance(self.alt, type):
+            self.alt = None
+        elif isinstance(self.named_item, type):
+            self.named_item = None
 
 
 class ModifierVisitor:
@@ -58,11 +97,11 @@ class ModifierVisitor:
     def apply(self, tree: Grammar):
         for m in self.modifiers:
             while not m.done:
-                self._visit(tree, [], m)
+                self._visit(tree, Context(), m)
                 m.apply()
 
         if self.warnings:
-            raise TreeModifierWarning(self.warnings)
+            raise TreeModifierWarning(*self.warnings)
 
     def _visit(self, node, parents, modifier):
         if modifier.done:
@@ -95,12 +134,30 @@ class LookaheadMetanameWarning(SemanticWarning):
     Contains one And / Not node.
     """
 
+    def __str__(self):
+        lines = ["Lookahead metanames are not allowed:"]
+        assert len(self.args) == 1
+        node = self.args[0]
+        if node.parse_info:
+            lines.append(f"  at {node.parse_info}:")
+        lines.append(f"{reindent(str(self.args[0]), 1)}")
+        return '\n'.join(lines)
+
 
 class UnusedMetaRuleWarning(SemanticWarning):
     """Metarule was defined but not applied to any rule's alternative.
 
     Contains one MetaRule node.
     """
+
+    def __str__(self):
+        lines = ["Unused metarule:"]
+        assert len(self.args) == 1
+        node = self.args[0]
+        if node.parse_info:
+            lines.append(f"  at {node.parse_info}:")
+        lines.append(reindent(str(self.args[0]), 1))
+        return '\n'.join(lines)
 
 
 class SemanticError(Exception):
@@ -110,6 +167,9 @@ class SemanticError(Exception):
 class UndefEntryError(SemanticError):
     """Entry rule not defined."""
 
+    def __str__(self):
+        return "Entry is not defined"
+
 
 class RedefEntryError(SemanticError):
     """There are more than one rule with '@entry' directive.
@@ -117,27 +177,94 @@ class RedefEntryError(SemanticError):
     Contains two Rule nodes: first defined entry and redefined entry.
     """
 
+    def __str__(self):
+        lines = ["Redefined entry rules:"]
+        first, second = self.args
+        lines.append("first defined here:")
+        if first.parse_info:
+            lines.append(f"  {first.parse_info}")
+        lines.append(reindent(str(first), 1))
+        lines.append("second defined here:")
+        if second.parse_info:
+            lines.append(f"  {second.parse_info}")
+        lines.append(reindent(str(second), 1))
+        return '\n'.join(lines)
+
 
 class UndefRulesError(SemanticError):
     """Rule mentioned in an expression but not found in the grammar."""
 
+    def __str__(self):
+        lines = []
+        for id, rules in self.args:
+            lines.append(f"Undefined rule {id}:")
+            for i, r in enumerate(rules, 1):
+                # XXX: parse_info start pointer is displaced
+                lines.append(reindent(str(r), 1))
+                if id.parse_info:
+                    pos = id.parse_info.start
+                    length = id.parse_info.end - pos - 1
+                    lines.append(' ' * pos + '^' + '~' * length)
+                if i != len(rules):
+                    lines.append('\n')
+        return '\n'.join(lines)
+
 
 class RedefRulesError(SemanticError):
-    """Rule defined more than once.
+    """Rule defined more than once."""
 
-    Contains a dictionary of redefined rules: `dict[Id, Rule]`.
-    """
+    def __str__(self):
+        lines = []
+        for id, rules in self.args:
+            lines.append("Redefined rule {id}:")
+            if id.parse_info:
+                lines.append(f"First defined here: {id.parse_info}")
+            for i, r in enumerate(rules, 1):
+                if r.id.parse_info:
+                    lines.append(f"  at {r.id.parse_info}:")
+                lines.append(reindent(str(r), 1))
+                if i != len(rules):
+                    lines.append('\n')
+        return '\n'.join(lines)
 
 
 class UndefMetaRulesError(SemanticError):
     """Metarule mentioned in an expression but not found in the grammar."""
 
+    def __str__(self):
+        lines = []
+        for id, alts in self.args:
+            lines.append(f"Undefined metarule {id}:")
+            for i, alt in enumerate(alts, 1):
+                lines.append(reindent(str(alt), 1))
+                # XXX: Parse info start position is displaced.
+                # if there are multiple alternatives,
+                # then start position of all alternatives will be the same
+                # why?
+                if info := alt.metarule.name.parse_info:
+                    pos = info.start - 1
+                    length = info.end - info.start
+                    lines.append(' ' * pos + '^' + '~' * length)
+                    lines.append(f"at {info}")
+                if i != len(alts):
+                    lines.append('')
+        return '\n'.join(lines)
+
 
 class RedefMetaRulesError(SemanticError):
-    """Metarule defined more than once.
+    """Metarule defined more than once."""
 
-    Contains a dictionary of redefined rules: `dict[Id, MetaRule]`.
-    """
+    def __str__(self):
+        lines = []
+        for id, rules in self.args:
+            lines.append("Redefined metarule {id}:")
+            for i, r in enumerate(rules, 1):
+                if info := r.id.parse_info:
+                    lines.append(f"at {info}")
+                lines.append(reindent(str(r), 1))
+                if i != len(rules):
+                    lines.append('')
+        return '\n'.join(lines)
 
 
 class MetanameRedefError(SemanticError):
@@ -149,6 +276,17 @@ class MetanameRedefError(SemanticError):
     Contains two nodes with the same metaname.
     """
 
+    def __str__(self):
+        first, second = self.args
+        lines = [f"Redefined metaname {first.name}"]
+        lines.append(reindent(str(first), 1))
+        if info := first.name.parse_info:
+            lines.append(f"at {info}")
+        lines.append(reindent(str(second), 1))
+        if info := first.name.parse_info:
+            lines.append(f"at {info}")
+        return '\n'.join(lines)
+
 
 class RangeRepError(SemanticError):
     """Invalid repetition and range nodes.
@@ -158,12 +296,14 @@ class RangeRepError(SemanticError):
     than `beg`, node considered invalid.
     """
 
+    # TODO: add __str__ method
+
 
 class CheckUndefinedRules:
     """Finds rules, that are referenced but not found in the grammar."""
 
     def __init__(self, verbose=False):
-        self.named_items: defaultdict[list[Id]] = defaultdict(list)
+        self.named_items: defaultdict[list[Rule]] = defaultdict(list)
         self.rule_names: set[Id] = set()
         self.verbose = verbose
         self.done = False
@@ -171,16 +311,15 @@ class CheckUndefinedRules:
     def visit_Rule(self, node: Rule, parents):
         self.rule_names.add(node.id)
 
-    def visit_Id(self, node: Id, parents):
+    def visit_Id(self, node: Id, parents: Context):
         if type(parents[-1]) in (MetaRef, MetaRule):
             return
-        self.named_items[node].append(node)
+        self.named_items[node].append(parents.rule)
 
     def apply(self):
         items = self.named_items
         if diff := set(items) - self.rule_names:
-            undef_rules = {i: items[i] for i in diff}
-            raise UndefRulesError(undef_rules)
+            raise UndefRulesError(*((i, items[i]) for i in diff))
         self.done = True
 
 
@@ -203,7 +342,7 @@ class CheckRedefinedRules:
             redef[id] = rules
 
         if redef:
-            raise RedefRulesError(redef)
+            raise RedefRulesError(*redef.items())
         self.done = True
 
 
@@ -285,7 +424,7 @@ class FindEntryRule:
             return
 
         if self.entry is not None:
-            raise RedefEntryError([self.entry, node])
+            raise RedefEntryError(self.entry, node)
         self.entry = node
 
     def apply(self):
@@ -473,6 +612,8 @@ class AssignMetaRules:
             # the same id was found.
             if node.id not in self.refs and node.id not in self.assigned:
                 raise UnusedMetaRuleWarning(node)
+            if node.id not in self.refs:
+                return
             alts = self.refs.pop(node.id)
             self.assigned.add(node.id)
             for alt in alts:
@@ -482,7 +623,7 @@ class AssignMetaRules:
         duplicates = {id: rules for id, rules in self.metarules.items()
                       if len(rules) > 1}
         if duplicates:
-            raise RedefMetaRulesError(duplicates)
+            raise RedefMetaRulesError(*duplicates.items())
 
     def visit_Grammar(self, node: Grammar, parents):
         if self.stage == 1:
@@ -493,7 +634,7 @@ class AssignMetaRules:
             self.stage = 1
         elif self.stage == 1:
             if self.refs:
-                raise UndefMetaRulesError(dict(self.refs))
+                raise UndefMetaRulesError(*self.refs.items())
             self._check_redefined()
             self.done = True
 

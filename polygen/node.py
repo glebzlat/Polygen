@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Iterable, Optional, TypeVar, Union, Iterator, Any
-from dataclasses import dataclass
 from itertools import zip_longest
 
 from .utility import code_to_char, wrap_string
@@ -160,11 +159,23 @@ class GrammarVisitor:
             self.visit(value, *args, **kwargs)
 
 
-@dataclass
 class ParseInfo:
-    beg_pos: Optional[int] = None
-    end_pos: Optional[int] = None
-    filename: Optional[str] = None
+    start: int
+    end: int
+    line: int
+    filename: str
+
+    def __init__(self, arg):
+        if isinstance(arg, list):
+            assert arg
+            self.start, self.end = arg[0].start, arg[-1].end
+            self.line, self.filename = arg[0].line, arg[0].filename
+        else:
+            self.start, self.end = arg.start, arg.end
+            self.line, self.filename = arg.line, arg.filename
+
+    def __str__(self):
+        return f"{self.filename}: line {self.line}: {self.start}"
 
 
 class Grammar:
@@ -499,8 +510,9 @@ class String:
     def __lt__(self, other):
         if type(other) is not String:
             return NotImplemented
-        for a, b in zip_longest(DLL.forward(self.chars), DLL.forward(other.chars)):
-            if a >= b or b is None:
+        for a, b in zip_longest(DLL.forward(self.chars),
+                                DLL.forward(other.chars)):
+            if b is None or a >= b:
                 return False
         return True
 

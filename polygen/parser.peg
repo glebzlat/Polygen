@@ -1,6 +1,6 @@
 @entry
 Grammar     <- Spacing Entity+ EndOfFile                          $grammar_action
-Entity      <- Definition / MetaDef
+Entity      <- Definition / MetaDef 
 Definition  <- Directive* Identifier LEFTARROW Expression         $def_action
              / MetaDef
 
@@ -94,17 +94,25 @@ $sequence_action {
 }
 
 $prefix_action {
-  obj = lookahead(suffix) if lookahead else suffix
+  if lookahead:
+      lookahead.item = suffix
+      obj = lookahead
+  else:
+      obj = suffix
   metaname = metaname or None
   return NamedItem(metaname, obj)
 }
 
 $suffix_action {
-  return q(primary) if q else primary
+  if q:
+      q.item = primary
+      return q
+  return primary
 }
 
 $metarule_def_action {
-  return MetaRule(None, body)
+  expr, info = body
+  return MetaRule(None, expr, info)
 }
 
 $metarule_ref_action {
@@ -112,11 +120,12 @@ $metarule_ref_action {
 }
 
 $metadef_action {
-  return MetaRule(identifier, expr)
+  expr, info = expr
+  return MetaRule(identifier, expr, info)
 }
 
 $metadef_body_action {
-  return ''.join(expr)
+  return ''.join(expr), ParseInfo(expr)
 }
 
 $esc_cur_close_action {
@@ -124,7 +133,7 @@ $esc_cur_close_action {
 }
 
 $ident_action {
-  return Id(''.join((start, *cont)))
+  return Id(''.join((start, *cont)), ParseInfo([start, *cont]))
 }
 
 $literal_action {
@@ -147,62 +156,64 @@ $range_1_action {
 
 $esc_char_action {
   chr_map = {
-      'n': '\n',
-      'r': '\r',
-      't': '\t',
+    'n': '\n',
+    'r': '\r',
+    't': '\t',
   \}
 
-  return Char(chr_map.get(char, char))
+  return Char(chr_map.get(char, char), ParseInfo(char))
 }
 
 $oct_char_action_1 {
   string = ''.join((char1, char2, char3))
-  return Char(int(string, base=8))
+  return Char(int(string, base=8), ParseInfo([char1, char2, char3]))
 }
 
 $oct_char_action_2 {
   char2 = char2 if isinstance(char2, str) else ''
   string = ''.join((char1, char2))
-  return Char(int(string, base=8))
+  return Char(int(string, base=8),
+              ParseInfo(list(filter(None, (char1, char2)))))
 }
 
 $unicode_char_action {
   string = ''.join(chars)
-  return Char(int(string, base=16))
+  return Char(int(string, base=16), ParseInfo(chars))
 }
 
 $any_char_action {
-  return Char(ord(any))
+  return Char(ord(any), ParseInfo(any))
 }
 
 $number_action {
   string = ''.join(chars)
-  return int(string)
+  return int(string), ParseInfo(chars)
 }
 
 $and_action {
-  return And
+  return And(None)
 }
 
 $not_action {
-  return Not
+  return Not(None)
 }
 
 $optional_action {
-  return ZeroOrOne
+  return ZeroOrOne(None)
 }
 
 $zero_or_more_action {
-  return ZeroOrMore
+  return ZeroOrMore(None)
 }
 
 $one_or_more_action {
-  return OneOrMore
+  return OneOrMore(None)
 }
 
 $rep_action {
-  beg, end = grp if isinstance(grp, list) else (grp, None)
-  return lambda item: Repetition(item, beg, end)
+  beg, end = grp if isinstance(grp, list) else (grp, (None, None))
+  infos = list(filter(None, (beg[1], end[1])))
+  return Repetition(None, beg[0], end[0], ParseInfo(infos))
 }
 
 $dot_action {
