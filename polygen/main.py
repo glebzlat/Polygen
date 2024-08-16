@@ -110,6 +110,10 @@ def generate_parser(*,
         parser = Parser(reader)
         tree = parser.parse()
 
+    if not tree:
+        logger.error("parser failure")
+        return
+
     try:
         modifier = create_modifier(verbose=verbose)
         modifier.apply(tree)
