@@ -44,6 +44,7 @@ class Reader:
 
     def __init__(self, stream: str | io.TextIOBase, bufsize=4096):
         self.buffer = ""
+        self.buflen = 0
         self.stream = None
         self.name = None
         self.bufsize = bufsize
@@ -55,6 +56,7 @@ class Reader:
         if isinstance(stream, str):
             self.name = "<string>"
             self.buffer = stream
+            self.buflen = len(self.buffer)
         elif isinstance(stream, io.IOBase):
             self.name = getattr(stream, 'name', '<stream>')
             self.stream = stream
@@ -67,16 +69,10 @@ class Reader:
         return self
 
     def __next__(self) -> Token:
-        try:
-            char = self.buffer[self.pointer]
-        except IndexError:
-            if self.stream:
-                self.update()
-            try:
-                char = self.buffer[self.pointer]
-            except IndexError:
-                self.eof = True
+        if self.pointer == self.buflen:
+            if not self.update():
                 raise StopIteration
+        char = self.buffer[self.pointer]
         tok = Token(char, self.line, self.column, self.column + 1, self.name)
         if char in '\r\n':
             self.line += 1
@@ -86,19 +82,27 @@ class Reader:
         self.pointer += 1
         return tok
 
-    def update(self, length: int = 1) -> None:
-        assert self.stream
-        if self.eof:
-            return
+    def update(self, length: int = 1) -> int:
+        if self.eof or not self.stream:
+            self.eof = True
+            return 0
         self.buffer = self.buffer[self.pointer:]
         self.pointer = 0
+        read_length = 0
         while len(self.buffer) < length:
             data = self.stream.read(self.bufsize)
+            read_length += len(data)
             if data:
                 self.buffer += data
             else:
                 self.eof = True
                 break
+        self.buflen = len(self.buffer)
+        return read_length
+
+    @property
+    def filename(self) -> str:
+        return self.name
 
 
 class _MemoEntry:
@@ -194,6 +198,10 @@ class Parser:
         self._grow_rules: Dict[str, Tuple[List[Callable], List[Callable]]] = {
             %% grow_rules %%
         }
+
+    @property
+    def reader(self) -> Reader:
+        return self._reader
 
     @_memoize
     def _expectc(self, char: Optional[str] = None) -> Optional[Token]:
