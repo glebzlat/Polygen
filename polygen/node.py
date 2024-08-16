@@ -182,6 +182,7 @@ class Grammar:
     def __init__(self,
                  rules: Iterable[Rule],
                  metarules: Optional[Iterable[MetaRule]] = None,
+                 includes: Optional[Iterable[Include]] = None,
                  parse_info: Optional[ParseInfo] = None):
 
         self.rules: Optional[Rule] = DLL.from_iterable(rules)
@@ -189,6 +190,10 @@ class Grammar:
         if metarules is not None:
             metarules = DLL.from_iterable(metarules)
         self.metarules: Optional[MetaRule] = metarules
+
+        if includes is not None:
+            includes = DLL.from_iterable(includes)
+        self.includes = includes
 
         self.entry: Rule | None = None
         self.parse_info = parse_info
@@ -227,6 +232,19 @@ class Grammar:
 
     def __hash__(self):
         return hash(tuple(self.rules))
+
+
+class Include(DLL):
+    def __init__(self, path: str, line: int, filename: str):
+        self.path = path
+        self.line = line
+        self.filename = filename
+
+    def __repr__(self):
+        return f"Include({self.path!r}, {self.line}, {self.filename!r})"
+
+    def __str__(self):
+        return repr(self)
 
 
 class Rule(DLL):

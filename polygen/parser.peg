@@ -1,10 +1,14 @@
 @entry
 Grammar     <- Spacing Entity+ EndOfFile                          $grammar_action
-Entity      <- Definition / MetaDef 
-Definition  <- Directive* Identifier LEFTARROW Expression         $def_action
+Entity      <- Definition / MetaDef / Include
+Definition  <- directive:RuleDir* Identifier LEFTARROW Expression $def_action
              / MetaDef
 
-Directive   <- AT DirName Spacing                                 $directive_action
+Include     <- tok:AT INCLUDE IncludePath Spacing                 $include_action
+IncludePath <- ['] path:(!['] .)+ [']                             $path_action
+             / ["] path:(!["] .)+ ["]                             $path_action
+
+RuleDir     <- AT DirName Spacing                                 $directive_action
 DirName     <- Identifier
 
 Expression  <- Sequence seqs:(_:SLASH Sequence)*                  $expr_action
@@ -43,6 +47,8 @@ Number      <- chars:[0-9]+                                       $number_action
 HexDigit    <- char:[a-fA-F0-9]
 
 @ignore
+INCLUDE     <- "include" Spacing
+@ignore
 LEFTARROW   <- '<-' Spacing
 @ignore
 SLASH       <- '/' Spacing
@@ -69,9 +75,24 @@ EndOfLine   <- '\r\n' / '\n' / '\r'
 EndOfFile   <- !.
 
 $grammar_action {
-  rules = (r for r in entity if isinstance(r, Rule))
-  metarules = (r for r in entity if isinstance(r, MetaRule))
-  return Grammar(rules, metarules)
+  rules, metarules, includes = [], [], []
+  for e in entity:
+      if isinstance(e, Rule):
+          rules.append(e)
+      elif isinstance(e, MetaRule):
+          metarules.append(e)
+      elif isinstance(e, Include):
+          includes.append(e)
+
+  return Grammar(rules, metarules, includes)
+}
+
+$include_action {
+  return Include(includepath, tok.line, self.reader.filename)
+}
+
+$path_action {
+  return ''.join(path)
 }
 
 $def_action {

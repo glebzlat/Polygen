@@ -13,6 +13,7 @@ from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 from polygen.node import (
     ParseInfo,
     Grammar,
+    Include,
     Rule,
     MetaRef,
     MetaRule,
@@ -68,6 +69,7 @@ class Reader:
 
     def __init__(self, stream: str | io.TextIOBase, bufsize=4096):
         self.buffer = ""
+        self.buflen = 0
         self.stream = None
         self.name = None
         self.bufsize = bufsize
@@ -79,6 +81,7 @@ class Reader:
         if isinstance(stream, str):
             self.name = "<string>"
             self.buffer = stream
+            self.buflen = len(self.buffer)
         elif isinstance(stream, io.IOBase):
             self.name = getattr(stream, 'name', '<stream>')
             self.stream = stream
@@ -91,16 +94,10 @@ class Reader:
         return self
 
     def __next__(self) -> Token:
-        try:
-            char = self.buffer[self.pointer]
-        except IndexError:
-            if self.stream:
-                self.update()
-            try:
-                char = self.buffer[self.pointer]
-            except IndexError:
-                self.eof = True
+        if self.pointer == self.buflen:
+            if not self.update():
                 raise StopIteration
+        char = self.buffer[self.pointer]
         tok = Token(char, self.line, self.column, self.column + 1, self.name)
         if char in '\r\n':
             self.line += 1
@@ -110,19 +107,27 @@ class Reader:
         self.pointer += 1
         return tok
 
-    def update(self, length: int = 1) -> None:
-        assert self.stream
-        if self.eof:
-            return
+    def update(self, length: int = 1) -> int:
+        if self.eof or not self.stream:
+            self.eof = True
+            return 0
         self.buffer = self.buffer[self.pointer:]
         self.pointer = 0
+        read_length = 0
         while len(self.buffer) < length:
             data = self.stream.read(self.bufsize)
+            read_length += len(data)
             if data:
                 self.buffer += data
             else:
                 self.eof = True
                 break
+        self.buflen = len(self.buffer)
+        return read_length
+
+    @property
+    def filename(self) -> str:
+        return self.name
 
 
 class _MemoEntry:
@@ -319,9 +324,16 @@ class Parser:
             # Spacing Entity+ EndOfFile
 
             # Metarule: grammar_action
-            rules = (r for r in entity if isinstance(r, Rule))
-            metarules = (r for r in entity if isinstance(r, MetaRule))
-            return Grammar(rules, metarules)
+            rules, metarules, includes = [], [], []
+            for e in entity:
+                if isinstance(e, Rule):
+                    rules.append(e)
+                elif isinstance(e, MetaRule):
+                    metarules.append(e)
+                elif isinstance(e, Include):
+                    includes.append(e)
+
+            return Grammar(rules, metarules, includes)
         self._reset(_begin_pos)
         return None
 
@@ -336,18 +348,22 @@ class Parser:
             # MetaDef
             return metadef
         self._reset(_begin_pos)
+        if ((include := self._Include()) is not None):
+            # Include
+            return include
+        self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Definition(self):
         _begin_pos = self._mark()
         if (
-            (directive := self._loop(False, self._Directive)) is not None
+            (directive := self._loop(False, self._RuleDir)) is not None
             and (identifier := self._Identifier()) is not None
             and self._LEFTARROW() is not None
             and (expression := self._Expression()) is not None
         ):
-            # Directive* Identifier LEFTARROW Expression
+            # RuleDir* Identifier LEFTARROW Expression
 
             # Metarule: def_action
             ignore = "ignore" in directive
@@ -361,7 +377,49 @@ class Parser:
         return None
 
     @_memoize
-    def _Directive(self):
+    def _Include(self):
+        _begin_pos = self._mark()
+        if (
+            (tok := self._AT()) is not None
+            and self._INCLUDE() is not None
+            and (includepath := self._IncludePath()) is not None
+            and self._Spacing() is not None
+        ):
+            # AT INCLUDE IncludePath Spacing
+
+            # Metarule: include_action
+            reader = self._reader
+            return Include(includepath, tok.line, reader.filename)
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _IncludePath(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._ranges(("'", "'"))) is not None
+            and (path := self._loop(True, self._IncludePath__GEN_1)) is not None
+            and (_2 := self._ranges(("'", "'"))) is not None
+        ):
+            # ['] IncludePath__GEN_1+ [']
+
+            # Metarule: path_action
+            return ''.join(path)
+        self._reset(_begin_pos)
+        if (
+            (_1 := self._ranges(('"', '"'))) is not None
+            and (path := self._loop(True, self._IncludePath__GEN_2)) is not None
+            and (_2 := self._ranges(('"', '"'))) is not None
+        ):
+            # ["] IncludePath__GEN_2+ ["]
+
+            # Metarule: path_action
+            return ''.join(path)
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _RuleDir(self):
         _begin_pos = self._mark()
         if (
             self._AT() is not None
@@ -779,6 +837,18 @@ class Parser:
         return None
 
     @_memoize
+    def _INCLUDE(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expects("include")) is not None
+            and self._Spacing() is not None
+        ):
+            # "include" Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
     def _LEFTARROW(self):
         _begin_pos = self._mark()
         if (
@@ -1000,6 +1070,30 @@ class Parser:
             # Nullable
             # !.
             return []
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _IncludePath__GEN_1(self):
+        _begin_pos = self._mark()
+        if (
+            self._lookahead(False, self._ranges, ("'", "'")) is not None
+            and (_1 := self._expectc()) is not None
+        ):
+            # !['] .
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _IncludePath__GEN_2(self):
+        _begin_pos = self._mark()
+        if (
+            self._lookahead(False, self._ranges, ('"', '"')) is not None
+            and (_1 := self._expectc()) is not None
+        ):
+            # !["] .
+            return _1
         self._reset(_begin_pos)
         return None
 
