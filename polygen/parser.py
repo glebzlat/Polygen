@@ -565,7 +565,7 @@ class Parser:
             # "\\}"
 
             # Metarule: esc_cur_close_action
-            return '}'
+            return Token('}', str.line, str.start, str.end, str.filename)
         self._reset(_begin_pos)
         return None
 

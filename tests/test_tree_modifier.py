@@ -114,11 +114,10 @@ class Test_CheckUndefinedRules_Success(ModifierTest):
 class Test_CheckUndefinedRules_Raises(ModifierTest):
     modifier = CheckUndefinedRules()
 
-    input_data = Grammar([
-        Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))
-    ])
+    rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))
+    input_data = Grammar([rule])
 
-    error = UndefRulesError({Id('B'): [Id('B')]})
+    error = UndefRulesError((Id('B'), [rule]))
 
 
 class Test_CheckRedefinedRules_Success(ModifierTest):
@@ -139,7 +138,7 @@ class Test_CheckRedefinedRules_Raises(ModifierTest):
 
     input_data = Grammar([rule1, rule2])
 
-    error = RedefRulesError({Id('A'): [rule1, rule2]})
+    error = RedefRulesError((Id('A'), [rule1, rule2]))
 
 
 class Test_ReplaceNestedExpr(ModifierTest):
@@ -187,7 +186,7 @@ class Test_FindEntryRule_Redef(ModifierTest):
 
     input_data = Grammar([rule1, rule2])
 
-    error = RedefEntryError([rule1, rule2])
+    error = RedefEntryError(rule1, rule2)
 
 
 class Test_CreateAnyChar_non_strict(ModifierTest):
