@@ -224,6 +224,10 @@ class Parser:
             
         }
 
+    @property
+    def reader(self) -> Reader:
+        return self._reader
+
     @_memoize
     def _expectc(self, char: Optional[str] = None) -> Optional[Token]:
         if tok := self._peek_token():
@@ -388,8 +392,7 @@ class Parser:
             # AT INCLUDE IncludePath Spacing
 
             # Metarule: include_action
-            reader = self._reader
-            return Include(includepath, tok.line, reader.filename)
+            return Include(includepath, tok.line, self.reader.filename)
         self._reset(_begin_pos)
         return None
 
@@ -612,7 +615,7 @@ class Parser:
             # '{' MetaDefBody__GEN_2* '}' Spacing
 
             # Metarule: metadef_body_action
-            return ''.join(expr), ParseInfo(expr)
+            return ''.join(expr), ParseInfo(expr) if expr else None
         self._reset(_begin_pos)
         return None
 

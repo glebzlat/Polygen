@@ -146,7 +146,7 @@ $metadef_action {
 }
 
 $metadef_body_action {
-  return ''.join(expr), ParseInfo(expr)
+  return ''.join(expr), ParseInfo(expr) if expr else None
 }
 
 $esc_cur_close_action {
