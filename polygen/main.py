@@ -3,11 +3,13 @@ import logging
 import tracemalloc
 import linecache
 import time
+import os
 
 from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
-from polygen.parser import Reader, Parser
+# from polygen.parser import Reader, Parser
+from polygen.preprocessor import process, GPreprocessorError
 
 from polygen.modifier import (
     TreeModifierWarning,
@@ -35,6 +37,11 @@ stdout_handler = logging.StreamHandler(sys.stdout)
 
 CWD = Path(__file__).resolve().parent
 BACKEND_DIRECTORY = CWD / "backend"
+
+include_paths = ()
+if "POLYGEN_INCLUDE_PATH" in os.environ:
+    var = os.environ["POLYGEN_INCLUDE_PATH"]
+    include_paths = tuple(Path(p) for p in var.split(':'))
 
 
 class PolygenError(Exception):
@@ -82,17 +89,10 @@ def create_modifier(*, verbose: bool) -> ModifierVisitor:
 
 def generate_parser(*,
                     grammar_file: Optional[Path] = None,
-                    grammar: Optional[str] = None,
                     backend: Backend,
                     output_directory: Path,
                     user_options: Optional[Iterable[str]] = None,
                     verbose=False):
-    if (
-        grammar_file is None and grammar is None or
-        grammar_file and grammar
-    ):
-        raise ValueError("specify either grammar_file or grammar")
-
     if verbose:
         logger.setLevel(logging.INFO)
 
@@ -100,18 +100,10 @@ def generate_parser(*,
         tracemalloc.start()
         t1 = time.perf_counter()
 
-    if grammar_file:
-        with open(grammar_file, 'r', encoding="UTF-8") as fin:
-            reader = Reader(fin)
-            parser = Parser(reader)
-            tree = parser.parse()
-    elif grammar:
-        reader = Reader(grammar)
-        parser = Parser(reader)
-        tree = parser.parse()
-
-    if not tree:
-        logger.error("parser failure")
+    try:
+        tree = process(grammar_file, [Path.cwd(), *include_paths])
+    except GPreprocessorError as e:
+        logger.error("grammar preprocessor error: %s", e)
         return
 
     try:

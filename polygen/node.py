@@ -233,6 +233,26 @@ class Grammar:
     def __hash__(self):
         return hash(tuple(self.rules))
 
+    def merge(self, grammar: Grammar):
+        if grammar.rules:
+            if self.rules:
+                self.rules.emplace_before(grammar.rules)
+                self.rules = self.rules.begin
+            else:
+                self.rules = grammar.rules
+        if grammar.metarules:
+            if self.metarules:
+                self.metarules.emplace_before(grammar.metarules)
+                self.metarules = self.metarules.begin
+            else:
+                self.metarules = grammar.metarules
+        if grammar.includes:
+            if self.includes:
+                self.includes.emplace_before(grammar.includes)
+                self.includes = self.includes.begin
+            else:
+                self.includes = grammar.includes
+
 
 class Include(DLL):
     def __init__(self, path: str, line: int, filename: str):
