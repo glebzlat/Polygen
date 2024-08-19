@@ -88,8 +88,8 @@ into the grammar file.
     - [x] Write backend runner module
     - [ ] Approve an API for backends
     - [x] Write cross-backend unit tests
-- [ ] Grammar file preprocessor
-    - [ ] `include` directive
+- [x] Grammar file preprocessor
+    - [x] `include` directive
 - [ ] Source code preprocessor definitions from grammar file (e.g. imports)
 - [ ] Enhanced skeleton file preprocessor
     - [ ] Allow consequtive directives
