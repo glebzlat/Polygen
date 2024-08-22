@@ -140,7 +140,7 @@ def _process_grammar(tree: Grammar,
             tree.merge(subtree)
 
         elif isinstance(directive, BackendQuery):
-            if directive.name != backend_name:
+            if directive.name.value != backend_name:
                 continue
 
             subtree = _process_grammar(
