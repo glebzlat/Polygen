@@ -101,7 +101,12 @@ def generate_parser(*,
         t1 = time.perf_counter()
 
     try:
-        tree = process(grammar_file, [Path.cwd(), *include_paths])
+        tree = process(
+            grammar_file,
+            [Path.cwd(), *include_paths],
+            backend.generator.NAME,
+            backend.generator
+        )
     except GPreprocessorError as e:
         logger.error("grammar preprocessor error: %s", e)
         return

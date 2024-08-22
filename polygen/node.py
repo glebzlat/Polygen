@@ -182,21 +182,27 @@ class Grammar:
     def __init__(self,
                  rules: Iterable[Rule],
                  metarules: Optional[Iterable[MetaRule]] = None,
-                 includes: Optional[Iterable[Include]] = None,
+                 directives: Optional[Iterable[Directive]] = None,
                  parse_info: Optional[ParseInfo] = None):
 
-        self.rules: Optional[Rule] = DLL.from_iterable(rules)
+        if rules is not None:
+            rules = DLL.from_iterable(rules)
+        self.rules: Optional[Rule] = rules
 
         if metarules is not None:
             metarules = DLL.from_iterable(metarules)
         self.metarules: Optional[MetaRule] = metarules
 
-        if includes is not None:
-            includes = DLL.from_iterable(includes)
-        self.includes = includes
+        if directives is not None:
+            directives = DLL.from_iterable(directives)
+        self.directives = directives
 
         self.entry: Rule | None = None
         self.parse_info = parse_info
+
+    @property
+    def includes(self):
+        return self.directives
 
     def __repr__(self):
         lines = ["Grammar("]
@@ -254,17 +260,76 @@ class Grammar:
                 self.includes = grammar.includes
 
 
-class Include(DLL):
-    def __init__(self, path: str, line: int, filename: str):
-        self.path = path
+class Directive(DLL):
+    def __init__(self, line: int, filename: str):
         self.line = line
         self.filename = filename
+
+    def __str__(self):
+        return repr(self)
+
+
+class Include(Directive):
+    def __init__(self, path: str, line: int, filename: str):
+        super().__init__(line, filename)
+        self.path = path
 
     def __repr__(self):
         return f"Include({self.path!r}, {self.line}, {self.filename!r})"
 
-    def __str__(self):
-        return repr(self)
+
+class Entry(Directive):
+    def __init__(self, id: Id, line: int, filename: str):
+        super().__init__(line, filename)
+        self.id = id
+
+    def __repr__(self):
+        return f"Entry({self.id!r}, {self.line}, {self.filename!r})"
+
+
+class ToplevelQuery(Directive):
+    def __init__(self, grammar: Grammar, line: int, filename: str):
+        super().__init__(line, filename)
+        self.grammar = grammar
+
+    def __repr__(self):
+        return (
+            f"ToplevelQuery({self.grammar!r}, {self.line}, {self.filename!r})"
+        )
+
+
+class BackendQuery(Directive):
+    def __init__(self, name: str, grammar: Grammar, line: int, filename: str):
+        super().__init__(line, filename)
+        self.name = name
+        self.grammar = grammar
+
+    def __repr__(self):
+        return (
+            f"BackendQuery({self.grammar!r}, {self.line}, {self.filename!r})"
+        )
+
+
+class BackendDef(Directive):
+    def __init__(self, id: Id, expr: str, line: int, filename: str):
+        super().__init__(line, filename)
+        self.id = id
+        self.expr = expr
+
+    def __repr__(self):
+        return (
+            f"BackendDef({self.id!r}, {self.expr!r}, "
+            f"{self.line}, {self.filename!r})"
+        )
+
+
+class Ignore(Directive):
+    def __init__(self, ids: list[Id], line: int, filename: str):
+        super().__init__(line, filename)
+        self.ids = ids
+
+    def __repr__(self):
+        return f"Ignore({self.ids!r}, {self.line}, {self.filename!r})"
 
 
 class Rule(DLL):

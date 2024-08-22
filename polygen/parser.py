@@ -13,6 +13,12 @@ from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 from polygen.node import (
     ParseInfo,
     Grammar,
+    Directive,
+    Include,
+    Entry,
+    ToplevelQuery,
+    BackendQuery,
+    Ignore,
     Include,
     Rule,
     MetaRef,
@@ -328,16 +334,16 @@ class Parser:
             # Spacing Entity+ EndOfFile
 
             # Metarule: grammar_action
-            rules, metarules, includes = [], [], []
+            rules, metarules, directives = [], [], []
             for e in entity:
                 if isinstance(e, Rule):
                     rules.append(e)
                 elif isinstance(e, MetaRule):
                     metarules.append(e)
-                elif isinstance(e, Include):
-                    includes.append(e)
+                elif isinstance(e, Directive):
+                    directives.append(e)
 
-            return Grammar(rules, metarules, includes)
+            return Grammar(rules, metarules, directives)
         self._reset(_begin_pos)
         return None
 
@@ -352,9 +358,9 @@ class Parser:
             # MetaDef
             return metadef
         self._reset(_begin_pos)
-        if ((include := self._Include()) is not None):
-            # Include
-            return include
+        if ((directive := self._Directive()) is not None):
+            # Directive
+            return directive
         self._reset(_begin_pos)
         return None
 
@@ -381,18 +387,33 @@ class Parser:
         return None
 
     @_memoize
+    def _Directive(self):
+        _begin_pos = self._mark()
+        if (
+            (start := self._AT()) is not None
+            and (d := self._Directive__GEN_1()) is not None
+        ):
+            # AT Directive__GEN_1
+
+            # Metarule: directive_action
+            d.line = start.line
+            d.filename = self.reader.filename
+            return d
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
     def _Include(self):
         _begin_pos = self._mark()
         if (
-            (tok := self._AT()) is not None
-            and self._INCLUDE() is not None
+            self._INCLUDE() is not None
             and (includepath := self._IncludePath()) is not None
             and self._Spacing() is not None
         ):
-            # AT INCLUDE IncludePath Spacing
+            # INCLUDE IncludePath Spacing
 
             # Metarule: include_action
-            return Include(includepath, tok.line, self.reader.filename)
+            return Include(includepath, 0, "")
         self._reset(_begin_pos)
         return None
 
@@ -422,6 +443,103 @@ class Parser:
         return None
 
     @_memoize
+    def _Entry(self):
+        _begin_pos = self._mark()
+        if (
+            self._ENTRY() is not None
+            and (id := self._Identifier()) is not None
+        ):
+            # ENTRY Identifier
+
+            # Metarule: entry_action
+            return Entry(id, 0, "")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _Toplevel(self):
+        _begin_pos = self._mark()
+        if (
+            self._TOPLEVEL() is not None
+            and self._COPEN() is not None
+            and (entity := self._loop(False, self._Entity)) is not None
+            and self._CCLOSE() is not None
+        ):
+            # TOPLEVEL COPEN Entity* CCLOSE
+
+            # Metarule: toplevel_action
+            rules, metarules, directives = [], [], []
+            for e in entity:
+                if isinstance(e, Rule):
+                    rules.append(e)
+                elif isinstance(e, MetaRule):
+                    metarules.append(e)
+                elif isinstance(e, directives):
+                    directives.append(e)
+
+            grammar = Grammar(rules, metarules, directives)
+            return ToplevelQuery(grammar, 0, "")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _Backend(self):
+        _begin_pos = self._mark()
+        if (
+            self._BACKEND() is not None
+            and self._Spacing() is not None
+            and self._OPEN() is not None
+            and (id := self._Identifier()) is not None
+            and self._CLOSE() is not None
+            and self._COPEN() is not None
+            and (entity := self._loop(False, self._Entity)) is not None
+            and self._CCLOSE() is not None
+        ):
+            # BACKEND Spacing OPEN Identifier CLOSE COPEN Entity* CCLOSE
+
+            # Metarule: backend_action
+            rules, metarules, directives = [], [], []
+            for e in entity:
+                if isinstance(e, Rule):
+                    rules.append(e)
+                elif isinstance(e, MetaRule):
+                    metarules.append(e)
+                elif isinstance(e, directives):
+                    directives.append(e)
+
+            grammar = Grammar(rules, metarules, directives)
+            return BackendQuery(id, grammar, 0, "")
+        self._reset(_begin_pos)
+        if (
+            self._BACKEND() is not None
+            and (_1 := self._expectc('.')) is not None
+            and (id := self._Identifier()) is not None
+            and (expr := self._MetaDefBody()) is not None
+        ):
+            # BACKEND '.' Identifier MetaDefBody
+
+            # Metarule: backend_def_action
+            return BackendDef(id, expr, 0, "")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _Ignore(self):
+        _begin_pos = self._mark()
+        if (
+            self._IGNORE() is not None
+            and self._COPEN() is not None
+            and (ids := self._loop(False, self._Identifier)) is not None
+            and self._CCLOSE() is not None
+        ):
+            # IGNORE COPEN Identifier* CCLOSE
+
+            # Metarule: ignore_action
+            return Ignore(ids, 0, "")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
     def _RuleDir(self):
         _begin_pos = self._mark()
         if (
@@ -431,7 +549,7 @@ class Parser:
         ):
             # AT DirName Spacing
 
-            # Metarule: directive_action
+            # Metarule: ruledir_action
             return dirname.value
         self._reset(_begin_pos)
         return None
@@ -852,6 +970,51 @@ class Parser:
         return None
 
     @_memoize
+    def _ENTRY(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expects("entry")) is not None
+            and self._Spacing() is not None
+        ):
+            # "entry" Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _TOPLEVEL(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expects("toplevel")) is not None
+            and self._Spacing() is not None
+        ):
+            # "toplevel" Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _BACKEND(self):
+        _begin_pos = self._mark()
+        if ((_1 := self._expects("backend")) is not None):
+            # "backend"
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _IGNORE(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expects("ignore")) is not None
+            and self._Spacing() is not None
+        ):
+            # "ignore" Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
     def _LEFTARROW(self):
         _begin_pos = self._mark()
         if (
@@ -970,6 +1133,30 @@ class Parser:
         return None
 
     @_memoize
+    def _COPEN(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expectc('{')) is not None
+            and self._Spacing() is not None
+        ):
+            # '{' Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _CCLOSE(self):
+        _begin_pos = self._mark()
+        if (
+            (_1 := self._expectc('}')) is not None
+            and self._Spacing() is not None
+        ):
+            # '}' Spacing
+            return _1
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
     def _DOT(self):
         _begin_pos = self._mark()
         if (
@@ -1073,6 +1260,31 @@ class Parser:
             # Nullable
             # !.
             return []
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _Directive__GEN_1(self):
+        _begin_pos = self._mark()
+        if ((include := self._Include()) is not None):
+            # Include
+            return include
+        self._reset(_begin_pos)
+        if ((entry := self._Entry()) is not None):
+            # Entry
+            return entry
+        self._reset(_begin_pos)
+        if ((toplevel := self._Toplevel()) is not None):
+            # Toplevel
+            return toplevel
+        self._reset(_begin_pos)
+        if ((backend := self._Backend()) is not None):
+            # Backend
+            return backend
+        self._reset(_begin_pos)
+        if ((ignore := self._Ignore()) is not None):
+            # Ignore
+            return ignore
         self._reset(_begin_pos)
         return None
 

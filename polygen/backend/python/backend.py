@@ -37,6 +37,12 @@ POLYGEN_IMPORTS = """
 from polygen.node import (
     ParseInfo,
     Grammar,
+    Directive,
+    Include,
+    Entry,
+    ToplevelQuery,
+    BackendQuery,
+    Ignore,
     Include,
     Rule,
     MetaRef,
