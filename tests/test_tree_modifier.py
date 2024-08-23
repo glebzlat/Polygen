@@ -26,6 +26,7 @@ from polygen.modifier import (
     RedefEntryError,
 )
 from polygen.modifier import (
+    Options,
     CheckUndefinedRules,
     CheckRedefinedRules,
     ReplaceNestedExprs,
@@ -101,7 +102,7 @@ class ModifierTest(unittest.TestCase, metaclass=TreeModifierTestMeta):
 
 
 class Test_CheckUndefinedRules_Success(ModifierTest):
-    modifier = CheckUndefinedRules()
+    modifier = CheckUndefinedRules(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])])),
@@ -112,7 +113,7 @@ class Test_CheckUndefinedRules_Success(ModifierTest):
 
 
 class Test_CheckUndefinedRules_Raises(ModifierTest):
-    modifier = CheckUndefinedRules()
+    modifier = CheckUndefinedRules(Options())
 
     rule = Rule(Id('A'), Expr([Alt([NamedItem(None, Id('B'))])]))
     input_data = Grammar([rule])
@@ -121,7 +122,7 @@ class Test_CheckUndefinedRules_Raises(ModifierTest):
 
 
 class Test_CheckRedefinedRules_Success(ModifierTest):
-    modifier = CheckRedefinedRules()
+    modifier = CheckRedefinedRules(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
@@ -131,7 +132,7 @@ class Test_CheckRedefinedRules_Success(ModifierTest):
 
 
 class Test_CheckRedefinedRules_Raises(ModifierTest):
-    modifier = CheckRedefinedRules()
+    modifier = CheckRedefinedRules(Options())
 
     rule1 = Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
     rule2 = Rule(Id('A'), Expr([Alt([NamedItem(None, Char('b'))])]))
@@ -142,7 +143,7 @@ class Test_CheckRedefinedRules_Raises(ModifierTest):
 
 
 class Test_ReplaceNestedExpr(ModifierTest):
-    modifier = ReplaceNestedExprs()
+    modifier = ReplaceNestedExprs(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([
@@ -159,7 +160,7 @@ class Test_ReplaceNestedExpr(ModifierTest):
 
 
 class Test_FindEntryRule_Success(ModifierTest):
-    modifier = FindEntryRule()
+    modifier = FindEntryRule(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
@@ -169,7 +170,7 @@ class Test_FindEntryRule_Success(ModifierTest):
 
 
 class Test_FindEntryRule_Undef(ModifierTest):
-    modifier = FindEntryRule()
+    modifier = FindEntryRule(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
@@ -179,7 +180,7 @@ class Test_FindEntryRule_Undef(ModifierTest):
 
 
 class Test_FindEntryRule_Redef(ModifierTest):
-    modifier = FindEntryRule()
+    modifier = FindEntryRule(Options())
 
     rule1 = Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
     rule2 = Rule(Id('B'), Expr([Alt([NamedItem(None, AnyChar())])]), entry=True)
@@ -190,7 +191,7 @@ class Test_FindEntryRule_Redef(ModifierTest):
 
 
 class Test_CreateAnyChar_non_strict(ModifierTest):
-    modifier = CreateAnyChar()
+    modifier = CreateAnyChar(Options())
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])]))
@@ -204,7 +205,7 @@ class Test_CreateAnyChar_strict(ModifierTest):
     # artificial rule, which matches only characters that was found and
     # nothing else
 
-    modifier = CreateAnyChar(strict=True)
+    modifier = CreateAnyChar(Options(), strict=True)
 
     input_data = Grammar([
         Rule(Id('A'), Expr([Alt([NamedItem(None, AnyChar())])])),
@@ -235,7 +236,7 @@ class Test_ComputeLR_direct(ModifierTest):
 
     input_data = tree
 
-    modifier = ComputeLR()
+    modifier = ComputeLR(Options())
 
     def validate(self):
         self.assertTrue(self.rule.leftrec)
@@ -253,7 +254,7 @@ class Test_ComputeLR_direct_nullable(ModifierTest):
 
     input_data = tree
 
-    modifier = ComputeLR()
+    modifier = ComputeLR(Options())
 
     def validate(self):
         self.assertTrue(self.rule.leftrec)
@@ -274,7 +275,7 @@ class Test_ComputeLR_direct_nullable_alt(ModifierTest):
 
     input_data = tree
 
-    modifier = ComputeLR()
+    modifier = ComputeLR(Options())
 
     def validate(self):
         self.assertTrue(self.rule.leftrec)
@@ -295,7 +296,7 @@ class Test_ComputeLR_direct_nullable_swap_rules(ModifierTest):
 
     input_data = tree
 
-    modifier = ComputeLR()
+    modifier = ComputeLR(Options())
 
     def validate(self):
         self.assertTrue(self.rule.leftrec)

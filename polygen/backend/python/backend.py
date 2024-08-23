@@ -1,18 +1,17 @@
 from io import StringIO
-from typing import Any, Optional
+from typing import Any
 from pathlib import Path
+from keyword import kwlist
 
-from polygen.__version__ import __version__
 from polygen.utility import reindent
 
 from polygen.generator.base import CodeGeneratorBase
-from polygen.generator.runner import RunnerBase, Executable
+from polygen.generator.runner import RunnerBase
 from polygen.generator.config import Option
 
 from polygen.node import (
     DLL,
     Grammar,
-    LR,
     Rule,
     MetaRule,
     Expr,
@@ -72,6 +71,7 @@ class CodeGenerator(CodeGeneratorBase):
     LANGUAGE = "Python"
     VERSION = "0.0.1"
     FILES = ["parser.py.in"]
+    RESERVED_WORDS = set(kwlist)
     OPTIONS = {
         "polygen_imports": Option(bool, default=False)
     }

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 
 from collections import defaultdict, Counter
-from keyword import iskeyword
 from typing import Iterator, TypeVar, Hashable, OrderedDict, Optional
 
 from .node import (
@@ -35,6 +34,14 @@ from .node import (
 from .utility import reindent
 
 logger = logging.getLogger("polygen.modifier")
+
+
+class Options:
+    reserved_words: set[str]
+
+    def __init__(self, **kwargs):
+        for attr, val in kwargs.items():
+            setattr(self, attr, val)
 
 
 class TreeModifierWarning(Warning):
@@ -302,10 +309,10 @@ class RangeRepError(SemanticError):
 class CheckUndefinedRules:
     """Finds rules, that are referenced but not found in the grammar."""
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.named_items: defaultdict[list[Rule]] = defaultdict(list)
         self.rule_names: set[Id] = set()
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Rule(self, node: Rule, parents):
@@ -326,9 +333,9 @@ class CheckUndefinedRules:
 class CheckRedefinedRules:
     """Finds rules that are defined more than once."""
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.rules = defaultdict(list)
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Rule(self, node: Rule, parents):
@@ -363,10 +370,10 @@ class ReplaceNestedExprs:
     ```
     """
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.created_exprs: dict[Expr, Id] = {}
         self.id_count: Counter[Id] = Counter()
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def _get_rule_id(self, parents) -> Id | None:
@@ -409,9 +416,9 @@ class ReplaceNestedExprs:
 class FindEntryRule:
     """Tries to find the rule marked as `@entry`."""
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.entry: Rule | None = None
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Grammar(self, node: Grammar, parents):
@@ -443,11 +450,11 @@ class CreateAnyChar:
     > class containing all of the terminals in [the set of terminal symbols].
     """
 
-    def __init__(self, strict=False, verbose=False):
+    def __init__(self, options: Options, strict=False):
         self.strict = strict
         self.chars: set[Char] = set()
         self.rule_id = Id("AnyChar__GEN")
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Char(self, node: Char, parents):
@@ -479,9 +486,9 @@ class IgnoreRules:
     `NamedItem.IGNORE` value should not return any values.
     """
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.items: defaultdict[str, list[NamedItem]] = defaultdict(list)
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_NamedItem(self, node: NamedItem, parents):
@@ -501,11 +508,12 @@ class IgnoreRules:
 class GenerateMetanames:
     """Generates metanames which will be used by semantic actions."""
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.index = 1
         self.metanames = {}
         self.id_names = Counter()
-        self.verbose = verbose
+        self.options = options
+        self.reserved_words = options.reserved_words
         self.done = False
 
     def visit_NamedItem(self, node: NamedItem, parents):
@@ -546,7 +554,7 @@ class GenerateMetanames:
             else:
                 # Create metaname from nonterminal name
                 metaname = node.inner_item.value.lower()
-                if iskeyword(metaname):
+                if metaname in self.reserved_words:
                     metaname = f"_{metaname}"
 
                 # Prepend metaname with index, if it is already appeared
@@ -577,7 +585,7 @@ class GenerateMetanames:
 class AssignMetaRules:
     """Finds metarules and assigns them to alts that references to them."""
 
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
 
         # Alts that hold references to the metarule
         self.refs: defaultdict[Id, list[Alt]] = defaultdict(list)
@@ -592,7 +600,7 @@ class AssignMetaRules:
         #   1: Collects references
         #   2: Searches metarules and assigns them to alts
         self.stage = 0
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Alt(self, node: Alt, parents):
@@ -640,10 +648,10 @@ class AssignMetaRules:
 
 
 class ValidateRangesAndReps:
-    def __init__(self, verbose=False):
+    def __init__(self, options: Options):
         self.ranges: list[Range] = []
         self.reps: list[Repetition] = []
-        self.verbose = verbose
+        self.options = options
         self.done = False
 
     def visit_Range(self, node: Range, parents):
@@ -903,8 +911,8 @@ class ComputeLR:
 
     # Improved left recusion: https://github.com/glebzlat/packrat-improved-lr
 
-    def __init__(self, verbose=False):
-        self.verbose = verbose
+    def __init__(self, options: Options):
+        self.options = options
         self.done = False
 
     def visit_Grammar(self, node: Grammar, parents):

@@ -12,6 +12,7 @@ from typing import Iterable, Any, Optional, Iterator, Type
 from polygen.preprocessor import process, GPreprocessorError
 
 from polygen.modifier import (
+    Options,
     TreeModifierWarning,
     SemanticError,
     ModifierVisitor,
@@ -66,7 +67,7 @@ class Backend:
         self.config = config
 
 
-def create_modifier(*, verbose: bool) -> ModifierVisitor:
+def create_modifier(*, reserved_words: set[str]) -> ModifierVisitor:
     modifier_classes = [
         CheckUndefinedRules,
         CheckRedefinedRules,
@@ -80,9 +81,10 @@ def create_modifier(*, verbose: bool) -> ModifierVisitor:
         ComputeLR
     ]
 
+    options = Options(reserved_words=reserved_words)
     modifiers = []
     for cls in modifier_classes:
-        modifiers.append(cls(verbose=verbose))
+        modifiers.append(cls(options))
 
     return ModifierVisitor(modifiers)
 
@@ -112,7 +114,9 @@ def generate_parser(*,
         return
 
     try:
-        modifier = create_modifier(verbose=verbose)
+        modifier = create_modifier(
+            reserved_words=backend.generator.RESERVED_WORDS
+        )
         modifier.apply(tree)
     except TreeModifierWarning as w:
         logger.warn(str(w))

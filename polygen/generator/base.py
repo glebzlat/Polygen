@@ -27,6 +27,7 @@ class CodeGeneratorBase(GrammarVisitor):
     LANGUAGE: str
     VERSION: str
     FILES: list[str]
+    RESERVED_WORDS: set[str]
     OPTIONS: Optional[dict[str, Option]]
 
     # Directory where the backend files are placed - set by polygen
