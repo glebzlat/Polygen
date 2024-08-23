@@ -11,34 +11,35 @@ from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 
 
 from polygen.node import (
-    ParseInfo,
-    Grammar,
-    Directive,
-    Include,
-    Entry,
-    ToplevelQuery,
-    BackendQuery,
-    Ignore,
-    Include,
-    Rule,
-    MetaRef,
-    MetaRule,
-    Expr,
-    Alt,
-    NamedItem,
-    Id,
-    String,
-    Char,
-    AnyChar,
-    Class,
-    Range,
-    ZeroOrOne,
-    ZeroOrMore,
-    OneOrMore,
-    Repetition,
-    And,
-    Not
+  ParseInfo,
+  Grammar,
+  Directive,
+  Include,
+  Entry,
+  ToplevelQuery,
+  BackendQuery,
+  BackendDef,
+  Ignore,
+  Rule,
+  MetaRef,
+  MetaRule,
+  Expr,
+  Alt,
+  NamedItem,
+  Id,
+  String,
+  Char,
+  AnyChar,
+  Class,
+  Range,
+  ZeroOrOne,
+  ZeroOrMore,
+  OneOrMore,
+  Repetition,
+  And,
+  Not
 )
+
 
 
 __all__ = ["Token", "Reader", "Parser"]
@@ -474,7 +475,7 @@ class Parser:
                     rules.append(e)
                 elif isinstance(e, MetaRule):
                     metarules.append(e)
-                elif isinstance(e, directives):
+                elif isinstance(e, Directive):
                     directives.append(e)
 
             grammar = Grammar(rules, metarules, directives)
@@ -504,7 +505,7 @@ class Parser:
                     rules.append(e)
                 elif isinstance(e, MetaRule):
                     metarules.append(e)
-                elif isinstance(e, directives):
+                elif isinstance(e, Directive):
                     directives.append(e)
 
             grammar = Grammar(rules, metarules, directives)
@@ -519,7 +520,7 @@ class Parser:
             # BACKEND '.' Identifier MetaDefBody
 
             # Metarule: backend_def_action
-            return BackendDef(id, expr, 0, "")
+            return BackendDef(id, expr[0], 0, "")
         self._reset(_begin_pos)
         return None
 

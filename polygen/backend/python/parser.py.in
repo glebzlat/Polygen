@@ -8,7 +8,7 @@ import io
 from functools import wraps
 from typing import Optional, Union, Any, Tuple, Dict, List, Callable
 
-%% imports %%
+%% header %%
 
 __all__ = ["Token", "Reader", "Parser"]
 

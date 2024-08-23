@@ -90,6 +90,11 @@ into the grammar file.
     - [x] Write cross-backend unit tests
 - [x] Grammar file preprocessor
     - [x] `include` directive
+    - [x] queries - rules, metarules and directives added to the grammar
+          only if the query condition satisfied
+    - [x] `@toplevel` query - satisfied only if the file is parsed first
+    - [x] `@backend` query - satisfied only if the backend with the specific
+          name chosen
 - [ ] Source code preprocessor definitions from grammar file (e.g. imports)
 - [ ] Enhanced skeleton file preprocessor
     - [ ] Allow consequtive directives
@@ -100,6 +105,10 @@ into the grammar file.
     - [ ] Backends documentation and API
     - [ ] Developer's documentation (the core)
     - [ ] Examples
+
+## Known bugs
+
+- Grammar processor queries can not be nested.
 
 ## License
 

@@ -10,9 +10,11 @@ from polygen.preprocessor import (
     process,
     ParserFailed,
     IncludeNotFound,
-    CircularIncludeError
+    CircularIncludeError,
+    UnknownEntry
 )
 from polygen.node import (
+    RuleNotFound,
     Grammar,
     Rule,
     MetaRef,
@@ -24,6 +26,7 @@ from polygen.node import (
     String,
     Char
 )
+from polygen.generator.base import CodeGeneratorBase
 
 
 TEST_NAME = "test_grammar_preprocessor"
@@ -41,6 +44,17 @@ class File:
     content: str
     dir: str = ""
     entry: bool = False
+
+
+class MockCodeGen(CodeGeneratorBase):
+    NAME = "mock"
+    LANGUAGE = "Mock"
+    VERSION = "0.0.0"
+    FILES = []
+    OPTIONS = {}
+
+    def generate(self, grammar, options):
+        pass
 
 
 class PreprocessorTestBase:
@@ -70,18 +84,25 @@ class PreprocessorTestBase:
             self.fail("specify one entry")
 
     def test_process(self):
+        gen = MockCodeGen()
+
         try:
-            tree = process(self.entry, [self.base_dir])
+            tree = process(
+                self.entry,
+                [self.base_dir],
+                backend_name=MockCodeGen.NAME,
+                generator=gen
+            )
         except Exception as e:
             if self.exception:
                 self.assertIsInstance(e, self.exception)
                 return
 
-            self.fail(f"exception raised by the process: {e}")
+            raise
 
         inspect = getattr(self, "inspect", None)
         if inspect:
-            inspect(tree)
+            inspect(tree, gen)
 
         if self.grammar:
             self.assertEqual(tree, self.grammar)
@@ -135,6 +156,13 @@ Rule <- 'a'
         ]), entry=True)
     ])
 
+    def inspect(self, grammar: Grammar, gen):
+        for r in grammar.rules.iter():
+            if r.id.value == "Grammar":
+                self.assertTrue(r.entry)
+                return
+        self.fail("Grammar rule not found")
+
 
 class TestNestedInclude(TestBase, unittest.TestCase):
     input_files = [
@@ -163,6 +191,13 @@ Rule <- 'a'
             Alt([NamedItem(None, Id('Rule'))])
         ]), entry=True)
     ])
+
+    def inspect(self, grammar: Grammar, gen):
+        for r in grammar.rules.iter():
+            if r.id.value == "Grammar":
+                self.assertTrue(r.entry)
+                return
+        self.fail("Grammar rule not found")
 
 
 class TestCircularInclude(TestBase, unittest.TestCase):
@@ -206,3 +241,273 @@ Grammar <- Rule
     ]
 
     exception = IncludeNotFound
+
+
+class TestEntryDirective(TestBase, unittest.TestCase):
+    input_files = [
+        File("grammar.peg", """
+             @entry Grammar
+
+             Grammar <- Rule
+             """, entry=True)
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        for r in grammar.rules.iter():
+            if r.id.value == "Grammar":
+                self.assertTrue(r.entry)
+                return
+        self.fail("Grammar rule not found")
+
+
+class TestEntryNotFound(TestBase, unittest.TestCase):
+    input_files = [
+        File("grammar.peg", """
+             @entry Foo
+
+             Grammar <- Rule
+             """, entry=True)
+    ]
+
+    exception = UnknownEntry
+
+
+class TestEntryInAnotherFile(TestBase, unittest.TestCase):
+    """
+    @include directive handled before @entry, so @entry affects the
+    merged grammar.
+    """
+
+    input_files = [
+        File(
+            "file1.peg",
+            """
+            @include "file2.peg"
+            @entry Grammar
+
+            Rule <- Foo
+            """,
+            entry=True
+        ),
+        File(
+            "file2.peg",
+            """
+            Grammar <- Rule
+            """
+        )
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        for r in grammar.rules.iter():
+            if r.id.value == "Grammar":
+                self.assertTrue(r.entry)
+                return
+        self.fail("Grammar rule not found")
+
+
+class TestIgnoreDirective(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "grammar.peg",
+            """
+            @ignore {
+              Foo
+              Bar
+            }
+
+            Foo <-
+            Bar <-
+            Baz <-
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        self.assertTrue(grammar.get_rule("Foo").ignore)
+        self.assertTrue(grammar.get_rule("Bar").ignore)
+        self.assertFalse(grammar.get_rule("Baz").ignore)
+
+
+class TestToplevelDirective(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "file1.peg",
+            """
+            Foo <-
+            Bar <-
+
+            @toplevel {
+            @entry Foo
+
+            Baz <-
+            }
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        self.assertTrue(grammar.get_rule("Foo").entry)
+        try:
+            grammar.get_rule("Baz")
+        except RuleNotFound:
+            self.fail("Rule Baz must be in the grammar")
+
+
+class TestToplevelNested(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "file1.peg",
+            """
+            Foo <-
+            Bar <-
+
+            @toplevel {
+            @entry Foo
+
+            Baz <-
+            }
+            """
+        ),
+        File(
+            "file2.peg",
+            """
+            @include "file1.peg"
+
+            @entry
+            Rule <-
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        self.assertRaises(RuleNotFound, grammar.get_rule, "Baz")
+        self.assertTrue(grammar.get_rule("Rule").entry)
+        self.assertFalse(grammar.get_rule("Foo").entry)
+
+
+class TestBackendDef(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "file.peg",
+            """
+            @backend.header {hello world}
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar, gen: MockCodeGen):
+        self.assertIn("header", gen._directives)
+        self.assertEqual(gen._directives["header"].getvalue(), "hello world\n")
+
+
+class TestBackendDefAppend(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "file.peg",
+            """
+            @backend.header {hello world}
+
+            @backend.header {hello world}
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar, gen: MockCodeGen):
+        self.assertIn("header", gen._directives)
+        self.assertEqual(
+            gen._directives["header"].getvalue(),
+            "hello world\nhello world\n"
+        )
+
+
+class TestBackendDefIncludeAppend(TestBase, unittest.TestCase):
+    """`file2` processed before `@backend` directive in `file1`."""
+
+    input_files = [
+        File(
+            "file1.peg",
+            """
+            @include "file2.peg"
+            @backend.header {a}
+            """,
+            entry=True
+        ),
+        File(
+            "file2.peg",
+            """
+            @backend.header {b}
+            """
+        ),
+    ]
+
+    def inspect(self, grammar, gen: MockCodeGen):
+        self.assertIn("header", gen._directives)
+        self.assertEqual(gen._directives["header"].getvalue(), "b\na\n")
+
+
+class TestBackendDefAppendInclude(TestBase, unittest.TestCase):
+    """
+    `file2` processed after `@backend` directive in `file1`.
+
+    First `file1`'s `@backend.header` contents inserted, then `file2`'s.
+    """
+
+    input_files = [
+        File(
+            "file1.peg",
+            """
+            @backend.header {a}
+            @include "file2.peg"
+            """,
+            entry=True
+        ),
+        File(
+            "file2.peg",
+            """
+            @backend.header {b}
+            """
+        ),
+    ]
+
+    def inspect(self, grammar, gen: MockCodeGen):
+        self.assertIn("header", gen._directives)
+        self.assertEqual(gen._directives["header"].getvalue(), "a\nb\n")
+
+
+class TestBackendQuery(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "grammar.peg",
+            """
+            Foo <-
+            Bar <-
+
+            @backend(mock) {
+              @entry Foo
+
+              Faz <-
+            }
+
+            @backend(python) {
+              @entry Bar
+
+              Baz <-
+            }
+            """,
+            entry=True
+        )
+    ]
+
+    def inspect(self, grammar: Grammar, gen):
+        self.assertTrue(grammar.get_rule("Foo").entry)
+        self.assertFalse(grammar.get_rule("Bar").entry)
+
+        try:
+            grammar.get_rule("Faz")
+        except RuleNotFound:
+            self.fail("Faz rule must be in the grammar")

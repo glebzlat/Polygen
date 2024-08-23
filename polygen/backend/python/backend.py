@@ -76,14 +76,16 @@ class CodeGenerator(CodeGeneratorBase):
         "polygen_imports": Option(bool, default=False)
     }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def generate(self,
                  grammar: Grammar,
                  options: dict[str, Any]) -> dict[str, str | StringIO]:
-        super().__init__()
 
-        with self.directive("imports"):
-            if options["polygen_imports"]:
-                self.put(POLYGEN_IMPORTS, newline=False)
+        # with self.directive("imports"):
+        #     if options["polygen_imports"]:
+        #         self.put(POLYGEN_IMPORTS, newline=False)
 
         with self.directive("grow_rules"):
             pass

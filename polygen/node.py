@@ -178,6 +178,14 @@ class ParseInfo:
         return f"{self.filename}: line {self.line}: {self.start}"
 
 
+class GrammarError(Exception):
+    pass
+
+
+class RuleNotFound(GrammarError):
+    pass
+
+
 class Grammar:
     def __init__(self,
                  rules: Iterable[Rule],
@@ -252,12 +260,20 @@ class Grammar:
                 self.metarules = self.metarules.begin
             else:
                 self.metarules = grammar.metarules
-        if grammar.includes:
-            if self.includes:
-                self.includes.emplace_before(grammar.includes)
-                self.includes = self.includes.begin
+        if grammar.directives:
+            if self.directives:
+                self.directives.emplace_before(grammar.directives)
+                self.directives = self.directives.begin
             else:
-                self.includes = grammar.includes
+                self.directives = grammar.directives
+
+    def get_rule(self, name: str) -> Rule:
+        if self.rules is None:
+            raise RuleNotFound(f"rule {name} not in grammar")
+        for r in self.rules.iter():
+            if r.id.value == name:
+                return r
+        raise RuleNotFound(f"rule {name} not in grammar")
 
 
 class Directive(DLL):

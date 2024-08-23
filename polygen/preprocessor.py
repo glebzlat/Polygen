@@ -1,5 +1,7 @@
 import logging
+
 from pathlib import Path
+from typing import Optional
 
 from polygen.parser import Reader, Parser
 from polygen.node import (
@@ -70,15 +72,17 @@ def _process(grammar_file: Path,
 
     return _process_grammar(
         tree,
+        None,
         lookup_dirs,
         backend_name,
+        generator,
         toplevel,
-        included_paths,
-        generator
+        included_paths
     )
 
 
 def _process_grammar(tree: Grammar,
+                     outer_tree: Optional[Grammar],
                      lookup_dirs: list[Path],
                      backend_name: str,
                      generator: CodeGeneratorBase,
@@ -108,7 +112,14 @@ def _process_grammar(tree: Grammar,
                 raise CircularIncludeError(msg)
 
             included_paths.add(include_path)
-            subtree = _process(include_path, lookup_dirs, False, included_paths)
+            subtree = _process(
+                include_path,
+                lookup_dirs,
+                backend_name,
+                generator,
+                False,
+                included_paths
+            )
             tree.merge(subtree)
 
         elif isinstance(directive, Entry):
@@ -119,11 +130,17 @@ def _process_grammar(tree: Grammar,
                     rule.entry = True
                     break
             else:
-                msg = (
-                    f"no rule with the name {directive.id} found in"
-                    f"{directive.filename}: on line {directive.line}"
-                )
-                raise UnknownEntry(msg)
+                rules = outer_tree.rules if outer_tree else None
+                for rule in DLL.iter(rules):
+                    if rule.id == id:
+                        rule.entry = True
+                        break
+                else:
+                    msg = (
+                        f"no rule with the name {directive.id} found in"
+                        f"{directive.filename}: on line {directive.line}"
+                    )
+                    raise UnknownEntry(msg)
 
         elif isinstance(directive, ToplevelQuery):
             if not toplevel:
@@ -131,6 +148,7 @@ def _process_grammar(tree: Grammar,
 
             subtree = _process_grammar(
                 directive.grammar,
+                tree,
                 lookup_dirs,
                 backend_name,
                 generator,
@@ -145,6 +163,7 @@ def _process_grammar(tree: Grammar,
 
             subtree = _process_grammar(
                 directive.grammar,
+                tree,
                 lookup_dirs,
                 backend_name,
                 generator,
@@ -154,7 +173,7 @@ def _process_grammar(tree: Grammar,
             tree.merge(subtree)
 
         elif isinstance(directive, BackendDef):
-            with generator.directive(directive.name):
+            with generator.directive(directive.id.value):
                 generator.put(reindent(directive.expr, 0))
 
         elif isinstance(directive, Ignore):
@@ -164,5 +183,3 @@ def _process_grammar(tree: Grammar,
                     rule.ignore = True
 
     return tree
-
-

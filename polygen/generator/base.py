@@ -34,6 +34,16 @@ class CodeGeneratorBase(GrammarVisitor):
 
     logger = logging.getLogger("polygen.codegen")
 
+    def _create_directives(self):
+        with self.directive("polygen_version"):
+            self.put(__version__)
+        with self.directive("generator"):
+            self.put(self.NAME)
+        with self.directive("gen_version"):
+            self.put(self.VERSION)
+        with self.directive("header"):
+            pass
+
     def __init__(self, line_ending="", newline="\n", verbose=False):
         self._indentation = ''
         self._indent_level = 0
@@ -44,12 +54,7 @@ class CodeGeneratorBase(GrammarVisitor):
         self.newline = newline
         self.verbose = verbose
 
-        with self.directive("polygen_version"):
-            self.put(__version__)
-        with self.directive("generator"):
-            self.put(self.NAME)
-        with self.directive("gen_version"):
-            self.put(self.VERSION)
+        self._create_directives()
 
     @contextmanager
     def directive(self, name: str, indent_level: int = 0):
@@ -148,3 +153,4 @@ class CodeGeneratorBase(GrammarVisitor):
 
     def cleanup(self):
         self._directives.clear()
+        self._create_directives()

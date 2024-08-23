@@ -1,4 +1,5 @@
-@entry
+@entry Grammar
+
 Grammar     <- Spacing Entity+ EndOfFile                          $grammar_action
 Entity      <- Definition / MetaDef / Directive
 Definition  <- directive:RuleDir* Identifier LEFTARROW Expression $def_action
@@ -54,40 +55,43 @@ Repetition  <- '{'
 Number      <- chars:[0-9]+                                       $number_action
 HexDigit    <- char:[a-fA-F0-9]
 
-@ignore
+@ignore {
+  INCLUDE
+  ENTRY
+  TOPLEVEL
+  BACKEND
+  IGNORE
+  LEFTARROW
+  SLASH
+  OPEN
+  CLOSE
+  COPEN
+  CCLOSE
+  AT
+  SEMI
+  Spacing
+}
+
 INCLUDE     <- "include" Spacing
-@ignore
 ENTRY       <- "entry" Spacing
-@ignore
 TOPLEVEL    <- "toplevel" Spacing
-@ignore
 BACKEND     <- "backend"
-@ignore
 IGNORE      <- "ignore" Spacing
-@ignore
 LEFTARROW   <- '<-' Spacing
-@ignore
 SLASH       <- '/' Spacing
 AND         <- '&' Spacing  $and_action
 NOT         <- '!' Spacing  $not_action
 QUESTION    <- '?' Spacing  $optional_action
 STAR        <- '*' Spacing  $zero_or_more_action
 PLUS        <- '+' Spacing  $one_or_more_action
-@ignore
 OPEN        <- '(' Spacing
-@ignore
 CLOSE       <- ')' Spacing
-@ignore
 COPEN       <- '{' Spacing
-@ignore
 CCLOSE      <- '}' Spacing
 DOT         <- '.' Spacing  $dot_action
-@ignore
 AT          <- '@' Spacing
-@ignore
 SEMI        <- ':' Spacing
 
-@ignore
 Spacing     <- (Space / Comment)*
 Comment     <- '#' (!EndOfLine .)* EndOfLine
 Space       <- ' ' / '\t' / EndOfLine
@@ -132,7 +136,7 @@ $toplevel_action {
           rules.append(e)
       elif isinstance(e, MetaRule):
           metarules.append(e)
-      elif isinstance(e, directives):
+      elif isinstance(e, Directive):
           directives.append(e)
 
   grammar = Grammar(rules, metarules, directives)
@@ -146,7 +150,7 @@ $backend_action {
           rules.append(e)
       elif isinstance(e, MetaRule):
           metarules.append(e)
-      elif isinstance(e, directives):
+      elif isinstance(e, Directive):
           directives.append(e)
 
   grammar = Grammar(rules, metarules, directives)
@@ -154,7 +158,7 @@ $backend_action {
 }
 
 $backend_def_action {
-  return BackendDef(id, expr, 0, "")
+  return BackendDef(id, expr[0], 0, "")
 }
 
 $ignore_action {
@@ -305,4 +309,36 @@ $rep_action {
 
 $dot_action {
   return AnyChar()
+}
+
+@backend.header {
+from polygen.node import (
+  ParseInfo,
+  Grammar,
+  Directive,
+  Include,
+  Entry,
+  ToplevelQuery,
+  BackendQuery,
+  BackendDef,
+  Ignore,
+  Rule,
+  MetaRef,
+  MetaRule,
+  Expr,
+  Alt,
+  NamedItem,
+  Id,
+  String,
+  Char,
+  AnyChar,
+  Class,
+  Range,
+  ZeroOrOne,
+  ZeroOrMore,
+  OneOrMore,
+  Repetition,
+  And,
+  Not
+)
 }
