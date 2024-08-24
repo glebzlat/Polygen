@@ -37,9 +37,9 @@ class ParserTestMetaclass(type):
 
         def test_successes(self):
             for input, clue in self.successes:
-                reader = Reader(input)
+                reader = Reader(None)
                 parser = Parser(reader)
-                result = parser.parse()
+                result = parser.parse(input)
 
                 try:
                     self.assertIsNotNone(result)
@@ -52,10 +52,10 @@ class ParserTestMetaclass(type):
         def test_failures(self):
             self: unittest.TestCase
             for input in self.failures:
-                reader = Reader(input)
+                reader = Reader(None)
                 parser = Parser(reader)
                 try:
-                    parser.parse()
+                    parser.parse(input)
                 except SyntaxError:
                     return
                 self.fail("SyntaxError not raised")
@@ -167,16 +167,16 @@ class TestEntryRule(ParserTest):
 
 class TestRuleDirectives(unittest.TestCase):
     def test_entry(self):
-        parser = Parser(Reader("@entry A <- B"))
-        result = parser.parse()
+        parser = Parser(Reader(None))
+        result = parser.parse("@entry A <- B")
 
         self.assertIsNotNone(result)
         self.assertTrue(result.rules.begin.entry)
         self.assertFalse(result.rules.begin.ignore)
 
     def test_ignore(self):
-        parser = Parser(Reader("@ignore A <- B"))
-        result = parser.parse()
+        parser = Parser(Reader(None))
+        result = parser.parse("@ignore A <- B")
 
         self.assertIsNotNone(result)
         self.assertTrue(result.rules.begin.ignore)
@@ -184,8 +184,8 @@ class TestRuleDirectives(unittest.TestCase):
 
 class TestMetaRule(ParserTest):
     def test_1(self):
-        parser = Parser(Reader("$name {expr}"))
-        result = parser.parse()
+        parser = Parser(Reader(None))
+        result = parser.parse("$name {expr}")
 
         self.assertIsNotNone(result)
 

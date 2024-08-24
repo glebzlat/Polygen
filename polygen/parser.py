@@ -75,25 +75,28 @@ class Reader:
     Reader supports strings and UTF-8 encoded streams only.
     """
 
-    def __init__(self, stream: str | io.TextIOBase, bufsize=4096):
-        self.buffer = ""
-        self.buflen = 0
-        self.stream = None
-        self.name = None
+    def __init__(self, stream: Optional[str | io.TextIOBase], bufsize=4096):
         self.bufsize = bufsize
-        self.eof = False
+
+        if stream is not None:
+            self.reset(stream)
+
+    def reset(self, stream: str | io.TextIOBase):
+        self.buffer = ""
+        self.stream = None
+        self.buflen = 0
         self.pointer = 0
         self.line = 1
         self.column = 0
+        self.eof = False
 
         if isinstance(stream, str):
             self.name = "<string>"
             self.buffer = stream
             self.buflen = len(self.buffer)
         elif isinstance(stream, io.IOBase):
-            self.name = getattr(stream, 'name', '<stream>')
+            self.name = getattr(stream, "name", "<stream>")
             self.stream = stream
-            self.eof = False
 
             if not stream.readable():
                 raise ValueError(f"stream must be readable: {self.name}")
@@ -339,10 +342,15 @@ class Parser:
             (tok.filename, tok.line, tok.start, tok, tok.line, len(tok))
         )
 
-    def parse(self) -> Any:
+    def parse(self, stream: str | io.TextIOBase) -> Any:
+        self._reader.reset(stream)
+        self._tokens.clear()
+        self._pos = 0
+
         result = self._Grammar()
         if result is None:
             raise self.make_syntax_error()
+
         return result
 
     @_memoize

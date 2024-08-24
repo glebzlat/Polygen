@@ -59,9 +59,9 @@ def _process(grammar_file: Path,
              included_paths: set[Path]) -> Grammar:
     logger.info("file %s", grammar_file)
     with open(grammar_file, 'r', encoding="UTF-8") as fin:
-        reader = Reader(fin)
+        reader = Reader(None)
         parser = Parser(reader)
-        tree: Grammar = parser.parse()
+        tree: Grammar = parser.parse(fin)
 
     return _process_grammar(
         tree,
