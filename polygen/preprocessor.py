@@ -25,10 +25,6 @@ class GPreprocessorError(Exception):
     pass
 
 
-class ParserFailed(GPreprocessorError):
-    pass
-
-
 class IncludeNotFound(GPreprocessorError):
     pass
 
@@ -66,9 +62,6 @@ def _process(grammar_file: Path,
         reader = Reader(fin)
         parser = Parser(reader)
         tree: Grammar = parser.parse()
-
-    if not tree:
-        raise ParserFailed(f"in file {grammar_file}: parser failed")
 
     return _process_grammar(
         tree,

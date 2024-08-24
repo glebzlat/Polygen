@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import io
+import traceback
 
 from functools import wraps
 from typing import Optional, Union, Any, Tuple, Dict, List, Callable
@@ -135,6 +136,14 @@ class Reader:
     @property
     def filename(self) -> str:
         return self.name
+
+    def diagnose(self) -> Token:
+        if self.pointer == self.buflen:
+            if not self.update():
+                char = self.buffer[self.pointer - 1]
+        else:
+            char = self.buffer[self.pointer]
+        return Token(char, self.line, self.column, self.column + 1, self.name)
 
 
 class _MemoEntry:
@@ -321,8 +330,18 @@ class Parser:
     def _reset(self, pos: int):
         self._pos = pos
 
+    def make_syntax_error(self) -> SyntaxError:
+        tok = self.reader.diagnose()
+        return SyntaxError(
+            tok.filename,
+            (tok.filename, tok.line, tok.start, tok, tok.line, len(tok))
+        )
+
     def parse(self) -> Any:
-        return self._Grammar()
+        result = self._Grammar()
+        if result is None:
+            raise self.make_syntax_error()
+        return result
 
     @_memoize
     def _Grammar(self):
@@ -1476,9 +1495,11 @@ if __name__ == '__main__':
 
     reader = Reader(ns.input_file)
     parser = Parser(reader)
-    result = parser.parse()
-
-    if result is not None:
+    try:
+        result = parser.parse()
         print(repr(result))
+    except SyntaxError as e:
+        traceback.print_exception(SyntaxError, e, None)
+        exit(1)
 
-    exit(result is None)  # Unix-style: 0 is success
+    exit(0)

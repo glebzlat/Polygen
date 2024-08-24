@@ -4,6 +4,7 @@ import tracemalloc
 import linecache
 import time
 import os
+import traceback
 
 from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
@@ -111,6 +112,10 @@ def generate_parser(*,
         )
     except GPreprocessorError as e:
         logger.error("grammar preprocessor error: %s", e)
+        return
+    except SyntaxError as e:
+        msg = '\n' + ''.join(traceback.format_exception(SyntaxError, e, None))
+        logger.error(msg)
         return
 
     try:
