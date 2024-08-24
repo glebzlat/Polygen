@@ -8,7 +8,6 @@ from typing import Optional
 
 from polygen.preprocessor import (
     process,
-    ParserFailed,
     IncludeNotFound,
     CircularIncludeError,
     UnknownEntry
@@ -227,7 +226,7 @@ Grammar <- <- Rule
 """, entry=True)
     ]
 
-    exception = ParserFailed
+    exception = SyntaxError
 
 
 class TestIncludeNotFound(TestBase, unittest.TestCase):

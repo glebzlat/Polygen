@@ -106,9 +106,11 @@ class Reader:
         return self.name
 
     def diagnose(self) -> Token:
+        if not self.buflen and not self.update():
+            return Token('', 0, 0, 0, self.name)
         if self.pointer == self.buflen:
             if not self.update():
-                char = self.buffer[self.pointer - 1]
+                char = self.buffer[-1]
         else:
             char = self.buffer[self.pointer]
         return Token(char, self.line, self.column, self.column + 1, self.name)

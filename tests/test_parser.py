@@ -50,11 +50,15 @@ class ParserTestMetaclass(type):
                     raise AssertionError(msg)
 
         def test_failures(self):
+            self: unittest.TestCase
             for input in self.failures:
                 reader = Reader(input)
                 parser = Parser(reader)
-                result = parser.parse()
-                self.assertIsNone(result)
+                try:
+                    parser.parse()
+                except SyntaxError:
+                    return
+                self.fail("SyntaxError not raised")
 
         if getattr(cls, 'successes', None):
             setattr(cls, 'test_successes', test_successes)
