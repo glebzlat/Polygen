@@ -99,7 +99,7 @@ into the grammar file.
 - [ ] Enhanced skeleton file preprocessor
     - [ ] Allow consequtive directives
     - [ ] Directive default value
-- [ ] Parser error handling mechanism
+- [x] Parser error reporting
 - [ ] Documentation
     - [ ] Language reference
     - [ ] Backends documentation and API
