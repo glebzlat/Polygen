@@ -313,6 +313,7 @@ class Parser:
     def parse(self, stream: str | io.TextIOBase) -> Any:
         self._reader.reset(stream)
         self._tokens.clear()
+        self._memos.clear()
         self._pos = 0
 
         result = self._%% entry %%()

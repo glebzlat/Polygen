@@ -345,6 +345,7 @@ class Parser:
     def parse(self, stream: str | io.TextIOBase) -> Any:
         self._reader.reset(stream)
         self._tokens.clear()
+        self._memos.clear()
         self._pos = 0
 
         result = self._Grammar()
@@ -1503,10 +1504,10 @@ if __name__ == '__main__':
 
     ns = argparser.parse_args()
 
-    reader = Reader(ns.input_file)
+    reader = Reader(None)
     parser = Parser(reader)
     try:
-        result = parser.parse()
+        result = parser.parse(ns.input_file)
         print(repr(result))
     except SyntaxError as e:
         traceback.print_exception(SyntaxError, e, None)
