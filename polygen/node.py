@@ -114,6 +114,7 @@ class DLL:
         n = self
         while n.left is not None:
             n = n.left
+            assert n is not self
         return n
 
     @property
@@ -262,7 +263,7 @@ class Grammar:
                 self.metarules = grammar.metarules
         if grammar.directives:
             if self.directives:
-                self.directives.emplace_before(grammar.directives)
+                self.directives.emplace_after(grammar.directives.end)
                 self.directives = self.directives.begin
             else:
                 self.directives = grammar.directives
@@ -292,6 +293,14 @@ class Include(Directive):
 
     def __repr__(self):
         return f"Include({self.path!r}, {self.line}, {self.filename!r})"
+
+    def __eq__(self, other):
+        if isinstance(other, Include):
+            return self.path == other.path
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.path)
 
 
 class Entry(Directive):
