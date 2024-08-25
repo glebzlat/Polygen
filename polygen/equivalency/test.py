@@ -1,11 +1,15 @@
 import os
 import unittest
+import logging
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Optional, Iterator
 
 from polygen.main import (
+    Backend,
     generate_parser,
+    find_backend_file,
     iterate_backend_files,
     BACKEND_DIRECTORY,
     init_backend
@@ -13,9 +17,12 @@ from polygen.main import (
 from polygen.parser import Token
 
 
-# How this test works.
-# Test cases are represented by directories in tests/equivalency_test. Each
-# test case has the following structure:
+logger = logging.getLogger("polygen.equivalency")
+
+
+# How does this test work.
+# Test cases are represented by directories in equivalency/data. Each
+# test case is of the following structure:
 # .
 # ├── 1.success
 # ├── 1.success.clue
@@ -26,11 +33,12 @@ from polygen.parser import Token
 # └── skip.py
 #
 # This test iterates over test cases and creates a TestCase class for each.
-# TestCase class manages parser generation and runner setup and teardown.
+# TestCase class manages parser generation, runner setup, runner execution, and
+# runner teardown.
 
 
 # Constants
-EQUIVALENCY_TEST_DIR_NAME = "equivalency_test"
+EQUIVALENCY_TEST_DIR_NAME = "data"
 GRAMMAR_FILE_NAME = "grammar.peg"
 SKIP_FILE_NAME = "skip.py"
 SUCCESS_FILE_STEM = ".success"
@@ -40,11 +48,7 @@ CLUE_FILE_STEM = ".clue"
 SUCCESS_TEST_PREFIX = "test_success__"
 FAILURE_TEST_PREFIX = "test_failure__"
 
-
-# Current Working Directory used to get access to test cases
-# This method would work only if the unittest was run in the project
-# root directory.
-CWD = Path.cwd() / "tests"
+CWD = Path(__file__).absolute().parent
 TEST_CASE_ROOT = CWD / EQUIVALENCY_TEST_DIR_NAME
 
 # It seems that unittest picks up tests in the reversed order,
@@ -69,7 +73,7 @@ else:
 
 
 # Match unittest naming style
-def setUpUnittestSuite():
+def setUpUnittestSuite(backend_name: Optional[str]):
     # For each backend:
     #     For each test case directory:
     #         create TestCase class
@@ -78,7 +82,7 @@ def setUpUnittestSuite():
     #         add class to suite
     suite = unittest.TestSuite()
 
-    for _backend in backends():
+    for _backend in backends(backend_name):
         gen = _backend.generator
         backend_full_name = normalize_str(
             f"{gen.NAME}_{gen.LANGUAGE}_{gen.VERSION}")
@@ -130,10 +134,12 @@ def setUpUnittestSuite():
 def addSuccessCase(case_cls, input_file, test_case_full_name):
     test_full_name = (
         f"{SUCCESS_TEST_PREFIX}"
-        f"{test_case_full_name}_{normalize_str(input_file.name)}"
+        f"{test_case_full_name}__{normalize_str(input_file.name)}"
     )
 
     def wrapper(self: unittest.TestCase):
+        logger.info("testing success: %s", test_full_name)
+
         if self.skip and input_file.name in self.skip:
             reason = self.skip[input_file.name]
             self.skipTest(reason)
@@ -161,6 +167,8 @@ def addFailureCase(case_cls, input_file, test_case_full_name):
     )
 
     def wrapper(self: unittest.TestCase):
+        logger.info("testing failure: %s", test_full_name)
+
         if self.skip and input_file.name in self.skip:
             reason = self.skip[input_file.name]
             self.skipTest(reason)
@@ -172,9 +180,13 @@ def addFailureCase(case_cls, input_file, test_case_full_name):
     wrapper.__name__ = test_full_name
 
 
-def backends():
-    for file in iterate_backend_files([BACKEND_DIRECTORY]):
+def backends(backend_name: Optional[str] = None) -> Iterator[Backend]:
+    if backend_name is not None:
+        file = find_backend_file(backend_name, [BACKEND_DIRECTORY])
         yield init_backend(file, [])
+    else:
+        for file in iterate_backend_files([BACKEND_DIRECTORY]):
+            yield init_backend(file, [])
 
 
 def evaluate(data):

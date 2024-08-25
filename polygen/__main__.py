@@ -1,8 +1,11 @@
+import logging
+
 from pathlib import Path
 
 import click
 
 from polygen.main import (
+    logger,
     BACKEND_DIRECTORY,
     PolygenError,
     find_backend_file,
@@ -10,6 +13,9 @@ from polygen.main import (
     generate_parser
 )
 from polygen.generator.base import CodeGeneratorError
+
+from unittest import TextTestRunner
+from polygen.equivalency.test import setUpUnittestSuite
 
 
 @click.group()
@@ -35,6 +41,19 @@ def generate(backend, grammar, output, define, verbose):
                     output_directory=Path(output).resolve(),
                     user_options=define,
                     verbose=verbose)
+
+
+@main.command()
+@click.option("-b", "--backend", metavar="NAME")
+@click.option("-v", "--verbose", is_flag=True)
+def test(backend, verbose):
+    # I really need to came up with better idea how to configure the logger
+    # here, but I don't want to do it now.
+    # TODO: resolve logging crutch
+    if verbose:
+        logger.setLevel(logging.INFO)
+    runner = TextTestRunner()
+    runner.run(setUpUnittestSuite(backend))
 
 
 if __name__ == "__main__":
