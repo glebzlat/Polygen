@@ -1,0 +1,75 @@
+$calculator {
+  self.state.print_result(expression)
+  return []
+}
+
+$addition {
+  return addition + product
+}
+
+$substraction {
+  return addition - product
+}
+
+$product {
+  if sign and sign[0] == '-':
+      return -product
+  return product
+}
+
+$power {
+  return product ** term
+}
+
+$multiply {
+  return product * term
+}
+
+$divide {
+  return product / term
+}
+
+$integer {
+  return int(''.join(i))
+}
+
+$decimal_1 {
+  parts = (*i, dot, *f)
+  return float(''.join(parts))
+}
+
+$decimal_2 {
+  parts = (*i, dot, '0')
+  return float(''.join(parts))
+}
+
+$decimal_3 {
+  parts = ('0', dot, *f)
+  return float(''.join(parts))
+}
+
+$function {
+  return self.state.function(name, *fnbody)
+}
+
+$function_body {
+  return expr, *next
+}
+
+$variable {
+  return self.state.variable(name)
+}
+
+$identifier {
+  return ''.join((start, *cont))
+}
+
+$help {
+  self.state.help()
+  return []
+}
+
+$quit {
+  self.state.quit = True
+  return []
+}

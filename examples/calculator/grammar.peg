@@ -1,0 +1,53 @@
+@include "grammar.impl.peg"
+
+@entry
+Calculator <- '.' Command
+            / Expression EOF                   $calculator
+
+Expression <- Addition / Command
+Addition   <- Addition PLUS Product            $addition
+            / Addition MINUS Product           $substraction
+            / sign:(PLUS / MINUS)? Product     $product
+Product    <- Product POW Term                 $power
+            / Product MUL Term                 $multiply
+            / Product DIV Term                 $divide
+            / Term
+Term       <- Number / Function / Variable / OPEN Expression CLOSE
+
+Number     <- Decimal / Integer
+Integer    <- i:[0-9]+ Spacing                   $integer
+Decimal    <- i:[0-9]+ dot:'.' f:[0-9]+ Spacing  $decimal_1
+            / i:[0-9]+ dot:'.' Spacing           $decimal_2
+            / dot:'.' f:[0-9]+ Spacing           $decimal_3
+
+Function   <- name:Identifier OPEN FnBody? CLOSE $function
+FnBody     <- expr:Expression next:(_:COMMA Expression)*  $function_body
+Variable   <- name:Identifier                    $variable
+
+Identifier <- start:[a-zA-Z] cont:[a-zA-Z_]*     $identifier
+
+Command    <- QUIT  $quit
+            / HELP  $help
+
+@ignore {
+  Spacing
+  OPEN
+  CLOSE
+  COMMA
+}
+
+PLUS       <- '+' Spacing
+MINUS      <- '-' Spacing
+POW        <- '**' Spacing
+MUL        <- '*' Spacing
+DIV        <- '/' Spacing
+OPEN       <- '(' Spacing
+CLOSE      <- ')' Spacing
+COMMA      <- ',' Spacing
+QUIT       <- "quit" Spacing
+HELP       <- "help" Spacing
+
+Spacing    <- Space*
+Space      <- ' ' / '\n' / '\r' / '\t'
+
+EOF <- !.
