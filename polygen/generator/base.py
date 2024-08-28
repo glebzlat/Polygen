@@ -96,6 +96,8 @@ class CodeGeneratorBase(GrammarVisitor):
             indent: Indent a line
             line_ending: Put a line ending at the end of a line
         """
+        if self._directive is None:
+            raise ValueError("provide a directive to put content into")
         file = self._directives[self._directive]
         if indent:
             print(end=self._indentation, file=file)

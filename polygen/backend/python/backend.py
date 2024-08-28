@@ -83,9 +83,16 @@ class CodeGenerator(CodeGeneratorBase):
                  grammar: Grammar,
                  options: dict[str, Any]) -> dict[str, str | StringIO]:
 
-        # with self.directive("imports"):
-        #     if options["polygen_imports"]:
-        #         self.put(POLYGEN_IMPORTS, newline=False)
+        if "state_type" in self._directives:
+            stream = self._directives["state_type"]
+            state_type_str = stream.getvalue()
+            stream.seek(0)
+            stream.truncate(0)
+            stream.write(state_type_str.strip())
+
+        else:
+            with self.directive("state_type"):
+                self.put("object", newline=False)
 
         with self.directive("grow_rules"):
             pass

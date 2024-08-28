@@ -202,12 +202,14 @@ def _memoize_lr(fn):
 
 class Parser:
 
-    def __init__(self, reader: Reader, actions=None):
+    def __init__(self, reader: Reader, state: %% state_type %% | None = None): 
         self._memos = {}
 
         self._reader = reader
         self._tokens: List[Token] = []
         self._pos = 0
+
+        self.state = state
 
         self._grow_rules: Dict[str, Tuple[List[Callable], List[Callable]]] = {
             %% grow_rules %%
