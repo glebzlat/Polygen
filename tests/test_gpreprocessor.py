@@ -507,3 +507,46 @@ class TestBackendQuery(TestBase, unittest.TestCase):
             grammar.get_rule("Faz")
         except RuleNotFound:
             self.fail("Faz rule must be in the grammar")
+
+
+class TestNestedQueries(TestBase, unittest.TestCase):
+    input_files = [
+        File(
+            "grammar.peg",
+            """
+            # 1st step: included first
+            Foo <-
+
+            @backend(mock) {
+              # 1st step: included second
+              Bar <-
+
+              # 1st step: merged to the grammar
+              @backend(mock) {
+                # 2nd step: included forth
+                Baz <-
+
+                # 2nd step: merged to the grammar
+                @toplevel {
+                  # 3rd step: included last
+                  Far <-
+                }
+              }
+            }
+
+            @toplevel {
+              # 1st step: included third
+              Faz <-
+            }
+            """,
+            entry=True
+        )
+    ]
+
+    grammar = Grammar([
+        Rule(Id("Foo"), Expr([Alt([])])),
+        Rule(Id("Bar"), Expr([Alt([])])),
+        Rule(Id("Faz"), Expr([Alt([])])),
+        Rule(Id("Baz"), Expr([Alt([])])),
+        Rule(Id("Far"), Expr([Alt([])])),
+    ], [])

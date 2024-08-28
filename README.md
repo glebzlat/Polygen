@@ -108,7 +108,6 @@ into the grammar file.
 
 ## Known bugs
 
-- Grammar processor queries can not be nested.
 - Modifier errors report token positions erroneously:
 ```
 polygen: Undefined rule grammar_action:
