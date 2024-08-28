@@ -251,20 +251,17 @@ class Grammar:
     def merge(self, grammar: Grammar):
         if grammar.rules:
             if self.rules:
-                self.rules.emplace_before(grammar.rules)
-                self.rules = self.rules.begin
+                self.rules.end.emplace_after(grammar.rules)
             else:
                 self.rules = grammar.rules
         if grammar.metarules:
             if self.metarules:
-                self.metarules.emplace_before(grammar.metarules)
-                self.metarules = self.metarules.begin
+                self.metarules.end.emplace_after(grammar.metarules)
             else:
                 self.metarules = grammar.metarules
         if grammar.directives:
             if self.directives:
-                self.directives.emplace_after(grammar.directives.end)
-                self.directives = self.directives.begin
+                self.directives.end.emplace_after(grammar.directives)
             else:
                 self.directives = grammar.directives
 

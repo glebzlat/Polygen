@@ -16,13 +16,10 @@ from polygen.node import (
     RuleNotFound,
     Grammar,
     Rule,
-    MetaRef,
-    MetaRule,
     Expr,
     Alt,
     NamedItem,
     Id,
-    String,
     Char
 )
 from polygen.generator.base import CodeGeneratorBase
@@ -124,12 +121,12 @@ Rule <- 'a'
     ]
 
     grammar = Grammar([
+        Rule(Id('Grammar'), Expr([
+            Alt([NamedItem(None, Id('Rule'))])
+        ]), entry=True),
         Rule(Id('Rule'), Expr([
             Alt([NamedItem(None, Char('a'))])
         ])),
-        Rule(Id('Grammar'), Expr([
-            Alt([NamedItem(None, Id('Rule'))])
-        ]), entry=True)
     ])
 
 
@@ -147,12 +144,12 @@ Rule <- 'a'
     ]
 
     grammar = Grammar([
+        Rule(Id('Grammar'), Expr([
+            Alt([NamedItem(None, Id('Rule'))])
+        ]), entry=True),
         Rule(Id('Rule'), Expr([
             Alt([NamedItem(None, Char('a'))])
         ])),
-        Rule(Id('Grammar'), Expr([
-            Alt([NamedItem(None, Id('Rule'))])
-        ]), entry=True)
     ])
 
     def inspect(self, grammar: Grammar, gen):
@@ -183,12 +180,12 @@ Rule <- 'a'
     ]
 
     grammar = Grammar([
+        Rule(Id('Grammar'), Expr([
+            Alt([NamedItem(None, Id('Rule'))])
+        ]), entry=True),
         Rule(Id('Rule'), Expr([
             Alt([NamedItem(None, Char('a'))])
         ])),
-        Rule(Id('Grammar'), Expr([
-            Alt([NamedItem(None, Id('Rule'))])
-        ]), entry=True)
     ])
 
     def inspect(self, grammar: Grammar, gen):
