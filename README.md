@@ -116,6 +116,12 @@ polygen: Undefined rule grammar_action:
     Grammar <- Spacing Entity+ EndOfFile grammar_action
                                                                   ^~~~~~~~~~~~~~
 ```
+- `@ignore` directive does not affect nonterminals in subexpressions:
+```
+FnBody     <- expr:Expression next:(COMMA Expression)*
+
+@ignore { COMMA }
+```
 
 ## License
 
