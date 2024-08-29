@@ -44,7 +44,7 @@ language.
 ## Installation
 
 At this point Polygen is not published at [pypi.org](pypi.org), the only way
-to install it from this repository.
+to install it is from this repository.
 
 Run:
 
@@ -64,11 +64,10 @@ To generate a parser from the grammar:
 python -m polygen generate <grammar-file> -b <backend-name> -o <output-directory>
 ```
 
-If generation process went successfully, then a file `parser.py` is created
-in the output directory. You can run it passing an input file, in which case
-the parser will parse the data in this file and output either the result or
-an error, or do not pass an input file. In latter case parser reads data from
-standard input.
+If generation process went successfully, then a file `parser.py` is created in
+the output directory. You can run it passing an input file, in which case the
+parser will parse the data in this file and output either the result or an
+error. If input file is not specified, parser reads data from standard input.
 
 ```sh
 python parser.py [input-file]
@@ -97,7 +96,7 @@ Identifier <- Expression
 ```
 
 `Identifier` consists of alphanumeric ASCII characters and an underscore
-and cannot begin with a digit. All subsequent occurencies of `Identifier` will
+and cannot start with a digit. All subsequent occurencies of `Identifier` will
 refer to this definition, unless otherwise stated.
 
 `Expression` consists of zero or more alternatives, separated by a forward
