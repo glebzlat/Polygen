@@ -537,6 +537,11 @@ class Alt(DLL):
         return hash((self.metarule, self.items))
 
 
+class Cut:
+    def __init__(self, auto=False):
+        self.auto = auto
+
+
 class NamedItem(DLL):
 
     IGNORE = "_"
@@ -544,10 +549,12 @@ class NamedItem(DLL):
     def __init__(self,
                  name: Optional[Id],
                  item: Item,
+                 cut: Optional[Cut] = None,
                  parse_info: Optional[ParseInfo] = None):
 
         self.name = name
         self.item = item
+        self.cut = cut
 
         assert type(self.item) is not NamedItem
 

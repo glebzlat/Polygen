@@ -524,18 +524,25 @@ implemented so far. See `polygen/equivalency` for details.
 ## Known bugs
 
 - Modifier errors report token positions erroneously:
-```
-polygen: Undefined rule grammar_action:
-    @entry
-    Grammar <- Spacing Entity+ EndOfFile grammar_action
-                                                                  ^~~~~~~~~~~~~~
-```
+  ```
+  polygen: Undefined rule grammar_action:
+      @entry
+      Grammar <- Spacing Entity+ EndOfFile grammar_action
+                                                                    ^~~~~~~~~~~~~~
+  ```
 - `@ignore` directive does not affect nonterminals in subexpressions:
-```
-FnBody     <- expr:Expression next:(COMMA Expression)*
+  ```
+  FnBody     <- expr:Expression next:(COMMA Expression)*
 
-@ignore { COMMA }
-```
+  @ignore { COMMA }
+  ```
+- Make cut error message more informative. Currently if cut fails, it can
+  produce a message like this:
+  ```
+  SyntaxError: expected Literal__GEN_1* at 19
+  ```
+  In order to make this message more convenient for the end user, polygen
+  should traverse the tree and retrieve the first terminal of `Literal__GEN_1`.
 
 ## License
 

@@ -22,7 +22,7 @@ DirName     <- Identifier
 
 Expression  <- Sequence seqs:(_:SLASH Sequence)*                  $expr_action
 Sequence    <- parts:Prefix* m:MetaRule?                          $sequence_action
-Prefix      <- MetaName? lookahead:(AND / NOT)? Suffix            $prefix_action
+Prefix      <- Cut? MetaName? lookahead:(AND / NOT)? Suffix       $prefix_action
 Suffix      <- Primary q:(QUESTION / STAR / PLUS / Repetition)?   $suffix_action
 Primary     <- Identifier !LEFTARROW
              / OPEN Expression CLOSE
@@ -35,19 +35,21 @@ MetaDef     <- '$' Spacing Identifier expr:MetaDefBody            $metadef_actio
 MetaDefBody <- '{' expr:(!'}' (EscCurClose / .))* '}' Spacing     $metadef_body_action
 EscCurClose <- str:'\\}'                                          $esc_cur_close_action
 
+Cut         <- HAT                                                $cut_action
+
 Identifier  <- start:IdentStart cont:IdentCont* Spacing           $ident_action
 IdentStart  <- [a-zA-Z_]
 IdentCont   <- IdentStart / [0-9]
 
-Literal     <- ['] chars:(!['] Char)* ['] Spacing                 $literal_action
-             / ["] chars:(!["] Char)* ["] Spacing                 $literal_action
-Class       <- '[' ranges:(!']' Range)* ']' Spacing               $class_action
+Literal     <- ['] ^ chars:(!['] Char)* ['] Spacing                 $literal_action
+             / ["] ^ chars:(!["] Char)* ["] Spacing                 $literal_action
+Class       <- '[' ^ ranges:(!']' Range)* ']' Spacing               $class_action
 Range       <- beg:Char '-' !']' end:Char                         $range_2_action
              / beg:Char                                           $range_1_action
 Char        <- '\\' char:[nrt'"\[\]\\]                            $esc_char_action
              / '\\' char1:[0-2] char2:[0-7] char3:[0-7]           $oct_char_action_1
              / '\\' char1:[0-7] char2:[0-7]?                      $oct_char_action_2
-             / '\\u' chars:HexDigit{4}                            $unicode_char_action
+             / '\\u' ^ chars:HexDigit{4}                            $unicode_char_action
              / !'\\' any:.                                        $any_char_action
 
 Repetition  <- '{'
@@ -69,6 +71,7 @@ HexDigit    <- char:[a-fA-F0-9]
   CCLOSE
   AT
   SEMI
+  HAT
   Spacing
 }
 
@@ -91,6 +94,7 @@ CCLOSE      <- '}' Spacing
 DOT         <- '.' Spacing  $dot_action
 AT          <- '@' Spacing
 SEMI        <- ':' Spacing
+HAT         <- '^' Spacing
 
 Spacing     <- (Space / Comment)*
 Comment     <- '#' (!EndOfLine .)* EndOfLine
@@ -190,8 +194,10 @@ $prefix_action {
       obj = lookahead
   else:
       obj = suffix
+  if not cut:
+      cut = None
   metaname = metaname or None
-  return NamedItem(metaname, obj)
+  return NamedItem(metaname, obj, cut)
 }
 
 $suffix_action {
@@ -221,6 +227,10 @@ $metadef_body_action {
 
 $esc_cur_close_action {
   return Token('\}', str.line, str.start, str.end, str.filename)
+}
+
+$cut_action {
+  return Cut()
 }
 
 $ident_action {
@@ -327,6 +337,7 @@ from polygen.node import (
     MetaRule,
     Expr,
     Alt,
+    Cut,
     NamedItem,
     Id,
     String,

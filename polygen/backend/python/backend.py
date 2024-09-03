@@ -131,6 +131,7 @@ class CodeGenerator(CodeGeneratorBase):
 
             if not node.head:
                 self.put("_begin_pos = self._mark()")
+                self.put("_cut_mark = None")
             self.visit(node.expr, node)
             self.put("return None")
 
@@ -181,11 +182,13 @@ class CodeGenerator(CodeGeneratorBase):
             self.put("if True:")
 
         elif length == 1:
-            self.put("if (", newline=False)
+            # If there is one item, put it in one line
+            self.put("if ", newline=False)
             self.visit(node.items, 0, variables, newline=False)
-            self.put("):", indent=False)
+            self.put(":", indent=False)
 
         else:
+            # Wrap multiple items in parentheses
             self.put("if (")
             with self.indent():
                 for i, item in enumerate(node):
@@ -202,8 +205,6 @@ class CodeGenerator(CodeGeneratorBase):
                 self.put(f"# {items}")
 
             if node.metarule:
-                self.emptyline()
-
                 assert type(node.metarule) is MetaRule
                 self.put(f"# Metarule: {node.metarule.id.value}")
                 expr = reindent(node.metarule.expr, level=self._indent_level)
@@ -215,6 +216,10 @@ class CodeGenerator(CodeGeneratorBase):
                     items = ', '.join(variables)
                     self.put(f"return [{items}]")
 
+        self.put("if _cut_mark:")
+        with self.indent():
+            self.put("column, node = _cut_mark")
+            self.put('raise self.make_syntax_error(f"expected {node} at {column}")')
         self.put("self._reset(_begin_pos)")
 
     def visit_NamedItem(self,
@@ -224,6 +229,11 @@ class CodeGenerator(CodeGeneratorBase):
                         newline: bool):
 
         self.put("and " if index else "", newline=False, indent=newline)
+
+        if node.cut:
+            self.put(f"(_cut_mark := self._cut({repr(str(node.item))}))",
+                     indent=False, newline=newline)
+            self.put("and ", newline=False, indent=newline)
 
         ignore = node.name == Id(NamedItem.IGNORE)
         assign = "" if ignore else f"{node.name} := "
