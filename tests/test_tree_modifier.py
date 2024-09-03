@@ -32,9 +32,9 @@ from polygen.modifier import (
     ReplaceNestedExprs,
     FindEntryRule,
     CreateAnyChar,
-    ComputeLR
-    # IgnoreRules,  ## TODO: test
-    # GenerateMetanames,
+    ComputeLR,
+    IgnoreRules,
+    # GenerateMetanames,  ## TODO: test
     # AssignMetaRules,
     # ValidateNodes
 )
@@ -300,3 +300,40 @@ class Test_ComputeLR_direct_nullable_swap_rules(ModifierTest):
 
     def validate(self):
         self.assertTrue(self.rule.leftrec)
+
+
+class Test_IgnoreRules(ModifierTest):
+
+    # @ ignore { A }
+    # A <-
+    # B <- A / (A)
+
+    ignore_rule = Rule(
+        Id('A'),
+        Expr([]),
+        ignore=True
+    )
+    rule_subexpr = Rule(
+        Id('B'),
+        Expr([
+            Alt([NamedItem(None, Id('A'))]),
+            Alt([
+                NamedItem(None, Expr([
+                    Alt([NamedItem(None, Id('A'))])
+                ]))
+            ])
+        ])
+    )
+    tree = Grammar([ignore_rule, rule_subexpr])
+
+    input_data = tree
+
+    modifier = IgnoreRules(Options())
+
+    def validate(self):
+        a1, a2 = self.rule_subexpr.expr.alts.astuple()
+        i1, i2 = a1.items, a2.items
+        self.assertEqual(i1.name, Id(NamedItem.IGNORE))
+
+        i3 = i2.item.alts.items
+        self.assertEqual(i3.name, Id(NamedItem.IGNORE))

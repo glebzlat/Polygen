@@ -1,0 +1,7 @@
+@ignore
+COMMA <- ','
+
+@entry
+Grammar <- '(' ('a' COMMA 'b') ')' EOF
+
+EOF <- !.

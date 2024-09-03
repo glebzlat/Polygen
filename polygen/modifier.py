@@ -487,21 +487,25 @@ class IgnoreRules:
     """
 
     def __init__(self, options: Options):
-        self.items: defaultdict[str, list[NamedItem]] = defaultdict(list)
+        self.ids: set[Id] = set()
+        self.items: defaultdict[Id, list[NamedItem]] = defaultdict(list)
         self.options = options
         self.done = False
 
     def visit_NamedItem(self, node: NamedItem, parents):
-        if isinstance(node.inner_item, Id):
-            self.items[node.inner_item.value].append(node)
+        inner = node.inner_item
+        if isinstance(inner, Id):
+            self.items[inner].append(node)
 
     def visit_Rule(self, node: Rule, parents):
         if node.ignore:
-            for i in self.items[node.id.value]:
-                if i.name is None:
-                    i.name = Id(NamedItem.IGNORE)
+            self.ids.add(node.id)
 
     def apply(self):
+        for rule_id in self.ids:
+            for i in self.items[rule_id]:
+                if i.name is None:
+                    i.name = Id(NamedItem.IGNORE)
         self.done = True
 
 
