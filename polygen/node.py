@@ -581,11 +581,14 @@ class NamedItem(DLL):
 
     def __eq__(self, other):
         if type(other) is NamedItem:
-            return (self.name, self.item) == (other.name, other.item)
+            return (
+                (self.name, self.item, self.cut) ==
+                (other.name, other.item, other.cut)
+            )
         return NotImplemented
 
     def __hash__(self):
-        return hash((self.name, self.item))
+        return hash((self.name, self.item, self.cut))
 
 
 class Id:
