@@ -92,13 +92,15 @@ def setUpUnittestSuite(backend_name: Optional[str]):
 
         for tc in TEST_CASE_DIRS:
             tc_full_name = f"{backend_full_name}__{normalize_str(tc.name)}"
+            test_output_directory = backend_output_dir / normalize_str(tc.name)
 
             class TestCase(unittest.TestCase):
                 test_case = tc
                 backend = _backend
-                output_directory = backend_output_dir
+                output_directory = test_output_directory
 
                 def setUp(self):
+                    self.output_directory.mkdir(exist_ok=True)
                     grammar = self.test_case / GRAMMAR_FILE_NAME
                     generate_parser(grammar_file=grammar,
                                     backend=self.backend,
@@ -137,6 +139,14 @@ def addSuccessCase(case_cls, input_file, test_case_full_name):
         f"{test_case_full_name}__{normalize_str(input_file.name)}"
     )
 
+    copy_input_file = case_cls.output_directory / input_file.name
+    copy_input_file.write_bytes(input_file.read_bytes())
+
+    clue_file_name = f"{input_file.name}{CLUE_FILE_STEM}"
+    clue_file = input_file.parent / clue_file_name
+    copy_clue_file = case_cls.output_directory / clue_file_name
+    copy_clue_file.write_bytes(clue_file.read_bytes())
+
     def wrapper(self: unittest.TestCase):
         logger.info("testing success: %s", test_full_name)
 
@@ -144,13 +154,11 @@ def addSuccessCase(case_cls, input_file, test_case_full_name):
             reason = self.skip[input_file.name]
             self.skipTest(reason)
 
-        clue_file_name = f"{input_file.name}{CLUE_FILE_STEM}"
-        clue_file = input_file.parent / clue_file_name
-        if not clue_file.exists():
+        if not copy_clue_file.exists():
             self.fail(f"clue file not found for {input_file.name}")
 
-        clue = get_data(clue_file)
-        exitcode, output = self.backend.runner.run(input_file)
+        clue = get_data(copy_clue_file)
+        exitcode, output = self.backend.runner.run(copy_input_file)
 
         self.assertEqual(exitcode, 0)
         result = evaluate(output)
@@ -166,6 +174,9 @@ def addFailureCase(case_cls, input_file, test_case_full_name):
         f"{test_case_full_name}_{normalize_str(input_file.name)}"
     )
 
+    copy_input_file = case_cls.output_directory / input_file.name
+    copy_input_file.write_bytes(input_file.read_bytes())
+
     def wrapper(self: unittest.TestCase):
         logger.info("testing failure: %s", test_full_name)
 
@@ -173,7 +184,7 @@ def addFailureCase(case_cls, input_file, test_case_full_name):
             reason = self.skip[input_file.name]
             self.skipTest(reason)
 
-        exitcode, output = self.backend.runner.run(input_file)
+        exitcode, output = self.backend.runner.run(copy_input_file)
         self.assertNotEqual(exitcode, 0)
 
     setattr(case_cls, test_full_name, wrapper)
