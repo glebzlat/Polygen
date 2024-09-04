@@ -166,3 +166,4 @@ eggs/
 *.egg-info/
 *.egg
 commit.msg
+tmp/
