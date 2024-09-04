@@ -167,6 +167,7 @@ class CodeGenerator(CodeGeneratorBase):
                     self.put(f"def {alts[i]}(self):")
                     with self.indent():
                         self.put("_begin_pos = self._mark()")
+                        self.put("_cut_mark = None")
                         self.visit(alt, i)
                     if alt.right is not None:
                         self.emptyline()
