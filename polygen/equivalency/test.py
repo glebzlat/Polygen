@@ -93,6 +93,7 @@ def setUpUnittestSuite(backend_name: Optional[str]):
         for tc in TEST_CASE_DIRS:
             tc_full_name = f"{backend_full_name}__{normalize_str(tc.name)}"
             test_output_directory = backend_output_dir / normalize_str(tc.name)
+            test_output_directory.mkdir(exist_ok=True)
 
             class TestCase(unittest.TestCase):
                 test_case = tc
