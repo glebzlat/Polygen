@@ -32,7 +32,7 @@ function run_generate {
   if [ "$1" = "polygen" ];
   then
     shift
-    python -m polygen generate polygen/parser.peg -b python -o polygen \
+    python -m polygen generate polygen/grammar.peg -b python -o polygen \
       -d polygen_imports=true $@
     exit $?
   fi
