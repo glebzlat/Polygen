@@ -1,0 +1,17 @@
+@entry
+Grammar <- (A / B) EOF
+
+# Alternative without cut
+A <- 'a' (OPEN 'b' COMMA 'c' CLOSE / OPEN 'd' COMMA 'e' CLOSE)
+
+# Alternative with cut
+# In such context, where there are several alternatives starting with the
+# same term, the presence of a cut in the alternative prevents other
+# alternatives, starting with the same term, to be tried.
+B <- 'b' (OPEN ^ 'b' COMMA 'c' CLOSE / OPEN 'd' COMMA 'e' CLOSE)
+
+OPEN <- '('
+CLOSE <- ')'
+COMMA <- ','
+
+EOF <- !.

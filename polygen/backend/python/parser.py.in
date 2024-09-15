@@ -106,6 +106,11 @@ class Reader:
         self.buflen = len(self.buffer)
         return read_length
 
+    def wipe(self):
+        self.buffer = self.buffer[self.pointer:]
+        self.buflen -= self.pointer
+        self.pointer = 0
+
     @property
     def filename(self) -> str:
         return self.name
@@ -210,6 +215,7 @@ class Parser:
         self._reader = reader
         self._tokens: List[Token] = []
         self._pos = 0
+        self._pos_offset = 0
 
         self.state = state
 
@@ -297,9 +303,10 @@ class Parser:
         return token
 
     def _peek_token(self) -> Optional[Token]:
-        if self._pos == len(self._tokens):
+        true_pos = self._pos - self._pos_offset
+        if true_pos == len(self._tokens):
             self._tokens.append(next(self._reader, None))
-        return self._tokens[self._pos]
+        return self._tokens[true_pos]
 
     def _mark(self) -> int:
         return self._pos
@@ -307,10 +314,19 @@ class Parser:
     def _reset(self, pos: int):
         self._pos = pos
 
-    def make_syntax_error(self) -> SyntaxError:
+    def _cut(self, node):
+        self._tokens.clear()
+        self._memos.clear()
+        self._pos_offset = self._pos
+        self._reader.wipe()
+        return self._reader.column, node
+
+    def make_syntax_error(self, message: str = None) -> SyntaxError:
         tok = self.reader.diagnose()
+        if not message:
+            message = tok.filename
         return SyntaxError(
-            tok.filename,
+            message,
             (tok.filename, tok.line, tok.start, tok, tok.line, len(tok))
         )
 

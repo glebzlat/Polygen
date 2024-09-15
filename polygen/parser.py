@@ -28,6 +28,7 @@ from polygen.node import (
     MetaRule,
     Expr,
     Alt,
+    Cut,
     NamedItem,
     Id,
     String,
@@ -138,6 +139,11 @@ class Reader:
         self.buflen = len(self.buffer)
         return read_length
 
+    def wipe(self):
+        self.buffer = self.buffer[self.pointer:]
+        self.buflen -= self.pointer
+        self.pointer = 0
+
     @property
     def filename(self) -> str:
         return self.name
@@ -242,6 +248,7 @@ class Parser:
         self._reader = reader
         self._tokens: List[Token] = []
         self._pos = 0
+        self._pos_offset = 0
 
         self.state = state
 
@@ -329,9 +336,10 @@ class Parser:
         return token
 
     def _peek_token(self) -> Optional[Token]:
-        if self._pos == len(self._tokens):
+        true_pos = self._pos - self._pos_offset
+        if true_pos == len(self._tokens):
             self._tokens.append(next(self._reader, None))
-        return self._tokens[self._pos]
+        return self._tokens[true_pos]
 
     def _mark(self) -> int:
         return self._pos
@@ -339,10 +347,19 @@ class Parser:
     def _reset(self, pos: int):
         self._pos = pos
 
-    def make_syntax_error(self) -> SyntaxError:
+    def _cut(self, node):
+        self._tokens.clear()
+        self._memos.clear()
+        self._pos_offset = self._pos
+        self._reader.wipe()
+        return self._reader.column, node
+
+    def make_syntax_error(self, message: str = None) -> SyntaxError:
         tok = self.reader.diagnose()
+        if not message:
+            message = tok.filename
         return SyntaxError(
-            tok.filename,
+            message,
             (tok.filename, tok.line, tok.start, tok, tok.line, len(tok))
         )
 
@@ -361,13 +378,13 @@ class Parser:
     @_memoize
     def _Grammar(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._Spacing() is not None
             and (entity := self._loop(True, self._Entity)) is not None
             and (endoffile := self._EndOfFile()) is not None
         ):
             # Spacing Entity+ EndOfFile
-
             # Metarule: grammar_action
             rules, metarules, directives = [], [], []
             for e in entity:
@@ -379,29 +396,43 @@ class Parser:
                     directives.append(e)
 
             return Grammar(rules, metarules, directives)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Entity(self):
         _begin_pos = self._mark()
-        if ((definition := self._Definition()) is not None):
+        _cut_mark = None
+        if (definition := self._Definition()) is not None:
             # Definition
             return definition
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((metadef := self._MetaDef()) is not None):
+        if (metadef := self._MetaDef()) is not None:
             # MetaDef
             return metadef
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((directive := self._Directive()) is not None):
+        if (directive := self._Directive()) is not None:
             # Directive
             return directive
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Definition(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (directive := self._loop(False, self._RuleDir)) is not None
             and (identifier := self._Identifier()) is not None
@@ -409,61 +440,75 @@ class Parser:
             and (expression := self._Expression()) is not None
         ):
             # RuleDir* Identifier LEFTARROW Expression
-
             # Metarule: def_action
             ignore = "ignore" in directive
             entry = "entry" in directive
             return Rule(identifier, expression, ignore=ignore, entry=entry)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((metadef := self._MetaDef()) is not None):
+        if (metadef := self._MetaDef()) is not None:
             # MetaDef
             return metadef
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Directive(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (start := self._AT()) is not None
             and (d := self._Directive__GEN_1()) is not None
         ):
             # AT Directive__GEN_1
-
             # Metarule: directive_action
             d.line = start.line
             d.filename = self.reader.filename
             return d
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Include(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._INCLUDE() is not None
             and (includepath := self._IncludePath()) is not None
             and self._Spacing() is not None
         ):
             # INCLUDE IncludePath Spacing
-
             # Metarule: include_action
             return Include(includepath, 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IncludePath(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._ranges(("'", "'"))) is not None
             and (path := self._loop(True, self._IncludePath__GEN_1)) is not None
             and (_2 := self._ranges(("'", "'"))) is not None
         ):
             # ['] IncludePath__GEN_1+ [']
-
             # Metarule: path_action
             return ''.join(path)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._ranges(('"', '"'))) is not None
@@ -471,29 +516,35 @@ class Parser:
             and (_2 := self._ranges(('"', '"'))) is not None
         ):
             # ["] IncludePath__GEN_2+ ["]
-
             # Metarule: path_action
             return ''.join(path)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Entry(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._ENTRY() is not None
             and (id := self._Identifier()) is not None
         ):
             # ENTRY Identifier
-
             # Metarule: entry_action
             return Entry(id, 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Toplevel(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._TOPLEVEL() is not None
             and self._COPEN() is not None
@@ -501,7 +552,6 @@ class Parser:
             and self._CCLOSE() is not None
         ):
             # TOPLEVEL COPEN Entity* CCLOSE
-
             # Metarule: toplevel_action
             rules, metarules, directives = [], [], []
             for e in entity:
@@ -514,12 +564,16 @@ class Parser:
 
             grammar = Grammar(rules, metarules, directives)
             return ToplevelQuery(grammar, 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Backend(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._BACKEND() is not None
             and self._Spacing() is not None
@@ -531,7 +585,6 @@ class Parser:
             and self._CCLOSE() is not None
         ):
             # BACKEND Spacing OPEN Identifier CLOSE COPEN Entity* CCLOSE
-
             # Metarule: backend_action
             rules, metarules, directives = [], [], []
             for e in entity:
@@ -544,6 +597,9 @@ class Parser:
 
             grammar = Grammar(rules, metarules, directives)
             return BackendQuery(id, grammar, 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             self._BACKEND() is not None
@@ -552,15 +608,18 @@ class Parser:
             and (expr := self._MetaDefBody()) is not None
         ):
             # BACKEND '.' Identifier MetaDefBody
-
             # Metarule: backend_def_action
             return BackendDef(id, expr[0], 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Ignore(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._IGNORE() is not None
             and self._COPEN() is not None
@@ -568,33 +627,42 @@ class Parser:
             and self._CCLOSE() is not None
         ):
             # IGNORE COPEN Identifier* CCLOSE
-
             # Metarule: ignore_action
             return Ignore(ids, 0, "")
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _RuleDir(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._AT() is not None
             and (dirname := self._DirName()) is not None
             and self._Spacing() is not None
         ):
             # AT DirName Spacing
-
             # Metarule: ruledir_action
             return dirname.value
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _DirName(self):
         _begin_pos = self._mark()
-        if ((identifier := self._Identifier()) is not None):
+        _cut_mark = None
+        if (identifier := self._Identifier()) is not None:
             # Identifier
             return identifier
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
@@ -602,15 +670,18 @@ class Parser:
     def _Expression(self):
         # Nullable
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (sequence := self._Sequence()) is not None
             and (seqs := self._loop(False, self._Expression__GEN_1)) is not None
         ):
             # Nullable
             # Sequence Expression__GEN_1*
-
             # Metarule: expr_action
             return Expr((sequence, *seqs))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
@@ -618,66 +689,82 @@ class Parser:
     def _Sequence(self):
         # Nullable
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (parts := self._loop(False, self._Prefix)) is not None
             and (m := self._maybe(self._MetaRule)) is not None
         ):
             # Nullable
             # Prefix* MetaRule?
-
             # Metarule: sequence_action
             m = m or None
             return Alt(parts, metarule=m)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Prefix(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
-            (metaname := self._maybe(self._MetaName)) is not None
+            (cut := self._maybe(self._Cut)) is not None
+            and (metaname := self._maybe(self._MetaName)) is not None
             and (lookahead := self._maybe(self._Prefix__GEN_1)) is not None
             and (suffix := self._Suffix()) is not None
         ):
-            # MetaName? Prefix__GEN_1? Suffix
-
+            # Cut? MetaName? Prefix__GEN_1? Suffix
             # Metarule: prefix_action
             if lookahead:
                 lookahead.item = suffix
                 obj = lookahead
             else:
                 obj = suffix
+            if not cut:
+                cut = None
             metaname = metaname or None
-            return NamedItem(metaname, obj)
+            return NamedItem(metaname, obj, cut)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Suffix(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (primary := self._Primary()) is not None
             and (q := self._maybe(self._Suffix__GEN_1)) is not None
         ):
             # Primary Suffix__GEN_1?
-
             # Metarule: suffix_action
             if q:
                 q.item = primary
                 return q
             return primary
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Primary(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (identifier := self._Identifier()) is not None
             and self._lookahead(False, self._LEFTARROW) is not None
         ):
             # Identifier !LEFTARROW
             return identifier
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             self._OPEN() is not None
@@ -686,45 +773,64 @@ class Parser:
         ):
             # OPEN Expression CLOSE
             return expression
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((literal := self._Literal()) is not None):
+        if (literal := self._Literal()) is not None:
             # Literal
             return literal
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_class := self._Class()) is not None):
+        if (_class := self._Class()) is not None:
             # Class
             return _class
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((dot := self._DOT()) is not None):
+        if (dot := self._DOT()) is not None:
             # DOT
             return dot
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaName(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (identifier := self._Identifier()) is not None
             and self._SEMI() is not None
         ):
             # Identifier SEMI
             return identifier
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaRule(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('$')) is not None
             and (body := self._MetaDefBody()) is not None
         ):
             # '$' MetaDefBody
-
             # Metarule: metarule_def_action
             expr, info = body
             return MetaRule(None, expr, info)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('$')) is not None
@@ -733,15 +839,18 @@ class Parser:
             and self._lookahead(False, self._expectc, '{') is not None
         ):
             # '$' Spacing Identifier !'{'
-
             # Metarule: metarule_ref_action
             return MetaRef(identifier)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaDef(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('$')) is not None
             and self._Spacing() is not None
@@ -749,16 +858,19 @@ class Parser:
             and (expr := self._MetaDefBody()) is not None
         ):
             # '$' Spacing Identifier MetaDefBody
-
             # Metarule: metadef_action
             expr, info = expr
             return MetaRule(identifier, expr, info)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaDefBody(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('{')) is not None
             and (expr := self._loop(False, self._MetaDefBody__GEN_2)) is not None
@@ -766,110 +878,155 @@ class Parser:
             and self._Spacing() is not None
         ):
             # '{' MetaDefBody__GEN_2* '}' Spacing
-
             # Metarule: metadef_body_action
             return ''.join(expr), ParseInfo(expr) if expr else None
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _EscCurClose(self):
         _begin_pos = self._mark()
-        if ((str := self._expects("\\}")) is not None):
+        _cut_mark = None
+        if (str := self._expects("\\}")) is not None:
             # "\\}"
-
             # Metarule: esc_cur_close_action
             return Token('}', str.line, str.start, str.end, str.filename)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _Cut(self):
+        _begin_pos = self._mark()
+        _cut_mark = None
+        if self._HAT() is not None:
+            # HAT
+            # Metarule: cut_action
+            return Cut()
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Identifier(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (start := self._IdentStart()) is not None
             and (cont := self._loop(False, self._IdentCont)) is not None
             and self._Spacing() is not None
         ):
             # IdentStart IdentCont* Spacing
-
             # Metarule: ident_action
             return Id(''.join((start, *cont)), ParseInfo([start, *cont]))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IdentStart(self):
         _begin_pos = self._mark()
-        if ((_1 := self._ranges(('a', 'z'), ('A', 'Z'), ('_', '_'))) is not None):
+        _cut_mark = None
+        if (_1 := self._ranges(('a', 'z'), ('A', 'Z'), ('_', '_'))) is not None:
             # [a-zA-Z_]
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IdentCont(self):
         _begin_pos = self._mark()
-        if ((identstart := self._IdentStart()) is not None):
+        _cut_mark = None
+        if (identstart := self._IdentStart()) is not None:
             # IdentStart
             return identstart
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_1 := self._ranges(('0', '9'))) is not None):
+        if (_1 := self._ranges(('0', '9'))) is not None:
             # [0-9]
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Literal(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._ranges(("'", "'"))) is not None
+            and (_cut_mark := self._cut('Literal__GEN_1*'))
             and (chars := self._loop(False, self._Literal__GEN_1)) is not None
             and (_2 := self._ranges(("'", "'"))) is not None
             and self._Spacing() is not None
         ):
             # ['] Literal__GEN_1* ['] Spacing
-
             # Metarule: literal_action
             if len(chars) == 1:
                 return chars[0]
             return String(chars)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._ranges(('"', '"'))) is not None
+            and (_cut_mark := self._cut('Literal__GEN_2*'))
             and (chars := self._loop(False, self._Literal__GEN_2)) is not None
             and (_2 := self._ranges(('"', '"'))) is not None
             and self._Spacing() is not None
         ):
             # ["] Literal__GEN_2* ["] Spacing
-
             # Metarule: literal_action
             if len(chars) == 1:
                 return chars[0]
             return String(chars)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Class(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('[')) is not None
+            and (_cut_mark := self._cut('Class__GEN_1*'))
             and (ranges := self._loop(False, self._Class__GEN_1)) is not None
             and (_2 := self._expectc(']')) is not None
             and self._Spacing() is not None
         ):
             # '[' Class__GEN_1* ']' Spacing
-
             # Metarule: class_action
             return Class(ranges)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Range(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (beg := self._Char()) is not None
             and (_1 := self._expectc('-')) is not None
@@ -877,27 +1034,31 @@ class Parser:
             and (end := self._Char()) is not None
         ):
             # Char '-' !']' Char
-
             # Metarule: range_2_action
             return Range(beg, end)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((beg := self._Char()) is not None):
+        if (beg := self._Char()) is not None:
             # Char
-
             # Metarule: range_1_action
             return Range(beg)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Char(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('\\')) is not None
             and (char := self._ranges(('n', 'n'), ('r', 'r'), ('t', 't'), ("'", "'"), ('"', '"'), ('[', '['), (']', ']'), ('\\', '\\'))) is not None
         ):
             # '\\' [nrt'"[]\\]
-
             # Metarule: esc_char_action
             chr_map = {
               'n': '\n',
@@ -906,6 +1067,9 @@ class Parser:
             }
 
             return Char(chr_map.get(char, char), ParseInfo(char))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('\\')) is not None
@@ -914,10 +1078,12 @@ class Parser:
             and (char3 := self._ranges(('0', '7'))) is not None
         ):
             # '\\' [0-2] [0-7] [0-7]
-
             # Metarule: oct_char_action_1
             string = ''.join((char1, char2, char3))
             return Char(int(string, base=8), ParseInfo([char1, char2, char3]))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._expectc('\\')) is not None
@@ -925,37 +1091,45 @@ class Parser:
             and (char2 := self._maybe(self._ranges, ('0', '7'))) is not None
         ):
             # '\\' [0-7] [0-7]?
-
             # Metarule: oct_char_action_2
             char2 = char2 if isinstance(char2, str) else ''
             string = ''.join((char1, char2))
             return Char(int(string, base=8),
                         ParseInfo(list(filter(None, (char1, char2)))))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             (_1 := self._expects("\\u")) is not None
+            and (_cut_mark := self._cut('HexDigit{4}'))
             and (chars := self._rep(4, None, self._HexDigit)) is not None
         ):
             # "\\u" HexDigit{4}
-
             # Metarule: unicode_char_action
             string = ''.join(chars)
             return Char(int(string, base=16), ParseInfo(chars))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         if (
             self._lookahead(False, self._expectc, '\\') is not None
             and (any := self._expectc()) is not None
         ):
             # !'\\' .
-
             # Metarule: any_char_action
             return Char(ord(any), ParseInfo(any))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Repetition(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('{')) is not None
             and (grp := self._Repetition__GEN_1()) is not None
@@ -963,269 +1137,364 @@ class Parser:
             and self._Spacing() is not None
         ):
             # '{' Repetition__GEN_1 '}' Spacing
-
             # Metarule: rep_action
             beg, end = grp if isinstance(grp, list) else (grp, (None, None))
             infos = list(filter(None, (beg[1], end[1])))
             return Repetition(None, beg[0], end[0], ParseInfo(infos))
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Number(self):
         _begin_pos = self._mark()
-        if ((chars := self._loop(True, self._ranges, ('0', '9'))) is not None):
+        _cut_mark = None
+        if (chars := self._loop(True, self._ranges, ('0', '9'))) is not None:
             # [0-9]+
-
             # Metarule: number_action
             string = ''.join(chars)
             return int(string), ParseInfo(chars)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _HexDigit(self):
         _begin_pos = self._mark()
-        if ((char := self._ranges(('a', 'f'), ('A', 'F'), ('0', '9'))) is not None):
+        _cut_mark = None
+        if (char := self._ranges(('a', 'f'), ('A', 'F'), ('0', '9'))) is not None:
             # [a-fA-F0-9]
             return char
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _INCLUDE(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expects("include")) is not None
             and self._Spacing() is not None
         ):
             # "include" Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _ENTRY(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expects("entry")) is not None
             and self._Spacing() is not None
         ):
             # "entry" Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _TOPLEVEL(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expects("toplevel")) is not None
             and self._Spacing() is not None
         ):
             # "toplevel" Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _BACKEND(self):
         _begin_pos = self._mark()
-        if ((_1 := self._expects("backend")) is not None):
+        _cut_mark = None
+        if (_1 := self._expects("backend")) is not None:
             # "backend"
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IGNORE(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expects("ignore")) is not None
             and self._Spacing() is not None
         ):
             # "ignore" Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _LEFTARROW(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expects("<-")) is not None
             and self._Spacing() is not None
         ):
             # "<-" Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _SLASH(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('/')) is not None
             and self._Spacing() is not None
         ):
             # '/' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _AND(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('&')) is not None
             and self._Spacing() is not None
         ):
             # '&' Spacing
-
             # Metarule: and_action
             return And(None)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _NOT(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('!')) is not None
             and self._Spacing() is not None
         ):
             # '!' Spacing
-
             # Metarule: not_action
             return Not(None)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _QUESTION(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('?')) is not None
             and self._Spacing() is not None
         ):
             # '?' Spacing
-
             # Metarule: optional_action
             return ZeroOrOne(None)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _STAR(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('*')) is not None
             and self._Spacing() is not None
         ):
             # '*' Spacing
-
             # Metarule: zero_or_more_action
             return ZeroOrMore(None)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _PLUS(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('+')) is not None
             and self._Spacing() is not None
         ):
             # '+' Spacing
-
             # Metarule: one_or_more_action
             return OneOrMore(None)
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _OPEN(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('(')) is not None
             and self._Spacing() is not None
         ):
             # '(' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _CLOSE(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc(')')) is not None
             and self._Spacing() is not None
         ):
             # ')' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _COPEN(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('{')) is not None
             and self._Spacing() is not None
         ):
             # '{' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _CCLOSE(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('}')) is not None
             and self._Spacing() is not None
         ):
             # '}' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _DOT(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('.')) is not None
             and self._Spacing() is not None
         ):
             # '.' Spacing
-
             # Metarule: dot_action
             return AnyChar()
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _AT(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('@')) is not None
             and self._Spacing() is not None
         ):
             # '@' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _SEMI(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc(':')) is not None
             and self._Spacing() is not None
         ):
             # ':' Spacing
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _HAT(self):
+        _begin_pos = self._mark()
+        _cut_mark = None
+        if (
+            (_1 := self._expectc('^')) is not None
+            and self._Spacing() is not None
+        ):
+            # '^' Spacing
+            return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
@@ -1233,16 +1502,21 @@ class Parser:
     def _Spacing(self):
         # Nullable
         _begin_pos = self._mark()
-        if ((_1 := self._loop(False, self._Spacing__GEN_1)) is not None):
+        _cut_mark = None
+        if (_1 := self._loop(False, self._Spacing__GEN_1)) is not None:
             # Nullable
             # Spacing__GEN_1*
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Comment(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (_1 := self._expectc('#')) is not None
             and (_2 := self._loop(False, self._Comment__GEN_1)) is not None
@@ -1250,40 +1524,63 @@ class Parser:
         ):
             # '#' Comment__GEN_1* EndOfLine
             return [_1, _2, endofline]
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Space(self):
         _begin_pos = self._mark()
-        if ((_1 := self._expectc(' ')) is not None):
+        _cut_mark = None
+        if (_1 := self._expectc(' ')) is not None:
             # ' '
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\t')) is not None):
+        if (_1 := self._expectc('\t')) is not None:
             # '\t'
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((endofline := self._EndOfLine()) is not None):
+        if (endofline := self._EndOfLine()) is not None:
             # EndOfLine
             return endofline
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _EndOfLine(self):
         _begin_pos = self._mark()
-        if ((_1 := self._expects("\r\n")) is not None):
+        _cut_mark = None
+        if (_1 := self._expects("\r\n")) is not None:
             # "\r\n"
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\n')) is not None):
+        if (_1 := self._expectc('\n')) is not None:
             # '\n'
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_1 := self._expectc('\r')) is not None):
+        if (_1 := self._expectc('\r')) is not None:
             # '\r'
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
@@ -1291,172 +1588,248 @@ class Parser:
     def _EndOfFile(self):
         # Nullable
         _begin_pos = self._mark()
-        if (self._lookahead(False, self._expectc) is not None):
+        _cut_mark = None
+        if self._lookahead(False, self._expectc) is not None:
             # Nullable
             # !.
             return []
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Directive__GEN_1(self):
         _begin_pos = self._mark()
-        if ((include := self._Include()) is not None):
+        _cut_mark = None
+        if (include := self._Include()) is not None:
             # Include
             return include
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((entry := self._Entry()) is not None):
+        if (entry := self._Entry()) is not None:
             # Entry
             return entry
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((toplevel := self._Toplevel()) is not None):
+        if (toplevel := self._Toplevel()) is not None:
             # Toplevel
             return toplevel
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((backend := self._Backend()) is not None):
+        if (backend := self._Backend()) is not None:
             # Backend
             return backend
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((ignore := self._Ignore()) is not None):
+        if (ignore := self._Ignore()) is not None:
             # Ignore
             return ignore
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IncludePath__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._ranges, ("'", "'")) is not None
             and (_1 := self._expectc()) is not None
         ):
             # !['] .
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _IncludePath__GEN_2(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._ranges, ('"', '"')) is not None
             and (_1 := self._expectc()) is not None
         ):
             # !["] .
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Expression__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._SLASH() is not None
             and (sequence := self._Sequence()) is not None
         ):
             # SLASH Sequence
             return sequence
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Prefix__GEN_1(self):
         _begin_pos = self._mark()
-        if ((_and := self._AND()) is not None):
+        _cut_mark = None
+        if (_and := self._AND()) is not None:
             # AND
             return _and
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_not := self._NOT()) is not None):
+        if (_not := self._NOT()) is not None:
             # NOT
             return _not
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Suffix__GEN_1(self):
         _begin_pos = self._mark()
-        if ((question := self._QUESTION()) is not None):
+        _cut_mark = None
+        if (question := self._QUESTION()) is not None:
             # QUESTION
             return question
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((star := self._STAR()) is not None):
+        if (star := self._STAR()) is not None:
             # STAR
             return star
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((plus := self._PLUS()) is not None):
+        if (plus := self._PLUS()) is not None:
             # PLUS
             return plus
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((repetition := self._Repetition()) is not None):
+        if (repetition := self._Repetition()) is not None:
             # Repetition
             return repetition
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaDefBody__GEN_1(self):
         _begin_pos = self._mark()
-        if ((esccurclose := self._EscCurClose()) is not None):
+        _cut_mark = None
+        if (esccurclose := self._EscCurClose()) is not None:
             # EscCurClose
             return esccurclose
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((_1 := self._expectc()) is not None):
+        if (_1 := self._expectc()) is not None:
             # .
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _MetaDefBody__GEN_2(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._expectc, '}') is not None
             and (_1 := self._MetaDefBody__GEN_1()) is not None
         ):
             # !'}' MetaDefBody__GEN_1
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Literal__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._ranges, ("'", "'")) is not None
             and (char := self._Char()) is not None
         ):
             # !['] Char
             return char
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Literal__GEN_2(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._ranges, ('"', '"')) is not None
             and (char := self._Char()) is not None
         ):
             # !["] Char
             return char
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Class__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._expectc, ']') is not None
             and (range := self._Range()) is not None
         ):
             # !']' Range
             return range
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Repetition__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             (number := self._Number()) is not None
             and self._expectc(',') is not None
@@ -1464,35 +1837,52 @@ class Parser:
         ):
             # Number ',' Number
             return [number, number1]
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((number := self._Number()) is not None):
+        if (number := self._Number()) is not None:
             # Number
             return number
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Spacing__GEN_1(self):
         _begin_pos = self._mark()
-        if ((space := self._Space()) is not None):
+        _cut_mark = None
+        if (space := self._Space()) is not None:
             # Space
             return space
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
-        if ((comment := self._Comment()) is not None):
+        if (comment := self._Comment()) is not None:
             # Comment
             return comment
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
     @_memoize
     def _Comment__GEN_1(self):
         _begin_pos = self._mark()
+        _cut_mark = None
         if (
             self._lookahead(False, self._EndOfLine) is not None
             and (_1 := self._expectc()) is not None
         ):
             # !EndOfLine .
             return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
         self._reset(_begin_pos)
         return None
 
