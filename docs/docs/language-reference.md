@@ -11,21 +11,21 @@ Polygen grammar consists of entities. Entity can be [a rule](#rule),
 describe language's syntax. Metarules define semantics. And directives allow to
 control the grammar processing and manage auxiliary details.
 
-Polygen is insensitive to whitespace characters (space ` `, newline `\n`,
-carriage return `\r`, and tab `\t`), and thus whitespace is optional unless
+Polygen is insensitive to whitespace characters (space `' '`, newline `'\n'`,
+carriage return `'\r'`, and tab `'\t'`), and thus whitespace is optional unless
 otherwise stated.
 
 ## Rule
 
-Rule is the main grammar entity. Its purpose is to define (some part of) the
-syntax of the language. Rule's syntax follows the original PEG definition
-and consists of the rule name, the left arrow and the body, or expression.
+Rule is the main grammar entity. Its purpose is to define  the syntax of the
+language. Rule's syntax follows the original PEG definition and consists of the
+rule name, the left arrow and the body (expression).
 
 ```text
 Rule <- Identifier '<-' Expression
 ```
 
-The following code snippets is a demonstration of the Rule definition. This
+The following code snippet is a demonstration of the Rule definition. This
 term is referenced throughout this document.
 
 ```peg
@@ -34,10 +34,10 @@ Rule <- Expression
 
 ## Expression
 
-Expression represents the sequence of ordered choices - alternatives.
-Alternatives are tested in order they are appeared in the sequence, and if
-once the alternative succeeds, the whole expression succeeds and does not test
-the remaining alternatives.
+An expression represents the sequence of ordered choices - alternatives.
+Alternatives are tested in the order they appear in the sequence, and once the
+alternative succeeds, the whole expression succeeds and does not test the
+remaining alternatives.
 
 Alternatives in the expression are separated by the forward slash.
 
@@ -47,9 +47,9 @@ Expression <- Alt 1 / Alt 2 / Alt N
 
 ## Alternative
 
-Alternative is a sequence of parts, that are tested in order they appeared.
-Part is tested when the previous part succeeded, and if the part failed, then
-the whole alternative fails and the remaining parts are not tested.
+An alternative is a sequence of parts tested in order they appear. Part is
+tested when the previous part succeeded, and if the part failed, then the whole
+alternative fails and the remaining parts are not tested.
 
 Alternative has an optional metarule declaration or definition.
 
@@ -59,8 +59,8 @@ Alternative <- Part1 Part2 PartN MetaRuleDeclOrDef?
 
 ## Part
 
-Part consists of multiple components, where the most of the components are
-optional. Optional components are followed by the question mark.
+Parts consist of multiple components, most of which are optional. Optional
+components are followed by the question mark.
 
 ```text
 Part <- Cut? MetaName? Lookahead? Primary Quantifier?
@@ -70,26 +70,26 @@ Components explanation:
 
 - [Cut](#cut)
 
-    Cut is the special operator that instructs the parser to wipe the
+    Cut is a special operator that instructs the parser to wipe the
     backtracking information.
 
 - [MetaName](#metavariable)
 
-    MetaName can be seen as a variable name. It allows to reference the
-    value of the parsed token in semantic action.
+    MetaName can be seen as a variable name. It allows referencing the value of
+    the parsed token in a semantic action.
 
 - [Lookahead](#lookahead)
 
-    Lookahead is the special type of operators, whose name is self-explanatory:
+    Lookahead is a special type of operator, which name is self-explanatory:
     it looks ahead and matches the token without consuming it.
 
 - [Primary](#primary)
 
-    This is the actual value of the token.
+    This is the pattern that matches input string.
 
 - [Quantifier](#quantifier)
 
-    Quantifiers are another type of operators that allow to specify how many
+    Quantifiers are another type of operator that allows specifying how many
     times the token must or may be repeated.
 
 ## Primary
@@ -105,26 +105,26 @@ Primary value types are:
 
 ### Identifier
 
-Identifier is the name of the nonterminal. Rule names must be of Identifier
-format. The Identifier consists of ASCII letters and digits and underscore,
-and can not begin with the digit.
+An Identifier is the name of a nonterminal. Rule names must follow the
+Identifier format. An Identifier consists of ASCII letters, digits, and
+underscore, and can not begin with the digit.
 
-Subsequent identifiers must be separated by whitespace, otherwise they will
+Subsequent identifiers must be separated by whitespace; otherwise, they will
 be treated as a single identifier.
 
 ```peg
 Identifier <- [a-zA-Z_] [a-zA-Z0-9_]*
 ```
 
-The asterisk `*` means "repeated zero or more times".
+An asterisk `*` means "repeated zero or more times".
 
 ### String literal
 
-String literal is the arbitrary sequence of characters in single or double
-quotes. Matches the input string exactly.
+A String literal is an arbitrary sequence of characters between single or
+double quotes. It matches input the string exactly.
 
-Characters of a literal can be the general ASCII characters and special
-characters. Special characters are escaped with the backward slash.
+Characters of a literal can include general ASCII characters and special
+characters. Special characters escaped with a backslash.
 
 ```peg
 Char <- EscapeChar / .
@@ -143,7 +143,7 @@ Special characters are:
 - `\nn` and `\nnn` octal character code
 - `\uXXXX` UNICODE character
 
-Escaped quote marks is used in case when the type of the quote mark matches the
+Escaped quote marks are used in case where the type of quote mark matches the
 type of opening and closing marks: `'my message: \'hello\''`,
 `"my message: \"hello\""`.
 
@@ -155,12 +155,12 @@ a to f are allowed: `\u03c0`, `\u03C0`, `\u00b5`.
 
 ### Character class
 
-Character class matches single character from the range. Can contain multiple
-ranges. Range consists either of a single character or two characters,
-separated by the hyphen. In the latter case the range matches the starting
-character, the ending character and all characters located lexicographically in
-between. Starting character placed on first and must be less or equal than the
-ending.
+Character class matches single character from a range. It can contain multiple
+ranges. A range consists either of a single character or two characters
+separated by a hyphen. In the latter case the range matches the starting
+character, the ending character, and all characters located lexicographically
+in between. The starting character must come first and must be less or equal
+than the ending character.
 
 ```peg
 Class <- '[' CharRange* ']'
@@ -173,11 +173,11 @@ Wildcard `.` matches any character.
 
 ## Lookahead
 
-Lookahead (predicate) is the special operator used to test whether the
-following token appear in the input string or not without advancing the
-pointer. Lookahead defines the condition by which it succeeds or fails, and
-preserves the knowledge whether the pattern succeeded or failed. If the
-lookahead fails, it causes the whole alternative to fail.
+Lookahead (predicate) is a special operator used to test whether the following
+token appear in the input string or not without advancing a pointer pointer.
+Lookahead defines a condition by which it succeeds or fails, and preserves the
+knowledge whether a pattern succeeded or failed. If lookahead fails, it causes
+the whole alternative to fail.
 
 There are two lookahead operators:
 
