@@ -1,0 +1,7 @@
+site_name: Polygen
+nav:
+  - Home: index.md
+  - Language reference: language-reference.md
+theme:
+  name: readthedocs
+  highlightjs: false
