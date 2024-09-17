@@ -166,6 +166,10 @@ Class <- '[' CharRange* ']'
 CharRange <- Char / Char '-' Char
 ```
 
+Escape sequences are allowed in character class
+
+Note: closing square brackets inside the class must be escaped: `[\]]`.
+
 ### Wildcard (dot)
 
 Wildcard `.` matches any character.
