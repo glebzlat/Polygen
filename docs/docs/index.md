@@ -18,10 +18,6 @@ readable and greatly improves portability.
 
 ```sh
 pip install git+https://github.com/glebzlat/polygen
-
-# or
-git clone https://github.com/glebzlat/polygen
-pip install polygen
 ```
 
 ## Usage
