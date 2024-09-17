@@ -18,11 +18,11 @@ pip install polygen
 To generate a parser from the grammar:
 
 ```sh
-python -m polygen generate <grammar-file> -b <backend-name> -o <output-directory>
+polygen generate <grammar-file> -b <backend-name> -o <output-directory>
 ```
 
 To test the backend for parser equivalency:
 
 ```sh
-python -m polygen test -b <backend-name>
+polygen test -b <backend-name>
 ```
