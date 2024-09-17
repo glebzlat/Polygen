@@ -4,29 +4,28 @@ Polygen language is based on the original Bryan Ford's PEG definition and adds
 convenient features like unicode characters, metarules, metanames, and
 directives.
 
-## Grammar entity
+## Grammar
 
-Polygen grammar consists of entities. Entity can be [a rule](#rule),
-[metarule](#metarules-and-metavariables), and a [directive](#directives). Rules
-describe language's syntax. Metarules define semantics. And directives allow to
-control the grammar processing and manage auxiliary details.
+Polygen grammar consists of entities. Entity can be [a rule](#rule), [a
+metarule](#metarules-and-metavariables), and [a directive](#directives). Rules
+describe language's syntax, metarules define semantics, and directives allow
+controlling the grammar processing.
 
 Polygen is insensitive to whitespace characters (space `' '`, newline `'\n'`,
-carriage return `'\r'`, and tab `'\t'`), and thus whitespace is optional unless
+carriage return `'\r'`, and tab `'\t'`), thus whitespace is optional unless
 otherwise stated.
 
 ## Rule
 
-Rule is the main grammar entity. Its purpose is to define  the syntax of the
+Rule is the main grammar entity. Its purpose is to define the syntax of the
 language. Rule's syntax follows the original PEG definition and consists of the
-rule name, the left arrow and the body (expression).
+rule name, a left arrow and the body (expression).
 
 ```text
 Rule <- Identifier '<-' Expression
 ```
 
-The following code snippet is a demonstration of the Rule definition. This
-term is referenced throughout this document.
+A demonstration of a rule:
 
 ```peg
 Rule <- Expression
@@ -34,12 +33,12 @@ Rule <- Expression
 
 ## Expression
 
-An expression represents the sequence of ordered choices - alternatives.
+Expression represents the sequence of ordered choices - alternatives.
 Alternatives are tested in the order they appear in the sequence, and once the
 alternative succeeds, the whole expression succeeds and does not test the
 remaining alternatives.
 
-Alternatives in the expression are separated by the forward slash.
+Alternatives in the expression are separated by forward slash.
 
 ```text
 Expression <- Alt 1 / Alt 2 / Alt N
@@ -47,11 +46,11 @@ Expression <- Alt 1 / Alt 2 / Alt N
 
 ## Alternative
 
-An alternative is a sequence of parts tested in order they appear. Part is
+Alternative is a sequence of parts tested in order they appear. Part is
 tested when the previous part succeeded, and if the part failed, then the whole
-alternative fails and the remaining parts are not tested.
+alternative fails and remaining parts will not be tested.
 
-Alternative has an optional metarule declaration or definition.
+Alternative can be followed by optional metarule:
 
 ```text
 Alternative <- Part1 Part2 PartN MetaRuleDeclOrDef?
@@ -94,7 +93,7 @@ Components explanation:
 
 ## Primary
 
-Primary value is the definition of what should be matched.
+Primary is a definition of a matching pattern or a reference to another rule.
 
 Primary value types are:
 - Identifier
@@ -120,17 +119,17 @@ An asterisk `*` means "repeated zero or more times".
 
 ### String literal
 
-A String literal is an arbitrary sequence of characters between single or
-double quotes. It matches input the string exactly.
+String literal is an arbitrary sequence of characters between single or
+double quotes that matches exactly its content.
 
-Characters of a literal can include general ASCII characters and special
-characters. Special characters escaped with a backslash.
+Allowed characters in a string literal are ASCII characters and escape
+sequences, described below.
 
 ```peg
 Char <- EscapeChar / .
 ```
 
-The dot `.` means "any character".
+Dot `.` is a wildcard that matches any single character.
 
 Special characters are:
 
@@ -150,8 +149,8 @@ type of opening and closing marks: `'my message: \'hello\''`,
 Octal character code digits are in the range from 0 to 7 inclusively, and the
 first digit can be maximum of 2: `\60`, `\141`.
 
-UNICODE character digits are hexadecimal from 0 to 9 and from A to F. Lowercase
-a to f are allowed: `\u03c0`, `\u03C0`, `\u00b5`.
+UNICODE characters are hexadecimal digits from 0 to 9 and from A to F.
+Lowercase digits are allowed: `\u03c0`, `\u03C0`, `\u00b5`.
 
 ### Character class
 
@@ -164,7 +163,7 @@ than the ending character.
 
 ```peg
 Class <- '[' CharRange* ']'
-CharRange <- Char '-' Char
+CharRange <- Char / Char '-' Char
 ```
 
 ### Wildcard (dot)
@@ -174,10 +173,10 @@ Wildcard `.` matches any character.
 ## Lookahead
 
 Lookahead (predicate) is a special operator used to test whether the following
-token appear in the input string or not without advancing a pointer pointer.
-Lookahead defines a condition by which it succeeds or fails, and preserves the
-knowledge whether a pattern succeeded or failed. If lookahead fails, it causes
-the whole alternative to fail.
+token appear in the input string or not without advancing a pointer. Lookahead
+defines a condition by which it succeeds or fails, and preserves the knowledge
+whether the pattern succeeded or failed. If lookahead fails, it causes the
+whole alternative to fail.
 
 There are two lookahead operators:
 
@@ -185,8 +184,8 @@ There are two lookahead operators:
 - Not `!`: succeeds if the pattern failed
 
 The following example shows the usage of the Not predicate. It defines the
-string, enclosed in double quotes with arbitrary characters except for
-the double quote mark in between.
+string, enclosed in double quotes with arbitrary characters except for the
+double quote mark in between.
 
 Examples:
 
@@ -201,10 +200,10 @@ any character".
 Comment   <- '//' (!'\n' .)* '\n'
 ```
 
-`Comment` defines the syntax of the inline comment, that starts with the double
-forward slash `'//'` and matches all characters until the newline, including
-it. `!'\n'` is necessary due to possessive nature of the [Zero or more
-operator](#quantifier). When the parser reads the newline, `(!'\n' .)*` fails
+`Comment` defines syntax of an inline comment that starts with a double forward
+slash `'//'` and matches all characters until and including a newline. `!'\n'`
+is necessary due to possessive nature of the [Zero or more
+operator](#quantifier). When the parser reads a newline, `(!'\n' .)*` fails
 without consuming it, and then consumes final `'\n'` and succeeds.
 
 ```peg
@@ -212,10 +211,10 @@ Term <- Atom Spacing &(Not / Or / And)
       / Atom Spacing? &RightBrace
 ```
 
-This code snippet describes the part of the conditional language grammar.
-`Atom` must be followed by `Spacing`, if it is then followed by `Not`, `Or`, or
-`And` to ensure that its contents are not "glued" to these keywords, or `Atom`
-may be followed by `Spacing`, if it is then followed by the `RightBrace`.
+This code snippet describes a part of the conditional language grammar.
+`Atom` must be followed by `Spacing` if it is then followed by `Not`, `Or`, or
+`And`, to ensure that its contents are not "glued" to these keywords; or `Atom`
+may be followed by `Spacing` if it is then followed by the `RightBrace`.
 
 And predicate does not consume the token, but remembers that it was
 successfully parsed at the given position, which allows some outer rule that
@@ -231,7 +230,7 @@ Types of quantifiers:
 - `?`
 
     Optional (zero or one). Tries to consume preceding pattern and
-    unconditionally succeeds (i.e. even if the pattern did not succeed once)
+    unconditionally succeeds (even if the pattern did not succeed once)
 
 - `*`
 
@@ -240,17 +239,16 @@ Types of quantifiers:
 
 - `+`
 
-    One or more. Consumes one or more matches of the preceding pattern and
-    succeeds if at least one match occured.
+    One or more. Consumes one or more matches of the pattern and succeeds if at
+    least one match occured.
 
 - `{}`
 
-    Repetition. Attempts to match the preceding pattern specified number of
+    Repetition. Attempts to match the pattern specified number of
     times. Can be of two forms:
 
     - `{n}` matches the pattern exact number of times
     - `{n1-n2}` matches the pattern between n1 and n2 times inclusively
-
 
 ```peg
 # Optional line ending
@@ -264,24 +262,24 @@ Integer <- [0-9]+
 ```
 
 Zero or more `*` and one or more `+` quantifiers are possessive, i.e.
-the expression `'a'* 'a'` would fail, because the expression `'a'*` does not
-backtrack.
+the expression `'a'* 'a'` would fail because the expression `'a'*` consumes
+all matching text and does not backtrack.
 
 ## Cut
 
-Cut is an experimental feature that allows to wipe the previous parsing history
-and ensures that the following token either succeeds, or, if it fails, the
-parsing process terminates. It improves error reporting of the parser and may
-decrease the space consumption, albeit it should be used with care, because,
-inserted in the wrong place, it easily can change the meaning of the grammar.
+Cut is an experimental feature that allows to wipe previous parsing history and
+ensures that the following token either succeeds or, if it fails, the parsing
+process terminates. It improves error reporting and may decrease the space
+consumption, albeit it should be used with care because, inserted in the wrong
+place, it easily can change the meaning of the grammar.
 
-Cut is represented by the caret `^` character.
+Cut is represented by caret `^` character.
 
 Cut can be inserted after a token or a sequence of tokens if there is no
 other expression that starts with the same token or sequence and reachable at
 this position.
 
-For example, the second alternative of the `Char` rule is unreachable, because
+For example, second alternative of the `Char` rule is unreachable, because
 if the `'n'` string literal fails, parser will never backtrack to try the
 `'\\' 'r'` sequence.
 
@@ -291,14 +289,14 @@ Char <- '\\' ^ 'n' / '\\' 'r'
 
 ## Metarules and Metavariables
 
-Metarules are the special entry type of the Polygen grammar, that allows the
-user to assign the semantics to the grammar. Unline the other parser generator
-tools, Polygen allows the user to separate the syntax description and semantic
-actions. Due to this, metarules have two syntax variations.
+Metarules are a special entry type of a grammar that allows a user to assign
+semantics to a grammar. Unlike other parser generator tools, Polygen allows
+user to separate a syntax description and semantic actions. Metarule syntax is
+of two variations: inline, and splitted into a declaration and a definition.
 
 Metarules are assigned to alternatives, not whole rules. The same metarule can
-be assigned to several alternatives. Metarule always comes at the end of the
-alternative before the next forward slash (if appears).
+be assigned to several alternatives. Metarule always comes at the end of an
+alternative before the next forward slash (if it appears).
 
 Metarule starts with the dollar sign `$` and has a body enclosed in curly
 brackets `{}`. Polygen reindents body contents when generates the parser.
@@ -309,39 +307,52 @@ If metarule body contains closing curly bracket, it must be escaped: `\}`.
 
 ### Inline metarule
 
-Inline metarule syntax is `${ ... }`, where the ellipsis denotes the metarule
-body. Inline metarules have no names and are specified right inside the grammar.
-Although this can be handy for the quick experiment, this usage is discouraged
-because it impacts readability and portability of the grammar.
+Inline metarule syntax is `${ ... }`, where ellipsis denotes the metarule body.
+Inline metarules have no names and are specified right inside the grammar.
+Although this can be handy for quick experiment, this usage is discouraged
+because it makes readability and portability of a grammar worse.
 
 ```peg
-Rule <- Alternative ${ ... }
+Rule <- Alternative1 ${ ... }
+      / Alternative2 ${ ... }
 ```
 
 ### Metarule declaration
 
-The second variation of metarules consists of two parts: declaration and
-definition.
+Second variation of metarule syntax consists of the two parts: the declaration
+and the definition.
 
-Declaration follows the alternative and consists of an identifier, prepended by
-the dollar sign:
+Declaration comes after an alternative and consists of a dollar sign followed
+by an identifier:
 
 ```peg
 Declaration <- '$' Identifier
 ```
 
-Definition must have the same name as the declaration (metarule names are case
-sensitive). It does not matter whether the definition appears before the
-declaration if the file or after. Definition syntax is roughly this:
+Definition must have the same name as the corresponding declaration (metarule
+names are case sensitive). It does not matter whether the definition appears
+before the declaration in a grammar or after. Definition syntax is roughly
+this:
 
 ```peg
 Declaration <- '$' Identifier '{' ... '}'
 ```
 
+Example:
+
+```peg
+Integer <- Digit* $integer
+
+$integer {
+    return int(''.join(digit))
+}
+```
+
 ### Metavariable
 
-Metavariable (or metaname) assigns the token the name by which it can be
-referenced in the metarule. Metavariable's syntax is:
+Metavariable (or metaname) assigns a name to a pattern. This name can be used
+by a metarule to acquire the value, returned by the pattern. Metavariable's
+syntax is:
 
 ```peg
 Metavariable <- Identifier ':'
@@ -357,10 +368,10 @@ metavar:[abc]
 metavar:("hello" / "world")
 ```
 
-Polygen deduces metanames for all patterns, except patterns with predicates. If
+Polygen deduces metanames for all patterns except patterns with predicates. If
 the pattern is an identifier, then the metaname is lowercase identifier string.
 If the pattern is a string literal, wildcard, or character class, then Polygen
-assigns the index string to it.
+assigns an index string to it.
 
 ```text
 Expression: If '(' Condition ')' Space '{' Body '}'
@@ -375,13 +386,14 @@ Expression: Char Char  Char
 Metanames:  char char1 char2
 ```
 
-Patterns with predicates can not be referenced from metarules because they
-does not return anything meaningful. If the metarule is called then, obviously,
-all predicates succeeded.
+Patterns with predicates can not be referenced from metarules because they does
+not return anything meaningful. If the metarule is called, then, obviously, all
+predicates succeeded.
 
-There is the special kind of metaname: ignore metaname. It is defined as an
-underscore `_`. When it is assigned to a pattern, its return result is
-discarded and cannot be retrieved from the metarule.
+There is a special kind of metaname: ignore metaname. It is represented by an
+underscore `_`, and it discards the return result of a pattern. Pattern with an
+ignore metaname can not be referenced from metarule, and its value is excluded
+from the return result of a rule.
 
 ```text
 Tuple <-   Number  ',' Number
@@ -395,25 +407,25 @@ Returns    Number       Number
 
 ## Directives
 
-Directives is an another special type of grammar entities. Directives does
-not define the grammar syntax directly, as Rules do, and they does not define
-semantics directly as well. Instead, directives are the "grammar meta rules".
-Directives start with an at sign `@`.
+Directives are another special type of grammar entities. Directives do not
+define grammar syntax directly, as Rules do, as well as they do not define
+semantics. Instead they are the "grammar meta rules". Directives start with an
+at sign `@`.
 
 Directives:
 
 - `@entry`
 
-    Entry directive marks the rule as the start rule of the grammar. Must be
+    Entry directive marks a rule the start rule of the grammar. It must be
     specified only once per grammar. Can be of two forms.
 
-    The first form follows the normal rule definition:
+    First form follows the normal rule definition:
 
         @entry
         Rule <- Expression
 
-    In the second form directive requires only the name of the rule. Rule must
-    appear in the grammar.
+    In second form the directive requires only the name of a rule. Note that
+    the rule must exist in the grammar.
 
         @entry Rule
 
@@ -421,10 +433,10 @@ Directives:
 
 - `@include`
 
-    Allows to include files into the grammar. When the file is specified in
-    include directive, Polygen first processes all its directives (including
-    `@include`, allowing for nested includes) and then concatenates grammars
-    to one whole.
+    Allows to include files into the grammar. When the file is specified in the
+    directive, Polygen first processes all directives it contains (including
+    `@include`, allowing for nested includes) and then concatenates grammars to
+    one whole.
 
         @include "path"
         @include 'path'
@@ -432,9 +444,9 @@ Directives:
 - `@toplevel`
 
     Allows the nested grammar to be processed and included if and only if the
-    file is first.
+    file, where it appears, is first.
 
-    The file that is specified in Polygen executable call is the first file.
+    File that is specified in Polygen executable call is the first file.
 
     `SubGrammar` complies to the definition of `Grammar`.
 
@@ -451,11 +463,11 @@ Directives:
         }
 
     Allows the nested grammar to be processed and included if and only if the
-    chosen backend's name is equal to the specified `BackendName`.
+    name of a backend is equal to `BackendName`.
 
 - `@ignore`
 
-    Ignore directive assigns Ignore metaname to specified rule(s) globally. All
+    Ignore directive assigns ignore metaname to specified rule(s) globally. All
     occurences of specified rule(s) will be discarded, unless the user assigns
     a metaname manually. Ignore directive has two forms.
 
