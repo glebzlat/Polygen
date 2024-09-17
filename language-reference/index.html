@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Language reference - Polygen</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Language reference";
+        var mkdocs_page_input_path = "language-reference.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]--> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Polygen
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="#">Language reference</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#grammar">Grammar</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#rule">Rule</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#expression">Expression</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#alternative">Alternative</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#part">Part</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#primary">Primary</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#identifier">Identifier</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#string-literal">String literal</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#character-class">Character class</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#wildcard-dot">Wildcard (dot)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#lookahead">Lookahead</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#quantifier">Quantifier</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#cut">Cut</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#metarules-and-metavariables">Metarules and Metavariables</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#inline-metarule">Inline metarule</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#metarule-declaration">Metarule declaration</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#metavariable">Metavariable</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#directives">Directives</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Polygen</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Language reference</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="polygen-language-reference">Polygen Language Reference</h1>
+<p>Polygen language is based on the original Bryan Ford's PEG definition and adds
+convenient features like unicode characters, metarules, metanames, and
+directives.</p>
+<h2 id="grammar">Grammar</h2>
+<p>Polygen grammar consists of entities. Entity can be <a href="#rule">a rule</a>, <a href="#metarules-and-metavariables">a
+metarule</a>, and <a href="#directives">a directive</a>. Rules
+describe language's syntax, metarules define semantics, and directives allow
+controlling the grammar processing.</p>
+<p>Polygen is insensitive to whitespace characters (space <code>' '</code>, newline <code>'\n'</code>,
+carriage return <code>'\r'</code>, and tab <code>'\t'</code>), thus whitespace is optional unless
+otherwise stated.</p>
+<h2 id="rule">Rule</h2>
+<p>Rule is the main grammar entity. Its purpose is to define the syntax of the
+language. Rule's syntax follows the original PEG definition and consists of the
+rule name, a left arrow and the body (expression).</p>
+<pre><code class="language-text">Rule &lt;- Identifier '&lt;-' Expression
+</code></pre>
+<p>A demonstration of a rule:</p>
+<pre><code class="language-peg">Rule &lt;- Expression
+</code></pre>
+<h2 id="expression">Expression</h2>
+<p>Expression represents the sequence of ordered choices - alternatives.
+Alternatives are tested in the order they appear in the sequence, and once the
+alternative succeeds, the whole expression succeeds and does not test the
+remaining alternatives.</p>
+<p>Alternatives in the expression are separated by forward slash.</p>
+<pre><code class="language-text">Expression &lt;- Alt 1 / Alt 2 / Alt N
+</code></pre>
+<h2 id="alternative">Alternative</h2>
+<p>Alternative is a sequence of parts tested in order they appear. Part is
+tested when the previous part succeeded, and if the part failed, then the whole
+alternative fails and remaining parts will not be tested.</p>
+<p>Alternative can be followed by optional metarule:</p>
+<pre><code class="language-text">Alternative &lt;- Part1 Part2 PartN MetaRuleDeclOrDef?
+</code></pre>
+<h2 id="part">Part</h2>
+<p>Parts consist of multiple components, most of which are optional. Optional
+components are followed by the question mark.</p>
+<pre><code class="language-text">Part &lt;- Cut? MetaName? Lookahead? Primary Quantifier?
+</code></pre>
+<p>Components explanation:</p>
+<ul>
+<li>
+<p><a href="#cut">Cut</a></p>
+<p>Cut is a special operator that instructs the parser to wipe the
+backtracking information.</p>
+</li>
+<li>
+<p><a href="#metavariable">MetaName</a></p>
+<p>MetaName can be seen as a variable name. It allows referencing the value of
+the parsed token in a semantic action.</p>
+</li>
+<li>
+<p><a href="#lookahead">Lookahead</a></p>
+<p>Lookahead is a special type of operator, which name is self-explanatory:
+it looks ahead and matches the token without consuming it.</p>
+</li>
+<li>
+<p><a href="#primary">Primary</a></p>
+<p>This is the pattern that matches input string.</p>
+</li>
+<li>
+<p><a href="#quantifier">Quantifier</a></p>
+<p>Quantifiers are another type of operator that allows specifying how many
+times the token must or may be repeated.</p>
+</li>
+</ul>
+<h2 id="primary">Primary</h2>
+<p>Primary is a definition of a matching pattern or a reference to another rule.</p>
+<p>Primary value types are:
+- Identifier
+- Expression in parentheses
+- String literal
+- Character class
+- Wildcard (dot)</p>
+<h3 id="identifier">Identifier</h3>
+<p>An Identifier is the name of a nonterminal. Rule names must follow the
+Identifier format. An Identifier consists of ASCII letters, digits, and
+underscore, and can not begin with the digit.</p>
+<p>Subsequent identifiers must be separated by whitespace; otherwise, they will
+be treated as a single identifier.</p>
+<pre><code class="language-peg">Identifier &lt;- [a-zA-Z_] [a-zA-Z0-9_]*
+</code></pre>
+<p>An asterisk <code>*</code> means "repeated zero or more times".</p>
+<h3 id="string-literal">String literal</h3>
+<p>String literal is an arbitrary sequence of characters between single or
+double quotes that matches exactly its content.</p>
+<p>Allowed characters in a string literal are ASCII characters and escape
+sequences, described below.</p>
+<pre><code class="language-peg">Char &lt;- EscapeChar / .
+</code></pre>
+<p>Dot <code>.</code> is a wildcard that matches any single character.</p>
+<p>Special characters are:</p>
+<ul>
+<li><code>\n</code> newline</li>
+<li><code>\r</code> carriage return</li>
+<li><code>\t</code> tab</li>
+<li><code>\'</code>, <code>\"</code> quote</li>
+<li><code>\[</code>, <code>\]</code> square brackets</li>
+<li><code>\\</code> backward slash</li>
+<li><code>\nn</code> and <code>\nnn</code> octal character code</li>
+<li><code>\uXXXX</code> UNICODE character</li>
+</ul>
+<p>Escaped quote marks are used in case where the type of quote mark matches the
+type of opening and closing marks: <code>'my message: \'hello\''</code>,
+<code>"my message: \"hello\""</code>.</p>
+<p>Octal character code digits are in the range from 0 to 7 inclusively, and the
+first digit can be maximum of 2: <code>\60</code>, <code>\141</code>.</p>
+<p>UNICODE characters are hexadecimal digits from 0 to 9 and from A to F.
+Lowercase digits are allowed: <code>\u03c0</code>, <code>\u03C0</code>, <code>\u00b5</code>.</p>
+<h3 id="character-class">Character class</h3>
+<p>Character class matches single character from a range. It can contain multiple
+ranges. A range consists either of a single character or two characters
+separated by a hyphen. In the latter case the range matches the starting
+character, the ending character, and all characters located lexicographically
+in between. The starting character must come first and must be less or equal
+than the ending character.</p>
+<pre><code class="language-peg">Class &lt;- '[' CharRange* ']'
+CharRange &lt;- Char / Char '-' Char
+</code></pre>
+<p>Escape sequences are allowed in character class</p>
+<p>Note: closing square brackets inside the class must be escaped: <code>[\]]</code>.</p>
+<h3 id="wildcard-dot">Wildcard (dot)</h3>
+<p>Wildcard <code>.</code> matches any character.</p>
+<h2 id="lookahead">Lookahead</h2>
+<p>Lookahead (predicate) is a special operator used to test whether the following
+token appear in the input string or not without advancing a pointer. Lookahead
+defines a condition by which it succeeds or fails, and preserves the knowledge
+whether the pattern succeeded or failed. If lookahead fails, it causes the
+whole alternative to fail.</p>
+<p>There are two lookahead operators:</p>
+<ul>
+<li>And <code>&amp;</code>: succeeds if the pattern succeeded</li>
+<li>Not <code>!</code>: succeeds if the pattern failed</li>
+</ul>
+<p>The following example shows the usage of the Not predicate. It defines the
+string, enclosed in double quotes with arbitrary characters except for the
+double quote mark in between.</p>
+<p>Examples:</p>
+<pre><code class="language-peg">EndOfFile &lt;- !.
+</code></pre>
+<p><code>EndOfFile</code> succeeds if Any Character did not match, that is, it matches "no
+any character".</p>
+<pre><code class="language-peg">Comment   &lt;- '//' (!'\n' .)* '\n'
+</code></pre>
+<p><code>Comment</code> defines syntax of an inline comment that starts with a double forward
+slash <code>'//'</code> and matches all characters until and including a newline. <code>!'\n'</code>
+is necessary due to possessive nature of the <a href="#quantifier">Zero or more
+operator</a>. When the parser reads a newline, <code>(!'\n' .)*</code> fails
+without consuming it, and then consumes final <code>'\n'</code> and succeeds.</p>
+<pre><code class="language-peg">Term &lt;- Atom Spacing &amp;(Not / Or / And)
+      / Atom Spacing? &amp;RightBrace
+</code></pre>
+<p>This code snippet describes a part of the conditional language grammar.
+<code>Atom</code> must be followed by <code>Spacing</code> if it is then followed by <code>Not</code>, <code>Or</code>, or
+<code>And</code>, to ensure that its contents are not "glued" to these keywords; or <code>Atom</code>
+may be followed by <code>Spacing</code> if it is then followed by the <code>RightBrace</code>.</p>
+<p>And predicate does not consume the token, but remembers that it was
+successfully parsed at the given position, which allows some outer rule that
+uses <code>Term</code> rule to parse the rest of the input.</p>
+<h2 id="quantifier">Quantifier</h2>
+<p>Quantifiers are operators that define how many times the preceding pattern
+should or must be repeated.</p>
+<p>Types of quantifiers:</p>
+<ul>
+<li>
+<p><code>?</code></p>
+<p>Optional (zero or one). Tries to consume preceding pattern and
+unconditionally succeeds (even if the pattern did not succeed once)</p>
+</li>
+<li>
+<p><code>*</code></p>
+<p>Zero or more. Tries to consume as many matches as possible and
+unconditionally succeeds.</p>
+</li>
+<li>
+<p><code>+</code></p>
+<p>One or more. Consumes one or more matches of the pattern and succeeds if at
+least one match occured.</p>
+</li>
+<li>
+<p><code>{}</code></p>
+<p>Repetition. Attempts to match the pattern specified number of
+times. Can be of two forms:</p>
+<ul>
+<li><code>{n}</code> matches the pattern exact number of times</li>
+<li><code>{n1-n2}</code> matches the pattern between n1 and n2 times inclusively</li>
+</ul>
+</li>
+</ul>
+<pre><code class="language-peg"># Optional line ending
+Statement &lt;- Expression ';'?
+
+# Sequence of digits, separated by comma
+Sequence &lt;- [0-9] (',' [0-9])*
+
+# Integer
+Integer &lt;- [0-9]+
+</code></pre>
+<p>Zero or more <code>*</code> and one or more <code>+</code> quantifiers are possessive, i.e.
+the expression <code>'a'* 'a'</code> would fail because the expression <code>'a'*</code> consumes
+all matching text and does not backtrack.</p>
+<h2 id="cut">Cut</h2>
+<p>Cut is an experimental feature that allows to wipe previous parsing history and
+ensures that the following token either succeeds or, if it fails, the parsing
+process terminates. It improves error reporting and may decrease the space
+consumption, albeit it should be used with care because, inserted in the wrong
+place, it easily can change the meaning of the grammar.</p>
+<p>Cut is represented by caret <code>^</code> character.</p>
+<p>Cut can be inserted after a token or a sequence of tokens if there is no
+other expression that starts with the same token or sequence and reachable at
+this position.</p>
+<p>For example, second alternative of the <code>Char</code> rule is unreachable, because
+if the <code>'n'</code> string literal fails, parser will never backtrack to try the
+<code>'\\' 'r'</code> sequence.</p>
+<pre><code class="language-peg">Char &lt;- '\\' ^ 'n' / '\\' 'r'
+</code></pre>
+<h2 id="metarules-and-metavariables">Metarules and Metavariables</h2>
+<p>Metarules are a special entry type of a grammar that allows a user to assign
+semantics to a grammar. Unlike other parser generator tools, Polygen allows
+user to separate a syntax description and semantic actions. Metarule syntax is
+of two variations: inline, and splitted into a declaration and a definition.</p>
+<p>Metarules are assigned to alternatives, not whole rules. The same metarule can
+be assigned to several alternatives. Metarule always comes at the end of an
+alternative before the next forward slash (if it appears).</p>
+<p>Metarule starts with the dollar sign <code>$</code> and has a body enclosed in curly
+brackets <code>{}</code>. Polygen reindents body contents when generates the parser.
+Whitespace between the dollar sign and an identifier is disallowed in all
+forms.</p>
+<p>If metarule body contains closing curly bracket, it must be escaped: <code>\}</code>.</p>
+<h3 id="inline-metarule">Inline metarule</h3>
+<p>Inline metarule syntax is <code>${ ... }</code>, where ellipsis denotes the metarule body.
+Inline metarules have no names and are specified right inside the grammar.
+Although this can be handy for quick experiment, this usage is discouraged
+because it makes readability and portability of a grammar worse.</p>
+<pre><code class="language-peg">Rule &lt;- Alternative1 ${ ... }
+      / Alternative2 ${ ... }
+</code></pre>
+<h3 id="metarule-declaration">Metarule declaration</h3>
+<p>Second variation of metarule syntax consists of the two parts: the declaration
+and the definition.</p>
+<p>Declaration comes after an alternative and consists of a dollar sign followed
+by an identifier:</p>
+<pre><code class="language-peg">Declaration &lt;- '$' Identifier
+</code></pre>
+<p>Definition must have the same name as the corresponding declaration (metarule
+names are case sensitive). It does not matter whether the definition appears
+before the declaration in a grammar or after. Definition syntax is roughly
+this:</p>
+<pre><code class="language-peg">Declaration &lt;- '$' Identifier '{' ... '}'
+</code></pre>
+<p>Example:</p>
+<pre><code class="language-peg">Integer &lt;- Digit* $integer
+
+$integer {
+    return int(''.join(digit))
+}
+</code></pre>
+<h3 id="metavariable">Metavariable</h3>
+<p>Metavariable (or metaname) assigns a name to a pattern. This name can be used
+by a metarule to acquire the value, returned by the pattern. Metavariable's
+syntax is:</p>
+<pre><code class="language-peg">Metavariable &lt;- Identifier ':'
+</code></pre>
+<p>Metavariable prefixes the pattern:</p>
+<pre><code class="language-text">metavar:'literal'
+metavar:&quot;literal&quot;
+metavar:.
+metavar:[abc]
+metavar:(&quot;hello&quot; / &quot;world&quot;)
+</code></pre>
+<p>Polygen deduces metanames for all patterns except patterns with predicates. If
+the pattern is an identifier, then the metaname is lowercase identifier string.
+If the pattern is a string literal, wildcard, or character class, then Polygen
+assigns an index string to it.</p>
+<pre><code class="language-text">Expression: If '(' Condition ')' Space '{' Body '}'
+Metanames:  if _1  condition _2  space _3  body _4
+</code></pre>
+<p>If the same identifier appears multiple times, metarules of subsequent
+occurences are indexed.</p>
+<pre><code class="language-text">Expression: Char Char  Char
+Metanames:  char char1 char2
+</code></pre>
+<p>Patterns with predicates can not be referenced from metarules because they does
+not return anything meaningful. If the metarule is called, then, obviously, all
+predicates succeeded.</p>
+<p>There is a special kind of metaname: ignore metaname. It is represented by an
+underscore <code>_</code>, and it discards the return result of a pattern. Pattern with an
+ignore metaname can not be referenced from metarule, and its value is excluded
+from the return result of a rule.</p>
+<pre><code class="language-text">Tuple &lt;-   Number  ',' Number
+Metanames: number  _1 number1
+Returns:   Number, ',', Number
+
+Tuple &lt;-   Number _:',' Number
+Metanames: number       number1
+Returns    Number       Number
+</code></pre>
+<h2 id="directives">Directives</h2>
+<p>Directives are another special type of grammar entities. Directives do not
+define grammar syntax directly, as Rules do, as well as they do not define
+semantics. Instead they are the "grammar meta rules". Directives start with an
+at sign <code>@</code>.</p>
+<p>Directives:</p>
+<ul>
+<li>
+<p><code>@entry</code></p>
+<p>Entry directive marks a rule the start rule of the grammar. It must be
+specified only once per grammar. Can be of two forms.</p>
+<p>First form follows the normal rule definition:</p>
+<pre><code>@entry
+Rule &lt;- Expression
+</code></pre>
+<p>In second form the directive requires only the name of a rule. Note that
+the rule must exist in the grammar.</p>
+<pre><code>@entry Rule
+</code></pre>
+<p><code>@entry</code> must be separated from the rule name by whitespace.</p>
+</li>
+<li>
+<p><code>@include</code></p>
+<p>Allows to include files into the grammar. When the file is specified in the
+directive, Polygen first processes all directives it contains (including
+<code>@include</code>, allowing for nested includes) and then concatenates grammars to
+one whole.</p>
+<pre><code>@include "path"
+@include 'path'
+</code></pre>
+</li>
+<li>
+<p><code>@toplevel</code></p>
+<p>Allows the nested grammar to be processed and included if and only if the
+file, where it appears, is first.</p>
+<p>File that is specified in Polygen executable call is the first file.</p>
+<p><code>SubGrammar</code> complies to the definition of <code>Grammar</code>.</p>
+<pre><code>@toplevel {
+    SubGrammar
+}
+</code></pre>
+</li>
+<li>
+<p><code>@backend</code></p>
+<p>Looks somewhat similar to CSS media query.</p>
+<pre><code>@backend(BackendName) {
+    SubGrammar
+}
+</code></pre>
+<p>Allows the nested grammar to be processed and included if and only if the
+name of a backend is equal to <code>BackendName</code>.</p>
+</li>
+<li>
+<p><code>@ignore</code></p>
+<p>Ignore directive assigns ignore metaname to specified rule(s) globally. All
+occurences of specified rule(s) will be discarded, unless the user assigns
+a metaname manually. Ignore directive has two forms.</p>
+<p>In the first form it prefixes the rule definition</p>
+<pre><code>@ignore
+Rule &lt;- Expression
+</code></pre>
+<p>The second form allows to list multiple rules. Rules in the list are
+separated by whitespace (spaces or newlines).</p>
+<pre><code>@ignore {
+    Rule1 Rule2 ... RuleN
+}
+</code></pre>
+</li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+  </span>
+</div>
+    <script src="../js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = "..";</script>
+    <script src="../js/theme_extra.js"></script>
+    <script src="../js/theme.js"></script>
+      <script src="../search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
