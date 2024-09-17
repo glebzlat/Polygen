@@ -6,10 +6,10 @@ for almost any high-level language.
 ## Installation
 
 ```sh
-pip install git+https://github.com/glebzlat/Polygen
+pip install git+https://github.com/glebzlat/polygen
 
 # or
-git clone https://github.com/glebzlat/Polygen
+git clone https://github.com/glebzlat/polygen
 pip install polygen
 ```
 
