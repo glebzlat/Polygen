@@ -806,9 +806,9 @@ class Parser:
         _cut_mark = None
         if (
             (identifier := self._Identifier()) is not None
-            and self._SEMI() is not None
+            and self._COLON() is not None
         ):
-            # Identifier SEMI
+            # Identifier COLON
             return identifier
         if _cut_mark:
             column, node = _cut_mark
@@ -1467,7 +1467,7 @@ class Parser:
         return None
 
     @_memoize
-    def _SEMI(self):
+    def _COLON(self):
         _begin_pos = self._mark()
         _cut_mark = None
         if (

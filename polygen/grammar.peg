@@ -27,7 +27,7 @@ Suffix      <- Primary q:(QUESTION / STAR / PLUS / Repetition)?   $suffix_action
 Primary     <- Identifier !LEFTARROW
              / OPEN Expression CLOSE
              / Literal / Class / DOT
-MetaName    <- Identifier SEMI
+MetaName    <- Identifier COLON
 MetaRule    <- '$' body:MetaDefBody                               $metarule_def_action
              / '$' Spacing Identifier !'{'                        $metarule_ref_action
 
@@ -70,7 +70,7 @@ HexDigit    <- char:[a-fA-F0-9]
   COPEN
   CCLOSE
   AT
-  SEMI
+  COLON
   HAT
   Spacing
 }
@@ -93,7 +93,7 @@ COPEN       <- '{' Spacing
 CCLOSE      <- '}' Spacing
 DOT         <- '.' Spacing  $dot_action
 AT          <- '@' Spacing
-SEMI        <- ':' Spacing
+COLON       <- ':' Spacing
 HAT         <- '^' Spacing
 
 Spacing     <- (Space / Comment)*
