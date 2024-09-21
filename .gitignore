@@ -167,3 +167,4 @@ eggs/
 *.egg
 commit.msg
 tmp/
+docs/site/
