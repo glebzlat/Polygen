@@ -6,7 +6,6 @@ from collections import defaultdict, Counter
 from typing import Iterator, TypeVar, Hashable, OrderedDict, Optional
 
 from .node import (
-    GrammarVisitor,
     islookahead,
     DLL,
     Grammar,
@@ -30,6 +29,7 @@ from .node import (
     And,
     Not
 )
+from polygen.visitor import GrammarVisitor, Context as Parents
 
 from .utility import reindent
 
@@ -704,72 +704,72 @@ class NullableVisitor(GrammarVisitor):
         self.visited: set[Id] = set()
         self.nullables: set[Id] = set()
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, ctx: Parents):
         for r in node:
-            self.visit(r)
+            self._visit(r, ctx)
 
         self.visited.clear()
         for r in node:
-            self.visit(r)
+            self._visit(r, ctx)
 
-    def visit_Rule(self, node: Rule) -> bool:
+    def visit_Rule(self, node: Rule, ctx: Parents) -> bool:
         if node.id in self.visited:
             return False
         self.visited.add(node.id)
-        if self.visit(node.expr):
+        if self._visit(node.expr, ctx):
             node.nullable = True
             self.nullables.add(node.id)
         return node.nullable
 
-    def visit_Expr(self, node: Expr) -> bool:
+    def visit_Expr(self, node: Expr, ctx: Parents) -> bool:
         for alt in node:
-            if self.visit(alt):
+            if self._visit(alt, ctx):
                 return True
         return False
 
-    def visit_Alt(self, node: Alt) -> bool:
+    def visit_Alt(self, node: Alt, ctx: Parents) -> bool:
         for item in node:
-            if not self.visit(item):
+            if not self._visit(item, ctx):
                 return False
         node.nullable = True
         return True
 
-    def visit_NamedItem(self, node: NamedItem) -> bool:
-        if self.visit(node.item):
+    def visit_NamedItem(self, node: NamedItem, ctx: Parents) -> bool:
+        if self._visit(node.item, ctx):
             node.nullable = True
         return node.nullable
 
-    def visit_Id(self, node: Id) -> bool:
+    def visit_Id(self, node: Id, ctx: Parents) -> bool:
         return node in self.nullables
 
-    def visit_Not(self, node: Not) -> bool:
+    def visit_Not(self, node: Not, ctx: Parents) -> bool:
         return True
 
-    def visit_And(self, node: And) -> bool:
+    def visit_And(self, node: And, ctx: Parents) -> bool:
         return True
 
-    def visit_ZeroOrOne(self, node: ZeroOrOne) -> bool:
+    def visit_ZeroOrOne(self, node: ZeroOrOne, ctx: Parents) -> bool:
         return True
 
-    def visit_ZeroOrMore(self, node: ZeroOrMore) -> bool:
+    def visit_ZeroOrMore(self, node: ZeroOrMore, ctx: Parents) -> bool:
         return True
 
-    def visit_OneOrMore(self, node: OneOrMore) -> bool:
+    def visit_OneOrMore(self, node: OneOrMore, ctx: Parents) -> bool:
         return False
 
-    def visit_Repetition(self, node: Repetition) -> bool:
+    def visit_Repetition(self, node: Repetition, ctx: Parents) -> bool:
         return node.first == 0
 
-    def visit_String(self, node: String) -> bool:
+    def visit_String(self, node: String, ctx: Parents) -> bool:
         return not node.chars
 
-    def visit_Char(self, node: Char) -> bool:
+    def visit_Char(self, node: Char, ctx: Parents) -> bool:
         return False
 
-    def visit_AnyChar(self, node: AnyChar) -> bool:
+    def visit_AnyChar(self, node: AnyChar, ctx: Parents) -> bool:
         return False
 
-    def visit_Class(self, node: Class) -> bool:
+    def visit_Class(self, node: Class, ctx: Parents) -> bool:
         return not node.ranges
 
 
@@ -779,35 +779,35 @@ def compute_nullables(tree: Grammar):
 
 
 class FirstGraphVisitor(GrammarVisitor):
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, ctx: Parents):
         graph: dict[Id, list[Id]] = {}
         rules: dict[Id, Rule] = {}
         for r in node:
             if isinstance(r, MetaRule):
                 continue
-            key, val = self.visit(r)
+            key, val = self._visit(r, ctx)
             graph[key] = val
             rules[key] = r
         return graph, rules
 
-    def visit_Rule(self, node: Rule):
-        return node.id, self.visit(node.expr)
+    def visit_Rule(self, node: Rule, ctx: Parents):
+        return node.id, self._visit(node.expr, ctx)
 
-    def visit_Expr(self, node: Expr):
+    def visit_Expr(self, node: Expr, ctx: Parents):
         names, added = [], set()
         for n in node:
-            for n in self.visit(n):
+            for n in self._visit(n, ctx):
                 if n in added:
                     continue
                 names.append(n)
                 added.add(n)
         return names
 
-    def visit_Alt(self, node: Alt):
+    def visit_Alt(self, node: Alt, ctx: Parents):
         names, added = [], set()
         for i in node:
             assert type(i) is NamedItem
-            for n in (self.visit(i) or []):
+            for n in (self._visit(i, ctx) or []):
                 if n in added:
                     continue
                 names.append(n)
@@ -816,31 +816,31 @@ class FirstGraphVisitor(GrammarVisitor):
                 break
         return names
 
-    def visit_NamedItem(self, node: NamedItem):
-        return self.visit(node.item)
+    def visit_NamedItem(self, node: NamedItem, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_ZeroOrOne(self, node: ZeroOrOne):
-        return self.visit(node.item)
+    def visit_ZeroOrOne(self, node: ZeroOrOne, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_ZeroOrMore(self, node: ZeroOrMore):
-        return self.visit(node.item)
+    def visit_ZeroOrMore(self, node: ZeroOrMore, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_OneOrMore(self, node: OneOrMore):
-        return self.visit(node.item)
+    def visit_OneOrMore(self, node: OneOrMore, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_Id(self, node: Id):
+    def visit_Id(self, node: Id, ctx: Parents):
         return [node]
 
-    def visit_String(self, node: String):
+    def visit_String(self, node: String, ctx: Parents):
         return []
 
-    def visit_Char(self, node: Char):
+    def visit_Char(self, node: Char, ctx: Parents, *args):
         return []
 
-    def visit_And(self, node: And):
+    def visit_And(self, node: And, ctx: Parents):
         return []
 
-    def visit_Not(self, node: Not):
+    def visit_Not(self, node: Not, ctx: Parents):
         return []
 
 
@@ -887,27 +887,27 @@ def strongly_connected_components(
 
 
 class AlternativeVisitor(GrammarVisitor):
-    def visit_Alt(self, node: Alt):
+    def visit_Alt(self, node: Alt, ctx: Parents):
         items = set()
         for i in node:
-            items.add(self.visit(i))
+            items.add(self._visit(i, ctx))
             if not i.nullable:
                 return items
         return items
 
-    def visit_NamedItem(self, node: NamedItem):
-        return self.visit(node.item)
+    def visit_NamedItem(self, node: NamedItem, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_ZeroOrOne(self, node: ZeroOrOne):
-        return self.visit(node.item)
+    def visit_ZeroOrOne(self, node: ZeroOrOne, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_ZeroOrMore(self, node: ZeroOrMore):
-        return self.visit(node.item)
+    def visit_ZeroOrMore(self, node: ZeroOrMore, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_OneOrMore(self, node: OneOrMore):
-        return self.visit(node.item)
+    def visit_OneOrMore(self, node: OneOrMore, ctx: Parents):
+        return self._visit(node.item, ctx)
 
-    def visit_Id(self, node: Id):
+    def visit_Id(self, node: Id, ctx: Parents):
         return node
 
 

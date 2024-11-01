@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from polygen.__version__ import __version__
-from polygen.node import Grammar, GrammarVisitor
+from polygen.visitor import GrammarVisitor
+from polygen.node import Grammar
 from .preprocessor import (
     check_undefined_directives_batch,
     process_batch,

@@ -8,6 +8,7 @@ from polygen.utility import reindent
 from polygen.generator.base import CodeGeneratorBase
 from polygen.generator.runner import RunnerBase
 from polygen.generator.config import Option
+from polygen.visitor import Context
 
 from polygen.node import (
     DLL,
@@ -30,39 +31,6 @@ from polygen.node import (
     And,
     Not
 )
-
-
-POLYGEN_IMPORTS = """
-from polygen.node import (
-    ParseInfo,
-    Grammar,
-    Directive,
-    Include,
-    Entry,
-    ToplevelQuery,
-    BackendQuery,
-    Ignore,
-    Include,
-    Rule,
-    MetaRef,
-    MetaRule,
-    Expr,
-    Alt,
-    NamedItem,
-    Id,
-    String,
-    Char,
-    AnyChar,
-    Class,
-    Range,
-    ZeroOrOne,
-    ZeroOrMore,
-    OneOrMore,
-    Repetition,
-    And,
-    Not
-)
-"""
 
 
 class CodeGenerator(CodeGeneratorBase):
@@ -104,11 +72,11 @@ class CodeGenerator(CodeGeneratorBase):
             self.visit(grammar)
         return self._directives
 
-    def visit_Grammar(self, node: Grammar):
+    def visit_Grammar(self, node: Grammar, ctx: Context):
         for i, r in enumerate(node):
-            self.visit(r, i)
+            self._visit(r, ctx, i)
 
-    def visit_Rule(self, node: Rule, index: int):
+    def visit_Rule(self, node: Rule, ctx: Context, index: int):
         if index:
             # Place empty line between rules, but not before the first rule
             self.emptyline()
@@ -132,7 +100,7 @@ class CodeGenerator(CodeGeneratorBase):
             if not node.head:
                 self.put("_begin_pos = self._mark()")
                 self.put("_cut_mark = None")
-            self.visit(node.expr, node)
+            self._visit(node.expr, ctx, node)
             self.put("return None")
 
         lr_alts = f"_lr_alts_{node.id}"
@@ -142,7 +110,7 @@ class CodeGenerator(CodeGeneratorBase):
                      line_ending=False)
             del self._directives[lr_alts]
 
-    def visit_Expr(self, node: Expr, rule: Rule):
+    def visit_Expr(self, node: Expr, ctx: Context, rule: Rule):
         if rule.head:
             alts, seeds, growers = [], [], []
             for i, alt in enumerate(node, 1):
@@ -168,14 +136,14 @@ class CodeGenerator(CodeGeneratorBase):
                     with self.indent():
                         self.put("_begin_pos = self._mark()")
                         self.put("_cut_mark = None")
-                        self.visit(alt, i)
+                        self._visit(alt, ctx, i)
                     if alt.right is not None:
                         self.emptyline()
         else:
             for i, alt in enumerate(node):
-                self.visit(alt, i)
+                self._visit(alt, ctx, i)
 
-    def visit_Alt(self, node: Alt, index: int):
+    def visit_Alt(self, node: Alt, ctx: Context, index: int):
         variables = []
 
         length = DLL.length(node.items)
@@ -185,7 +153,7 @@ class CodeGenerator(CodeGeneratorBase):
         elif length == 1:
             # If there is one item, put it in one line
             self.put("if ", newline=False)
-            self.visit(node.items, 0, variables, newline=False)
+            self._visit(node.items, ctx, 0, variables, newline=False)
             self.put(":", indent=False)
 
         else:
@@ -193,7 +161,7 @@ class CodeGenerator(CodeGeneratorBase):
             self.put("if (")
             with self.indent():
                 for i, item in enumerate(node):
-                    self.visit(item, i, variables, newline=True)
+                    self._visit(item, ctx, i, variables, newline=True)
             self.put("):")
 
         with self.indent():
@@ -225,6 +193,7 @@ class CodeGenerator(CodeGeneratorBase):
 
     def visit_NamedItem(self,
                         node: NamedItem,
+                        ctx: Context,
                         index: int,
                         variables: list[str],
                         newline: bool):
@@ -238,7 +207,7 @@ class CodeGenerator(CodeGeneratorBase):
 
         ignore = node.name == Id(NamedItem.IGNORE)
         assign = "" if ignore else f"{node.name} := "
-        parts = self.visit(node.item)
+        parts = self._visit(node.item, ctx)
 
         fn, *args = parts
         body = ', '.join(str(i) for i in args)
@@ -257,40 +226,40 @@ class CodeGenerator(CodeGeneratorBase):
         if not ignore:
             variables.append(node.name.value)
 
-    def visit_ZeroOrOne(self, node: ZeroOrOne):
-        return "self._maybe", *self.visit(node.item)
+    def visit_ZeroOrOne(self, node: ZeroOrOne, ctx: Context):
+        return "self._maybe", *self._visit(node.item, ctx)
 
-    def visit_ZeroOrMore(self, node: ZeroOrMore):
-        return "self._loop", "False", *self.visit(node.item)
+    def visit_ZeroOrMore(self, node: ZeroOrMore, ctx: Context):
+        return "self._loop", "False", *self._visit(node.item, ctx)
 
-    def visit_OneOrMore(self, node: OneOrMore):
-        return "self._loop", "True", *self.visit(node.item)
+    def visit_OneOrMore(self, node: OneOrMore, ctx: Context):
+        return "self._loop", "True", *self._visit(node.item, ctx)
 
-    def visit_Repetition(self, node: Repetition):
-        return "self._rep", node.first, node.last, *self.visit(node.item)
+    def visit_Repetition(self, node: Repetition, ctx: Context):
+        return "self._rep", node.first, node.last, *self._visit(node.item, ctx)
 
-    def visit_And(self, node: And):
-        return "self._lookahead", "True", *self.visit(node.item)
+    def visit_And(self, node: And, ctx: Context):
+        return "self._lookahead", "True", *self._visit(node.item, ctx)
 
-    def visit_Not(self, node: Not):
-        return "self._lookahead", "False", *self.visit(node.item)
+    def visit_Not(self, node: Not, ctx: Context):
+        return "self._lookahead", "False", *self._visit(node.item, ctx)
 
-    def visit_String(self, node: String):
+    def visit_String(self, node: String, ctx: Context):
         return "self._expects", node
 
-    def visit_Char(self, node: Char):
+    def visit_Char(self, node: Char, ctx: Context):
         return "self._expectc", node
 
-    def visit_AnyChar(self, node: AnyChar):
+    def visit_AnyChar(self, node: AnyChar, ctx: Context):
         return ("self._expectc",)
 
-    def visit_Id(self, node: Id):
+    def visit_Id(self, node: Id, ctx: Context):
         return (f"self._{node.value}",)
 
-    def visit_Class(self, node: Class):
-        return "self._ranges", *(self.visit(r) for r in node)
+    def visit_Class(self, node: Class, ctx: Context):
+        return "self._ranges", *(self._visit(r, ctx) for r in node)
 
-    def visit_Range(self, node: Range) -> str:
+    def visit_Range(self, node: Range, ctx: Context) -> str:
         last = node.last or node.first
         return f"({node.first}, {last})"
 

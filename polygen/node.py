@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, TypeVar, Union, Iterator, Any
+from typing import Iterable, Optional, TypeVar, Union, Iterator
 from itertools import zip_longest
 
 from .utility import code_to_char, wrap_string
@@ -143,21 +143,6 @@ class DLL:
     def astuple(self) -> tuple[DoublyLinked, ...] | tuple[()]:
         """Convert doubly linked list into a tuple of its elements."""
         return tuple(DLL.forward(self))
-
-
-class GrammarVisitor:
-    # taken from pegen
-    # https://github.com/we-like-parsers/pegen/blob/main/src/pegen/grammar.py
-
-    def visit(self, node, *args: Any, **kwargs: Any) -> Any:
-        """Visit a node."""
-        method = f"visit_{type(node).__name__}"
-        visitor = getattr(self, method, self.generic_visit)
-        return visitor(node, *args, **kwargs)
-
-    def generic_visit(self, node, *args: Any, **kwargs: Any) -> None:
-        for value in node:
-            self.visit(value, *args, **kwargs)
 
 
 class ParseInfo:
