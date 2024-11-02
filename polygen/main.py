@@ -9,26 +9,9 @@ import traceback
 from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
-# from polygen.parser import Reader, Parser
 from polygen.preprocessor import process, GPreprocessorError
-
-from polygen.modifier import (
-    Options,
-    TreeModifierWarning,
-    SemanticError,
-    ModifierVisitor,
-    CheckUndefinedRules,
-    CheckRedefinedRules,
-    ReplaceNestedExprs,
-    FindEntryRule,
-    CreateAnyChar,
-    IgnoreRules,
-    GenerateMetanames,
-    AssignMetaRules,
-    ValidateRangesAndReps,
-    ComputeLR
-)
-
+from polygen.translator import Context, TranslationError
+from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
 from polygen.generator.runner import RunnerBase
@@ -68,28 +51,6 @@ class Backend:
         self.config = config
 
 
-def create_modifier(*, reserved_words: set[str]) -> ModifierVisitor:
-    modifier_classes = [
-        CheckUndefinedRules,
-        CheckRedefinedRules,
-        ReplaceNestedExprs,
-        FindEntryRule,
-        CreateAnyChar,
-        IgnoreRules,
-        GenerateMetanames,
-        AssignMetaRules,
-        ValidateRangesAndReps,
-        ComputeLR
-    ]
-
-    options = Options(reserved_words=reserved_words)
-    modifiers = []
-    for cls in modifier_classes:
-        modifiers.append(cls(options))
-
-    return ModifierVisitor(modifiers)
-
-
 def generate_parser(*,
                     grammar_file: Optional[Path] = None,
                     backend: Backend,
@@ -118,16 +79,23 @@ def generate_parser(*,
         logger.error(msg)
         return
 
+    context = Context()
+    context.grammar = tree
+    context.reserved_words = backend.generator.RESERVED_WORDS
+
+    passes = [InvokeModifier()]
+
     try:
-        modifier = create_modifier(
-            reserved_words=backend.generator.RESERVED_WORDS
-        )
-        modifier.apply(tree)
-    except TreeModifierWarning as w:
-        logger.warn(str(w))
-    except SemanticError as e:
+        for p in passes:
+            p.translate(context)
+    except TranslationError as e:
+        for w in context.warnings:
+            logger.warn(str(w))
         logger.error(str(e))
         return
+
+    for w in context.warnings:
+        logger.warn(str(w))
 
     backend.generator.generate(tree, backend.config)
     files = backend.generator.create_files(output_directory)
