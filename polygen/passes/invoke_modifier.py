@@ -9,8 +9,6 @@ from polygen.modifier import (
     TreeModifierWarning,
     SemanticError,
     ModifierVisitor,
-    ReplaceNestedExprs,
-    FindEntryRule,
     CreateAnyChar,
     IgnoreRules,
     GenerateMetanames,
@@ -41,7 +39,6 @@ class InvokeModifier(Translator):
 
     def create_modifier(self, reserved_words: set[str]) -> ModifierVisitor:
         modifier_classes = [
-            FindEntryRule,
             CreateAnyChar,
             IgnoreRules,
             GenerateMetanames,

@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
 from polygen.translator import Context, TranslationError
-from polygen.passes.replace_nested_exprs import ReplaceNestedExprs
+from polygen.passes.parse_grammar import ParseGrammar
 from polygen.passes.check_undef_rules import CheckUndefRules
 from polygen.passes.check_redef_rules import CheckRedefRules
-from polygen.passes.parse_grammar import ParseGrammar
+from polygen.passes.replace_nested_exprs import ReplaceNestedExprs
+from polygen.passes.find_entry_rule import FindEntryRule
 from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
@@ -77,6 +78,7 @@ def generate_parser(*,
         CheckUndefRules(),
         CheckRedefRules(),
         ReplaceNestedExprs(),
+        FindEntryRule(),
         InvokeModifier()
     ]
 
