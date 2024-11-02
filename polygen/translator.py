@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Optional, Any
 from pathlib import Path
 
+from polygen.visitor import GrammarVisitor
 from polygen.node import Grammar
 
 
@@ -94,7 +95,7 @@ class Context:
         return self.namespace.__contains__(key)
 
 
-class Translator:
+class Translator(GrammarVisitor):
     """Base translator
 
     Classes that inherit from Translator are translation passes that modify
