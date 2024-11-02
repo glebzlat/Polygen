@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Optional, Any
+from pathlib import Path
 
 from polygen.node import Grammar
 
@@ -53,6 +54,13 @@ class Context:
     def __init__(self):
         self.errors: list[TranslationError] = []
         self.warnings: list[TranslationWarning] = []
+
+        self.backend_name: Optional[str] = None
+
+        self.include_paths: Optional[list[Path]] = None
+        self.grammar_source: Optional[Path] = None
+        self.source_files: list[Path] = []
+        self.directives: dict[str, str] = {}
 
         self.grammar: Optional[Grammar] = None
         self.reserved_words: Optional[set[str]] = None

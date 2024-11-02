@@ -6,11 +6,13 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from typing import Optional
 
-from polygen.preprocessor import (
-    process,
-    IncludeNotFound,
+from polygen.translator import Context
+from polygen.passes.parse_grammar import (
+    ParseGrammar,
     CircularIncludeError,
-    UnknownEntry
+    IncludeNotFound,
+    UnknownEntry,
+    ParserError
 )
 from polygen.node import (
     RuleNotFound,
@@ -22,7 +24,6 @@ from polygen.node import (
     Id,
     Char
 )
-from polygen.generator.base import CodeGeneratorBase
 
 
 TEST_NAME = "test_grammar_preprocessor"
@@ -40,17 +41,6 @@ class File:
     content: str
     dir: str = ""
     entry: bool = False
-
-
-class MockCodeGen(CodeGeneratorBase):
-    NAME = "mock"
-    LANGUAGE = "Mock"
-    VERSION = "0.0.0"
-    FILES = []
-    OPTIONS = {}
-
-    def generate(self, grammar, options):
-        pass
 
 
 class PreprocessorTestBase:
@@ -80,15 +70,14 @@ class PreprocessorTestBase:
             self.fail("specify one entry")
 
     def test_process(self):
-        gen = MockCodeGen()
+        context = Context()
+        context.grammar_source = self.entry
+        context.include_paths = [self.base_dir]
+        context.backend_name = "mock"
+        p = ParseGrammar()
 
         try:
-            tree = process(
-                self.entry,
-                [self.base_dir],
-                backend_name=MockCodeGen.NAME,
-                generator=gen
-            )
+            p.translate(context)
         except Exception as e:
             if self.exception:
                 self.assertIsInstance(e, self.exception)
@@ -98,10 +87,10 @@ class PreprocessorTestBase:
 
         inspect = getattr(self, "inspect", None)
         if inspect:
-            inspect(tree, gen)
+            inspect(context.grammar, context)
 
         if self.grammar:
-            self.assertEqual(tree, self.grammar)
+            self.assertEqual(context.grammar, self.grammar)
 
 
 TestBase = PreprocessorTestBase
@@ -152,7 +141,7 @@ Rule <- 'a'
         ])),
     ])
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         for r in grammar.rules.iter():
             if r.id.value == "Grammar":
                 self.assertTrue(r.entry)
@@ -188,7 +177,7 @@ Rule <- 'a'
         ])),
     ])
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         for r in grammar.rules.iter():
             if r.id.value == "Grammar":
                 self.assertTrue(r.entry)
@@ -223,7 +212,7 @@ Grammar <- <- Rule
 """, entry=True)
     ]
 
-    exception = SyntaxError
+    exception = ParserError
 
 
 class TestIncludeNotFound(TestBase, unittest.TestCase):
@@ -248,7 +237,7 @@ class TestEntryDirective(TestBase, unittest.TestCase):
              """, entry=True)
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         for r in grammar.rules.iter():
             if r.id.value == "Grammar":
                 self.assertTrue(r.entry)
@@ -293,7 +282,7 @@ class TestEntryInAnotherFile(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         for r in grammar.rules.iter():
             if r.id.value == "Grammar":
                 self.assertTrue(r.entry)
@@ -319,7 +308,7 @@ class TestIgnoreDirective(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         self.assertTrue(grammar.get_rule("Foo").ignore)
         self.assertTrue(grammar.get_rule("Bar").ignore)
         self.assertFalse(grammar.get_rule("Baz").ignore)
@@ -343,7 +332,7 @@ class TestToplevelDirective(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         self.assertTrue(grammar.get_rule("Foo").entry)
         try:
             grammar.get_rule("Baz")
@@ -378,7 +367,7 @@ class TestToplevelNested(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         self.assertRaises(RuleNotFound, grammar.get_rule, "Baz")
         self.assertTrue(grammar.get_rule("Rule").entry)
         self.assertFalse(grammar.get_rule("Foo").entry)
@@ -395,9 +384,9 @@ class TestBackendDef(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar, gen: MockCodeGen):
-        self.assertIn("header", gen._directives)
-        self.assertEqual(gen._directives["header"].getvalue(), "hello world\n")
+    def inspect(self, grammar, ctx: Context):
+        self.assertIn("header", ctx.directives)
+        self.assertEqual(ctx.directives["header"].getvalue(), "hello world\n\n")
 
 
 class TestBackendDefAppend(TestBase, unittest.TestCase):
@@ -413,11 +402,11 @@ class TestBackendDefAppend(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar, gen: MockCodeGen):
-        self.assertIn("header", gen._directives)
+    def inspect(self, grammar, ctx: Context):
+        self.assertIn("header", ctx.directives)
         self.assertEqual(
-            gen._directives["header"].getvalue(),
-            "hello world\nhello world\n"
+            ctx.directives["header"].getvalue(),
+            "hello world\n\nhello world\n\n"
         )
 
 
@@ -441,9 +430,9 @@ class TestBackendDefIncludeAppend(TestBase, unittest.TestCase):
         ),
     ]
 
-    def inspect(self, grammar, gen: MockCodeGen):
-        self.assertIn("header", gen._directives)
-        self.assertEqual(gen._directives["header"].getvalue(), "b\na\n")
+    def inspect(self, grammar, ctx: Context):
+        self.assertIn("header", ctx.directives)
+        self.assertEqual(ctx.directives["header"].getvalue(), "b\n\na\n\n")
 
 
 class TestBackendDefAppendInclude(TestBase, unittest.TestCase):
@@ -470,9 +459,9 @@ class TestBackendDefAppendInclude(TestBase, unittest.TestCase):
         ),
     ]
 
-    def inspect(self, grammar, gen: MockCodeGen):
-        self.assertIn("header", gen._directives)
-        self.assertEqual(gen._directives["header"].getvalue(), "a\nb\n")
+    def inspect(self, grammar, ctx: Context):
+        self.assertIn("header", ctx.directives)
+        self.assertEqual(ctx.directives["header"].getvalue(), "a\n\nb\n\n")
 
 
 class TestBackendQuery(TestBase, unittest.TestCase):
@@ -499,7 +488,7 @@ class TestBackendQuery(TestBase, unittest.TestCase):
         )
     ]
 
-    def inspect(self, grammar: Grammar, gen):
+    def inspect(self, grammar: Grammar, ctx):
         self.assertTrue(grammar.get_rule("Foo").entry)
         self.assertFalse(grammar.get_rule("Bar").entry)
 

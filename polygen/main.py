@@ -4,13 +4,12 @@ import tracemalloc
 import linecache
 import time
 import os
-import traceback
 
 from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
-from polygen.preprocessor import process, GPreprocessorError
 from polygen.translator import Context, TranslationError
+from polygen.passes.parse_grammar import ParseGrammar
 from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
@@ -64,26 +63,13 @@ def generate_parser(*,
         tracemalloc.start()
         t1 = time.perf_counter()
 
-    try:
-        tree = process(
-            grammar_file,
-            [Path.cwd(), *include_paths],
-            backend.generator.NAME,
-            backend.generator
-        )
-    except GPreprocessorError as e:
-        logger.error("grammar preprocessor error: %s", e)
-        return
-    except SyntaxError as e:
-        msg = '\n' + ''.join(traceback.format_exception(SyntaxError, e, None))
-        logger.error(msg)
-        return
-
     context = Context()
-    context.grammar = tree
+    context.include_paths = [Path.cwd(), *include_paths]
+    context.grammar_source = grammar_file
     context.reserved_words = backend.generator.RESERVED_WORDS
+    context.backend_name = backend.generator.NAME
 
-    passes = [InvokeModifier()]
+    passes = [ParseGrammar(), InvokeModifier()]
 
     try:
         for p in passes:
@@ -97,7 +83,7 @@ def generate_parser(*,
     for w in context.warnings:
         logger.warn(str(w))
 
-    backend.generator.generate(tree, backend.config)
+    backend.generator.generate(context.grammar, backend.config)
     files = backend.generator.create_files(output_directory)
     backend.runner.parser_files = files
     backend.generator.cleanup()
