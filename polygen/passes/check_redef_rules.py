@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from polygen.translator import Translator, Context, TranslationError
-from polygen.visitor import Context as Parents
+from polygen.visitor import GrammarPostVisitor, Context as Parents
 from polygen.node import Id, Rule
 
 
@@ -13,7 +13,7 @@ class RedefRuleError(TranslationError):
             redefined.id, redefined.parse_info, first_defined.parse_info)
 
 
-class CheckRedefRules(Translator):
+class CheckRedefRules(Translator, GrammarPostVisitor):
 
     def __init__(self):
         self.rules: defaultdict[Id, list[Rule]] = defaultdict(list)

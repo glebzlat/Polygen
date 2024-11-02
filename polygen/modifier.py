@@ -29,7 +29,7 @@ from .node import (
     And,
     Not
 )
-from polygen.visitor import GrammarVisitor, Context as Parents
+from polygen.visitor import GrammarPreVisitor, Context as Parents
 
 from .utility import reindent
 
@@ -698,7 +698,7 @@ def charset_to_class(chars: set[Char]) -> Class:
     return Class(ranges)
 
 
-class NullableVisitor(GrammarVisitor):
+class NullableVisitor(GrammarPreVisitor):
     def __init__(self, grammar: Grammar):
         self.grammar = grammar
         self.visited: set[Id] = set()
@@ -778,7 +778,7 @@ def compute_nullables(tree: Grammar):
     vis.visit(tree)
 
 
-class FirstGraphVisitor(GrammarVisitor):
+class FirstGraphVisitor(GrammarPreVisitor):
     def visit_Grammar(self, node: Grammar, ctx: Parents):
         graph: dict[Id, list[Id]] = {}
         rules: dict[Id, Rule] = {}
@@ -886,7 +886,7 @@ def strongly_connected_components(
             yield from dfs(i)
 
 
-class AlternativeVisitor(GrammarVisitor):
+class AlternativeVisitor(GrammarPreVisitor):
     def visit_Alt(self, node: Alt, ctx: Parents):
         items = set()
         for i in node:

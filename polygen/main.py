@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
 from polygen.translator import Context, TranslationError
+from polygen.passes.replace_nested_exprs import ReplaceNestedExprs
 from polygen.passes.check_undef_rules import CheckUndefRules
 from polygen.passes.check_redef_rules import CheckRedefRules
 from polygen.passes.parse_grammar import ParseGrammar
@@ -75,6 +76,7 @@ def generate_parser(*,
         ParseGrammar(),
         CheckUndefRules(),
         CheckRedefRules(),
+        ReplaceNestedExprs(),
         InvokeModifier()
     ]
 

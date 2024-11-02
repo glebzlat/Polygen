@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from polygen.translator import Translator, Context, TranslationError
-from polygen.visitor import Context as Parents
+from polygen.visitor import GrammarPostVisitor, Context as Parents
 from polygen.node import (
     Id,
     Rule,
@@ -18,7 +18,7 @@ class UndefRuleError(TranslationError):
         self.args = (rule.id, rule)
 
 
-class CheckUndefRules(Translator):
+class CheckUndefRules(Translator, GrammarPostVisitor):
     """Find rules that are referenced but have no definitions"""
 
     def __init__(self):

@@ -1,4 +1,5 @@
 from typing import Any, Optional
+from abc import abstractmethod
 
 from polygen.node import Grammar, Rule, Alt, NamedItem
 
@@ -59,8 +60,20 @@ class GrammarVisitor:
         ctx = Context()
         return self._visit(node, ctx, *args, **kwargs)
 
+    @abstractmethod
     def _visit(self, node, ctx: Context, *args: Any, **kwargs: Any) -> Any:
         """Visit a node."""
+
+    @abstractmethod
+    def generic_visit(
+        self, node, ctx: Context, *args: Any, **kwargs: Any
+    ) -> None:
+        ...
+
+
+class GrammarPreVisitor(GrammarVisitor):
+
+    def _visit(self, node, ctx: Context, *args: Any, **kwargs: Any) -> Any:
         method = f"visit_{type(node).__name__}"
         visitor = getattr(self, method, self.generic_visit)
 
@@ -75,3 +88,23 @@ class GrammarVisitor:
     ) -> None:
         for value in node:
             self._visit(value, ctx, *args, **kwargs)
+
+
+class GrammarPostVisitor(GrammarVisitor):
+
+    def _visit(self, node, ctx: Context, *args: Any, **kwargs: Any) -> Any:
+        method = f"visit_{type(node).__name__}"
+        visitor = getattr(self, method, self.generic_visit)
+
+        ctx.append(node)
+        for value in node:
+            self._visit(value, ctx, *args, **kwargs)
+        ctx.pop()
+        result = visitor(node, ctx, *args, **kwargs)
+
+        return result
+
+    def generic_visit(
+        self, node, ctx: Context, *args: Any, **kwargs: Any
+    ) -> None:
+        pass

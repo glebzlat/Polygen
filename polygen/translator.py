@@ -95,7 +95,7 @@ class Context:
         return self.namespace.__contains__(key)
 
 
-class Translator(GrammarVisitor):
+class Translator:
     """Base translator
 
     Classes that inherit from Translator are translation passes that modify
