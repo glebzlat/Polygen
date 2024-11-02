@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Iterable, Any, Optional, Iterator, Type
 
 from polygen.translator import Context, TranslationError
+from polygen.passes.check_undef_rules import CheckUndefRules
+from polygen.passes.check_redef_rules import CheckRedefRules
 from polygen.passes.parse_grammar import ParseGrammar
 from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
@@ -69,7 +71,12 @@ def generate_parser(*,
     context.reserved_words = backend.generator.RESERVED_WORDS
     context.backend_name = backend.generator.NAME
 
-    passes = [ParseGrammar(), InvokeModifier()]
+    passes = [
+        ParseGrammar(),
+        CheckUndefRules(),
+        CheckRedefRules(),
+        InvokeModifier()
+    ]
 
     try:
         for p in passes:
