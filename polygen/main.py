@@ -15,6 +15,7 @@ from polygen.passes.check_redef_rules import CheckRedefRules
 from polygen.passes.replace_nested_exprs import ReplaceNestedExprs
 from polygen.passes.find_entry_rule import FindEntryRule
 from polygen.passes.create_any_char import CreateAnyChar
+from polygen.passes.ignore_rules import IgnoreRules
 from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
@@ -81,6 +82,7 @@ def generate_parser(*,
         ReplaceNestedExprs(),
         FindEntryRule(),
         CreateAnyChar(),
+        IgnoreRules(),
         InvokeModifier()
     ]
 
