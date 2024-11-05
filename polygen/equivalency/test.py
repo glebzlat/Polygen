@@ -101,6 +101,7 @@ def setUpUnittestSuite(backend_name: Optional[str]):
                 output_directory = test_output_directory
 
                 def setUp(self):
+                    self.maxDiff = None
                     self.output_directory.mkdir(exist_ok=True)
                     grammar = self.test_case / GRAMMAR_FILE_NAME
                     generate_parser(grammar_file=grammar,
