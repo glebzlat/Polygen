@@ -36,7 +36,6 @@ class InvokeModifier(Translator):
 
     def create_modifier(self, reserved_words: set[str]) -> ModifierVisitor:
         modifier_classes = [
-            AssignMetaRules,
             ValidateRangesAndReps,
             ComputeLR
         ]
