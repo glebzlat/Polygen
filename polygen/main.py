@@ -18,6 +18,8 @@ from polygen.passes.create_any_char import CreateAnyChar
 from polygen.passes.ignore_rules import IgnoreRules
 from polygen.passes.generate_metanames import GenerateMetanames
 from polygen.passes.assign_meta_rules import AssignMetaRules
+from polygen.passes.validate_ranges import ValidateRanges
+from polygen.passes.validate_reps import ValidateReps
 from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
@@ -87,6 +89,8 @@ def generate_parser(*,
         IgnoreRules(),
         GenerateMetanames(),
         AssignMetaRules(),
+        ValidateRanges(),
+        ValidateReps(),
         InvokeModifier()
     ]
 
