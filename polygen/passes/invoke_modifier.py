@@ -9,7 +9,6 @@ from polygen.modifier import (
     TreeModifierWarning,
     SemanticError,
     ModifierVisitor,
-    GenerateMetanames,
     AssignMetaRules,
     ValidateRangesAndReps,
     ComputeLR
@@ -37,7 +36,6 @@ class InvokeModifier(Translator):
 
     def create_modifier(self, reserved_words: set[str]) -> ModifierVisitor:
         modifier_classes = [
-            GenerateMetanames,
             AssignMetaRules,
             ValidateRangesAndReps,
             ComputeLR
