@@ -91,6 +91,9 @@ class Context:
     def __setitem__(self, key: str, value: Any):
         self.namespace[key] = value
 
+    def __delitem__(self, key: str):
+        self.namespace.__delitem__(key)
+
     def __contains__(self, key: str):
         return self.namespace.__contains__(key)
 
