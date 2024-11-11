@@ -244,10 +244,7 @@ def strongly_connected_components(
             yield from dfs(i)
 
 
-class AlternativeVisitor(Translator, GrammarPreVisitor):
-
-    def translate(self, ctx: Context):
-        return self.visit(ctx.grammar)
+class AlternativeVisitor(GrammarPreVisitor):
 
     def visit_Alt(self, node: Alt, parents: Parents):
         items = set()
