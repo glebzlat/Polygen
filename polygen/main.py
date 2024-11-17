@@ -100,6 +100,10 @@ def generate_parser(*,
     try:
         for p in passes:
             p.translate(context)
+        if context.errors:
+            for e in context.errors:
+                logger.error(str(e))
+            return
     except TranslationError as e:
         for w in context.warnings:
             logger.warn(str(w))
