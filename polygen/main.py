@@ -20,7 +20,6 @@ from polygen.passes.generate_metanames import GenerateMetanames
 from polygen.passes.assign_meta_rules import AssignMetaRules
 from polygen.passes.validate_ranges import ValidateRanges
 from polygen.passes.validate_reps import ValidateReps
-from polygen.passes.invoke_modifier import InvokeModifier
 from polygen.passes.compute_lr import ComputeLR
 
 from polygen.generator.config import Config
