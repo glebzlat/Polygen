@@ -108,6 +108,7 @@ def generate_parser(*,
     for w in context.warnings:
         logger.warn(str(w))
 
+    backend.generator._directives.update(context.directives)
     backend.generator.generate(context.grammar, backend.config)
     files = backend.generator.create_files(output_directory)
     backend.runner.parser_files = files
