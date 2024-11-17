@@ -51,24 +51,17 @@ class CreateAnyChar(Translator, GrammarPreVisitor):
 def charset_to_class(chars: set[Char]) -> Class:
     """Create class of ranges from the set of characters."""
     ranges = []
-    lst = []
-    for c in sorted(chars):
-        if not lst or c.code - lst[-1].code == 1:
-            lst.append(c)
-        else:
-            if len(lst) == 1:
-                beg, end = lst[0], None
-            else:
-                beg, end = lst[0], lst[-1]
-            ranges.append(Range(beg, end))
-            lst.clear()
+    prev = None
 
-    if lst:
-        if len(lst) == 1:
-            beg, end = lst[0], None
-        else:
-            beg, end = lst[0], lst[-1]
-        ranges.append(Range(beg, end))
+    for c in sorted(chars):
+        if not prev:
+            ranges.append(Range(c, None))
+            prev = c
+            continue
+        if c.code - prev.code != 1:
+            ranges[-1].last = prev
+            ranges.append(Range(c, None))
+        prev = c
 
     return Class(ranges)
 
