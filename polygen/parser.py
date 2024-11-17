@@ -46,6 +46,7 @@ from polygen.node import (
 
 
 
+
 __all__ = ["Token", "Reader", "Parser"]
 
 
@@ -1879,6 +1880,19 @@ class Parser:
             and (_1 := self._expectc()) is not None
         ):
             # !EndOfLine .
+            return _1
+        if _cut_mark:
+            column, node = _cut_mark
+            raise self.make_syntax_error(f"expected {node} at {column}")
+        self._reset(_begin_pos)
+        return None
+
+    @_memoize
+    def _AnyChar__GEN(self):
+        _begin_pos = self._mark()
+        _cut_mark = None
+        if (_1 := self._ranges(('\t', '\n'), ('\r', '\r'), (' ', '$'), ('&', ':'), ('<', '<'), ('?', '_'), ('a', '{'), ('}', '}'))) is not None:
+            # [\t-\n\r-\r -$&-:<-<?-_a-{}]
             return _1
         if _cut_mark:
             column, node = _cut_mark

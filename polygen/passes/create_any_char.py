@@ -1,5 +1,5 @@
 from polygen.translator import Translator, Context
-from polygen.visitor import GrammarPreVisitor, Context as Parents
+from polygen.visitor import GrammarPostVisitor, Context as Parents
 from polygen.node import (
     DLL,
     Rule,
@@ -15,7 +15,7 @@ from polygen.node import (
 )
 
 
-class CreateAnyChar(Translator, GrammarPreVisitor):
+class CreateAnyChar(Translator, GrammarPostVisitor):
     """Create artificial rule for AnyChar
 
     Creates AnyChar rule, whose expression is a character class composed of
@@ -45,7 +45,13 @@ class CreateAnyChar(Translator, GrammarPreVisitor):
         self.chars.update(DLL.astuple(node.chars))
 
     def visit_AnyChar(self, node: AnyChar, parents: Parents):
-        parents[-1].item = self.rule_id
+        # This rule causes an error in semantic actions: semantic actions
+        # written in target language contain characters that AnyChar collector
+        # haven't met in the grammar. So grammar writer either should include
+        # all target language's permitted characters in the grammar, or just
+        # don't bother with AnyChar.
+        # parents[-1].item = self.rule_id
+        pass
 
 
 def charset_to_class(chars: set[Char]) -> Class:
