@@ -2,8 +2,8 @@ import os
 import unittest
 
 from dataclasses import dataclass
-from tempfile import TemporaryDirectory
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 
 from polygen.translator import Context
@@ -26,7 +26,7 @@ from polygen.node import (
 )
 
 
-TEST_NAME = "test_grammar_preprocessor"
+TEST_NAME = "parse_grammar_test"
 TEST_DIR = os.environ.get("POLYGEN_TEST_DIR")
 if TEST_DIR:
     TEST_DIR = Path(TEST_DIR) / TEST_NAME
@@ -43,11 +43,11 @@ class File:
     entry: bool = False
 
 
-class PreprocessorTestBase:
+class ParseGrammarTestBase:
 
     input_files: list[File]
     grammar: Optional[Grammar] = None
-    exception: Optional[type] = None
+    exc_type: Optional[type] = None
 
     def setUp(self):
         base_dir = TEST_DIR / type(self).__name__
@@ -60,27 +60,27 @@ class PreprocessorTestBase:
             filename = file_dir / file.name
 
             if file.entry:
-                assert not self.entry, "only one entry can be specified"
+                assert not self.entry, "one entry must be specified"
                 self.entry = filename
 
             file_dir.mkdir(exist_ok=True, parents=True)
             filename.write_text(file.content)
 
-        if not self.entry:
-            self.fail("specify one entry")
+        assert self.entry, "one entry must be specified"
 
     def test_process(self):
         context = Context()
         context.grammar_source = self.entry
         context.include_paths = [self.base_dir]
         context.backend_name = "mock"
+
         p = ParseGrammar()
 
         try:
             p.translate(context)
         except Exception as e:
-            if self.exception:
-                self.assertIsInstance(e, self.exception)
+            if self.exc_type:
+                self.assertIsInstance(e, self.exc_type)
                 return
 
             raise
@@ -93,10 +93,11 @@ class PreprocessorTestBase:
             self.assertEqual(context.grammar, self.grammar)
 
 
-TestBase = PreprocessorTestBase
+TestBase = ParseGrammarTestBase
 
 
 class TestIncludeFile(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @include "include.peg"
@@ -120,6 +121,7 @@ Rule <- 'a'
 
 
 class TestIncludeSubdirectory(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @include "subdir/include.peg"
@@ -150,6 +152,7 @@ Rule <- 'a'
 
 
 class TestNestedInclude(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @include "include1.peg"
@@ -186,6 +189,7 @@ Rule <- 'a'
 
 
 class TestCircularInclude(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @include "include1.peg"
@@ -201,10 +205,11 @@ Grammar <- Rule
 """)
     ]
 
-    exception = CircularIncludeError
+    exc_type = CircularIncludeError
 
 
 class TestParserFailed(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @entry
@@ -212,10 +217,11 @@ Grammar <- <- Rule
 """, entry=True)
     ]
 
-    exception = ParserError
+    exc_type = ParserError
 
 
 class TestIncludeNotFound(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
 @include "include1.peg"
@@ -225,10 +231,11 @@ Grammar <- Rule
 """, entry=True)
     ]
 
-    exception = IncludeNotFound
+    exc_type = IncludeNotFound
 
 
 class TestEntryDirective(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
              @entry Grammar
@@ -246,6 +253,7 @@ class TestEntryDirective(TestBase, unittest.TestCase):
 
 
 class TestEntryNotFound(TestBase, unittest.TestCase):
+
     input_files = [
         File("grammar.peg", """
              @entry Foo
@@ -254,7 +262,7 @@ class TestEntryNotFound(TestBase, unittest.TestCase):
              """, entry=True)
     ]
 
-    exception = UnknownEntry
+    exc_type = UnknownEntry
 
 
 class TestEntryInAnotherFile(TestBase, unittest.TestCase):
@@ -291,6 +299,7 @@ class TestEntryInAnotherFile(TestBase, unittest.TestCase):
 
 
 class TestIgnoreDirective(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "grammar.peg",
@@ -315,6 +324,7 @@ class TestIgnoreDirective(TestBase, unittest.TestCase):
 
 
 class TestToplevelDirective(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "file1.peg",
@@ -341,6 +351,7 @@ class TestToplevelDirective(TestBase, unittest.TestCase):
 
 
 class TestToplevelNested(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "file1.peg",
@@ -374,6 +385,7 @@ class TestToplevelNested(TestBase, unittest.TestCase):
 
 
 class TestBackendDef(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "file.peg",
@@ -390,6 +402,7 @@ class TestBackendDef(TestBase, unittest.TestCase):
 
 
 class TestBackendDefAppend(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "file.peg",
@@ -465,6 +478,7 @@ class TestBackendDefAppendInclude(TestBase, unittest.TestCase):
 
 
 class TestBackendQuery(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "grammar.peg",
@@ -499,6 +513,7 @@ class TestBackendQuery(TestBase, unittest.TestCase):
 
 
 class TestNestedQueries(TestBase, unittest.TestCase):
+
     input_files = [
         File(
             "grammar.peg",
