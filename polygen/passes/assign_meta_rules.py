@@ -80,6 +80,8 @@ class AssignMetaRules(Translator, GrammarPostVisitor):
             for i in range(1, len(rules)):
                 ctx.error(RedefMetaRule(id, first_rule, rules[i]))
 
+        ctx.grammar.metarules = None
+
     def visit_Alt(self, node: Alt, parents: Parents, ctx: Context):
         if self.stage == Stage.COLLECT_REFS:
             if type(node.metarule) is MetaRef:
