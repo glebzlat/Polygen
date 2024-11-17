@@ -27,7 +27,7 @@ from polygen.generator.config import Config
 from polygen.generator.base import CodeGeneratorBase
 from polygen.generator.runner import RunnerBase
 
-logging.basicConfig(format="{name}: {message}", style="{")
+logging.basicConfig(format="{message}", style="{")
 logger = logging.getLogger("polygen")
 stdout_handler = logging.StreamHandler(sys.stdout)
 
@@ -68,6 +68,8 @@ def generate_parser(*,
                     output_directory: Path,
                     user_options: Optional[Iterable[str]] = None,
                     verbose=False):
+    logger.setLevel(logging.WARN)
+
     if verbose:
         logger.setLevel(logging.INFO)
 
