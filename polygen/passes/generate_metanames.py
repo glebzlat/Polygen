@@ -97,7 +97,7 @@ class GenerateMetanames(Translator, GrammarPostVisitor):
                 ctx.warning(ReservedWordWarning(metaname, new_metaname, node))
                 metaname = new_metaname
 
-        if type(node.item) in (And, Not):
+        elif type(node.item) in (And, Not):
             metaname = NamedItem.IGNORE
 
         elif isinstance(node.inner_item, Id):
